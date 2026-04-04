@@ -66,6 +66,9 @@ active_process = None
 active_game_id = None
 _active_lock = threading.Lock()
 
+# Scan completion flag
+scan_complete = False
+
 
 def _set_active(proc, gid):
     global active_process, active_game_id
@@ -185,10 +188,14 @@ def _build_library():
 
 # Initial scan in background
 def _initial_scan():
+    global scan_complete
     try:
         _build_library()
     except Exception as e:
         logger.error(f"Initial scan failed: {e}")
+    finally:
+        scan_complete = True
+        logger.info("Initial scan complete")
 
 scan_thread = threading.Thread(target=_initial_scan, daemon=True)
 scan_thread.start()
@@ -212,6 +219,9 @@ def health():
 
 @app.route('/api/games')
 def api_games():
+    if not scan_complete:
+        return jsonify({'status': 'scanning', 'games': []})
+
     source = request.args.get('source', '')
     system = request.args.get('system', '')
     hidden = set(userdata.get_hidden_systems())

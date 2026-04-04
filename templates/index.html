@@ -85,11 +85,21 @@
         <!-- Game Count -->
         <div class="game-count" id="gameCount"></div>
 
+        <!-- Scanning State -->
+        <div class="empty-state hidden" id="scanningState">
+            <div class="scanning-spinner"></div>
+            <div class="empty-text">Scanning your libraries...</div>
+            <div class="empty-hint">Checking Steam, Epic, GOG, and more</div>
+        </div>
+
         <!-- Empty State -->
         <div class="empty-state hidden" id="emptyState">
-            <div class="empty-icon">🎮</div>
-            <div class="empty-text">No games found</div>
-            <div class="empty-hint">Try adding game directories in Settings</div>
+            <div class="empty-onboard">
+                <div class="empty-onboard-icon"></div>
+                <div class="empty-text">No games found yet</div>
+                <div class="empty-hint">Open Settings to add ROM directories or connect a store account.</div>
+                <button class="empty-settings-btn" onclick="document.getElementById('settingsOverlay').classList.remove('hidden')">Open Settings</button>
+            </div>
         </div>
     </div>
 
@@ -123,6 +133,22 @@
         <div class="catbyte-input-row">
             <input type="text" class="catbyte-input" id="catbyteInput" placeholder="Ask CatByte...">
             <button class="catbyte-send" id="catbyteSend">→</button>
+        </div>
+    </div>
+
+    <!-- CatByte Info Overlay (shown when OpenClaw is offline) -->
+    <div class="catbyte-info-overlay hidden" id="catbyteInfoOverlay">
+        <div class="catbyte-info-card">
+            <div class="catbyte-info-icon">🐱</div>
+            <h3>CatByte requires OpenClaw</h3>
+            <p>CatByte is your AI gaming companion, powered by the <strong>OpenClaw</strong> server. To enable it:</p>
+            <ol>
+                <li>Download or clone <strong>OpenClaw</strong></li>
+                <li>Start the OpenClaw server on port <code>18789</code></li>
+                <li>Restart YancoHub &mdash; CatByte will connect automatically</li>
+            </ol>
+            <p class="catbyte-info-hint">Once running, press <kbd>Ctrl+B</kbd> to chat with CatByte about your games.</p>
+            <button class="catbyte-info-dismiss" id="dismissCatbyteInfo">Got it</button>
         </div>
     </div>
 

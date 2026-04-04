@@ -20,6 +20,8 @@ const state = {
     playtimes: {},
     stores: {},
     chatHistory: [],
+    scanning: false,
+    catbyteOnline: false,
 };
 
 // ── DOM ────────────────────────────────────────────────────────────────────
@@ -92,6 +94,19 @@ async function init() {
 
     checkCatbyteStatus();
     applyFilter();
+
+    if (state.scanning) {
+        updateSplash(95, 'Scanning your libraries...');
+        // Poll until scan completes, then refresh
+        const pollScan = setInterval(async () => {
+            await loadGames();
+            if (!state.scanning) {
+                clearInterval(pollScan);
+                applyFilter();
+            }
+        }, 2000);
+    }
+
     updateSplash(100, 'Ready!');
 
     setTimeout(() => {
@@ -123,8 +138,15 @@ function updateSplash(pct, text) {
 async function loadGames() {
     try {
         const r = await fetch('/api/games');
-        state.games = await r.json();
-    } catch { state.games = []; }
+        const data = await r.json();
+        if (data.status === 'scanning') {
+            state.games = [];
+            state.scanning = true;
+            return;
+        }
+        state.games = Array.isArray(data) ? data : (data.games || []);
+        state.scanning = false;
+    } catch { state.games = []; state.scanning = false; }
 }
 
 async function loadStores() {
@@ -167,13 +189,16 @@ async function checkCatbyteStatus() {
     try {
         const r = await fetch('/api/catbyte/status');
         const d = await r.json();
-        const on = d.status === 'online';
-        $('catbyteStatusDot').classList.toggle('online', on);
-        $('catbyteStatus').textContent = on ? 'Online' : 'Offline';
-        $('catbyteStatus').classList.toggle('online', on);
+        state.catbyteOnline = d.status === 'online';
     } catch {
-        $('catbyteStatus').textContent = 'Offline';
+        state.catbyteOnline = false;
     }
+    const on = state.catbyteOnline;
+    $('catbyteStatusDot').classList.toggle('online', on);
+    $('catbyteStatus').textContent = on ? 'Online' : 'Offline';
+    $('catbyteStatus').classList.toggle('online', on);
+    $('btnCatbyte').classList.toggle('dimmed', !on);
+    $('btnCatbyte').title = on ? 'CatByte AI (Ctrl+B)' : 'CatByte requires OpenClaw';
 }
 
 // ── Filtering & Carousel ───────────────────────────────────────────────────
@@ -210,6 +235,18 @@ function applyFilter() {
 
     state.filteredGames = games;
     state.selectedIndex = 0;
+
+    if (state.scanning) {
+        $('carousel').innerHTML = '';
+        $('emptyState').classList.add('hidden');
+        $('scanningState').classList.remove('hidden');
+        $('carouselContainer').classList.add('hidden');
+        $('gameInfo').style.visibility = 'hidden';
+        $('gameCount').textContent = '';
+        return;
+    }
+
+    $('scanningState').classList.add('hidden');
 
     if (games.length === 0) {
         $('carousel').innerHTML = '';
@@ -289,6 +326,11 @@ function updateCarousel() {
     }
 }
 
+function applyFallbackGradient(el, game) {
+    const colors = SYS_COLORS[game.system] || SYS_COLORS[game.source] || ['#0c1628', '#060b14'];
+    el.style.background = `radial-gradient(ellipse 70% 50% at 50% 35%, ${colors[0]}88 0%, transparent 60%), linear-gradient(160deg, ${colors[0]} 0%, ${colors[1]} 100%)`;
+}
+
 function createCarouselCard(game, index, offset) {
     const card = document.createElement('div');
     card.className = 'carousel-card';
@@ -335,16 +377,23 @@ function createCarouselCard(game, index, offset) {
     if (game.artwork && (game.artwork.cover || game.artwork.header)) {
         const artType = game.artwork.cover ? 'cover' : 'header';
         const art = document.createElement('div');
-        art.className = 'carousel-card-art';
-        art.style.backgroundImage = `url('/api/artwork/${game.id}/${artType}')`;
+        art.className = 'carousel-card-art shimmer';
+
+        const img = new Image();
+        img.src = `/api/artwork/${game.id}/${artType}`;
+        img.onload = () => {
+            art.style.backgroundImage = `url('${img.src}')`;
+            art.classList.remove('shimmer');
+        };
+        img.onerror = () => {
+            art.classList.remove('shimmer');
+            applyFallbackGradient(art, game);
+        };
         inner.appendChild(art);
     } else {
         const fb = document.createElement('div');
-        fb.className = 'carousel-card-fallback ' + game.source;
-
-        // Per-system color gradient
-        const colors = SYS_COLORS[game.system] || SYS_COLORS[game.source] || ['#0c1628', '#060b14'];
-        fb.style.background = `radial-gradient(ellipse 70% 50% at 50% 35%, ${colors[0]}88 0%, transparent 60%), linear-gradient(160deg, ${colors[0]} 0%, ${colors[1]} 100%)`;
+        fb.className = 'carousel-card-fallback';
+        applyFallbackGradient(fb, game);
 
         const icon = document.createElement('div');
         icon.className = 'fallback-icon';
@@ -544,6 +593,7 @@ function bindEvents() {
     $('closeCatbyte').addEventListener('click', () => $('catbytePanel').classList.add('hidden'));
     $('catbyteSend').addEventListener('click', sendCatbyteMessage);
     $('catbyteInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendCatbyteMessage(); });
+    $('dismissCatbyteInfo').addEventListener('click', () => $('catbyteInfoOverlay').classList.add('hidden'));
 
     // Settings
     $('btnSettings').addEventListener('click', openSettings);
@@ -569,7 +619,8 @@ function bindEvents() {
         if (e.ctrlKey && e.key === ',') { e.preventDefault(); openSettings(); }
 
         if (e.key === 'Escape') {
-            if (!$('searchOverlay').classList.contains('hidden')) closeSearch();
+            if (!$('catbyteInfoOverlay').classList.contains('hidden')) $('catbyteInfoOverlay').classList.add('hidden');
+            else if (!$('searchOverlay').classList.contains('hidden')) closeSearch();
             else if (!$('settingsOverlay').classList.contains('hidden')) $('settingsOverlay').classList.add('hidden');
             else if (!$('catbytePanel').classList.contains('hidden')) $('catbytePanel').classList.add('hidden');
         }
@@ -690,6 +741,10 @@ async function doSearch() {
 // ── CatByte ────────────────────────────────────────────────────────────────
 
 function toggleCatbyte() {
+    if (!state.catbyteOnline) {
+        $('catbyteInfoOverlay').classList.remove('hidden');
+        return;
+    }
     $('catbytePanel').classList.toggle('hidden');
     if (!$('catbytePanel').classList.contains('hidden')) {
         $('catbyteInput').focus();
