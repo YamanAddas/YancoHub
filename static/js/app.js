@@ -1431,6 +1431,173 @@ function formatSize(bytes) {
     return (bytes / Math.pow(1024, i)).toFixed(1) + ' ' + u[i];
 }
 
+// ── Gamepad Support ─────────────────────────────────────────────────────────
+
+const _gp = {
+    connected: false,
+    index: null,
+    // Repeat timers: held buttons fire repeatedly after initial delay
+    navRepeat: null,
+    navDelay: 220,          // ms between repeated nav inputs
+    navInitialDelay: 400,   // ms before repeat kicks in
+    // Track button-down state to detect fresh presses
+    prev: {},
+    // Axis dead zone
+    deadZone: 0.5,
+    // Which direction is being held (-1, 0, 1)
+    heldDir: 0,
+    holdStart: 0,
+    holdFired: false,
+};
+
+window.addEventListener('gamepadconnected', (e) => {
+    _gp.connected = true;
+    _gp.index = e.gamepad.index;
+    $('gamepadIndicator').classList.remove('hidden');
+});
+
+window.addEventListener('gamepaddisconnected', (e) => {
+    if (_gp.index === e.gamepad.index) {
+        _gp.connected = false;
+        _gp.index = null;
+        _gp.prev = {};
+        _gp.heldDir = 0;
+        $('gamepadIndicator').classList.add('hidden');
+    }
+});
+
+function pollGamepad() {
+    if (!_gp.connected) { requestAnimationFrame(pollGamepad); return; }
+
+    const gp = navigator.getGamepads()[_gp.index];
+    if (!gp) { requestAnimationFrame(pollGamepad); return; }
+
+    const pressed = (i) => gp.buttons[i] && gp.buttons[i].pressed;
+    const justPressed = (i) => {
+        const now = pressed(i);
+        const was = _gp.prev[i] || false;
+        _gp.prev[i] = now;
+        return now && !was;
+    };
+
+    // Read all button states first (so justPressed is consumed once)
+    const btnA      = justPressed(0);   // A / Cross
+    const btnB      = justPressed(1);   // B / Circle
+    const btnY      = justPressed(3);   // Y / Triangle
+    const btnLB     = justPressed(4);   // Left bumper
+    const btnRB     = justPressed(5);   // Right bumper
+    const btnSelect = justPressed(8);   // Select / Back / Share
+    const btnStart  = justPressed(9);   // Start / Menu
+    const dpadLeft  = justPressed(14);  // D-pad left
+    const dpadRight = justPressed(15);  // D-pad right
+
+    // Left stick axis (axis 0 = horizontal)
+    const axisX = gp.axes[0] || 0;
+
+    // ── Determine navigation direction ──
+    // Combine D-pad discrete presses and stick axis for left/right
+    let navDir = 0;
+    if (dpadLeft)  navDir = -1;
+    if (dpadRight) navDir = 1;
+
+    // Stick-based navigation with repeat
+    const stickDir = Math.abs(axisX) > _gp.deadZone ? Math.sign(axisX) : 0;
+    const now = performance.now();
+
+    if (stickDir !== 0) {
+        if (_gp.heldDir !== stickDir) {
+            // Direction changed — fire immediately
+            _gp.heldDir = stickDir;
+            _gp.holdStart = now;
+            _gp.holdFired = false;
+            navDir = stickDir;
+        } else if (!_gp.holdFired && now - _gp.holdStart > _gp.navInitialDelay) {
+            // Initial delay passed — start repeating
+            _gp.holdFired = true;
+            _gp.holdStart = now;
+            navDir = stickDir;
+        } else if (_gp.holdFired && now - _gp.holdStart > _gp.navDelay) {
+            // Repeat fire
+            _gp.holdStart = now;
+            navDir = stickDir;
+        }
+    } else {
+        _gp.heldDir = 0;
+    }
+
+    // ── Check which overlay is open ──
+    const settingsOpen = !$('settingsOverlay').classList.contains('hidden');
+    const searchOpen   = !$('searchOverlay').classList.contains('hidden');
+    const catbyteOpen  = !$('catbytePanel').classList.contains('hidden');
+    const catbyteInfoOpen = !$('catbyteInfoOverlay').classList.contains('hidden');
+    const anyOverlay   = settingsOpen || searchOpen || catbyteOpen || catbyteInfoOpen;
+
+    // ── B: Back / Close ──
+    if (btnB) {
+        if (catbyteInfoOpen) $('catbyteInfoOverlay').classList.add('hidden');
+        else if (searchOpen)   closeSearch();
+        else if (settingsOpen) $('settingsOverlay').classList.add('hidden');
+        else if (catbyteOpen)  $('catbytePanel').classList.add('hidden');
+    }
+
+    // ── Start: Toggle settings ──
+    if (btnStart) {
+        if (settingsOpen) $('settingsOverlay').classList.add('hidden');
+        else if (!anyOverlay) openSettings();
+    }
+
+    // ── Select: Toggle search ──
+    if (btnSelect) {
+        if (searchOpen) closeSearch();
+        else if (!anyOverlay) openSearch();
+    }
+
+    // ── Bumpers: Tab switching ──
+    if (btnLB || btnRB) {
+        if (settingsOpen) {
+            // Switch settings tabs
+            const tabs = Array.from(document.querySelectorAll('.settings-tab'));
+            const activeIdx = tabs.findIndex(t => t.classList.contains('active'));
+            const next = btnRB
+                ? (activeIdx + 1) % tabs.length
+                : (activeIdx - 1 + tabs.length) % tabs.length;
+            switchSettingsTab(tabs[next].dataset.stab);
+        } else if (!anyOverlay) {
+            // Switch main category tabs
+            const tabs = Array.from(document.querySelectorAll('#tabBar .tab'));
+            const activeIdx = tabs.findIndex(t => t.classList.contains('active'));
+            const next = btnRB
+                ? (activeIdx + 1) % tabs.length
+                : (activeIdx - 1 + tabs.length) % tabs.length;
+            tabs.forEach(t => t.classList.remove('active'));
+            tabs[next].classList.add('active');
+            state.currentTab = tabs[next].dataset.tab;
+            applyFilter();
+        }
+    }
+
+    // ── Navigation (only when no text-input overlay is focused) ──
+    if (navDir !== 0 && !searchOpen) {
+        navigateCarousel(navDir);
+    }
+
+    // ── A: Launch / Confirm ──
+    if (btnA && !anyOverlay) {
+        launchSelected();
+    }
+
+    // ── Y: Favorite toggle ──
+    if (btnY && !anyOverlay) {
+        const game = state.filteredGames[state.selectedIndex];
+        if (game) toggleFavorite(game.id);
+    }
+
+    requestAnimationFrame(pollGamepad);
+}
+
+// Start the gamepad poll loop
+requestAnimationFrame(pollGamepad);
+
 // ── Start ──────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', init);
