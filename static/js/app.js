@@ -242,6 +242,8 @@ function applyFilter() {
         $('scanningState').classList.remove('hidden');
         $('carouselContainer').classList.add('hidden');
         $('gameInfo').style.visibility = 'hidden';
+        $('detailPanel').classList.remove('visible');
+        $('heroBackdrop').classList.remove('active');
         $('gameCount').textContent = '';
         return;
     }
@@ -253,6 +255,8 @@ function applyFilter() {
         $('emptyState').classList.remove('hidden');
         $('carouselContainer').classList.add('hidden');
         $('gameInfo').style.visibility = 'hidden';
+        $('detailPanel').classList.remove('visible');
+        $('heroBackdrop').classList.remove('active');
         $('gameCount').textContent = '';
     } else {
         $('emptyState').classList.add('hidden');
@@ -291,7 +295,7 @@ function updateCarousel() {
     const desired = new Set();
     for (let i = start; i <= end; i++) desired.add(i);
 
-    // Remove cards no longer visible
+    // Remove cards no longer visible — animate out
     const existing = $('carousel').querySelectorAll('.carousel-card');
     const existingMap = new Map();
     existing.forEach(card => {
@@ -300,8 +304,9 @@ function updateCarousel() {
             existingMap.set(idx, card);
         } else {
             card.style.opacity = '0';
+            card.style.transform += ' scale(0.5)';
             card.style.pointerEvents = 'none';
-            setTimeout(() => card.remove(), 500);
+            setTimeout(() => card.remove(), 550);
         }
     });
 
@@ -312,10 +317,10 @@ function updateCarousel() {
 
         if (!card) {
             card = createCarouselCard(state.filteredGames[i], i, offset);
-            const entryOff = offset > 0 ? VISIBLE_HALF + 1 : -(VISIBLE_HALF + 1);
-            applyCardTransform(card, entryOff);
+            card.classList.add('card-entering');
             $('carousel').appendChild(card);
             card.offsetHeight; // force reflow
+            setTimeout(() => card.classList.remove('card-entering'), 400);
         }
 
         card.className = 'carousel-card';
@@ -486,6 +491,8 @@ function updateGameInfo() {
     if (!game) {
         $('gameInfoTitle').textContent = '';
         $('gameInfoMeta').innerHTML = '';
+        updateHeroBackdrop(null);
+        updateDetailPanel(null);
         return;
     }
 
@@ -523,16 +530,89 @@ function updateGameInfo() {
 
     $('gameInfoMeta').innerHTML = badges.join('');
 
-    // Show description below badges if available
-    const descEl = document.getElementById('gameInfoDesc');
-    if (descEl) {
-        if (game.description) {
-            descEl.textContent = game.description;
-            descEl.style.display = 'block';
-        } else {
-            descEl.style.display = 'none';
-        }
+    updateHeroBackdrop(game);
+    updateDetailPanel(game);
+}
+
+// ── Hero Backdrop ─────────────────────────────────────────────────────────
+
+let _heroGameId = null;
+
+function updateHeroBackdrop(game) {
+    const el = $('heroBackdrop');
+    if (!game) {
+        el.classList.remove('active');
+        _heroGameId = null;
+        return;
     }
+
+    // Don't reload if same game
+    if (_heroGameId === game.id) return;
+    _heroGameId = game.id;
+
+    // Fade out current backdrop before loading new one
+    el.classList.remove('active');
+
+    // Try hero art first, then header, then cover
+    const artTypes = ['hero', 'header', 'cover'];
+    const artwork = game.artwork || {};
+    let artType = null;
+    for (const t of artTypes) {
+        if (artwork[t]) { artType = t; break; }
+    }
+
+    const applyBackdrop = (bgValue) => {
+        // Small delay for fade-out to complete before swapping
+        setTimeout(() => {
+            if (_heroGameId !== game.id) return;
+            el.style.backgroundImage = bgValue;
+            el.classList.add('active');
+        }, 250);
+    };
+
+    if (!artType) {
+        const colors = SYS_COLORS[game.system] || SYS_COLORS[game.source] || ['#0c1628', '#060b14'];
+        applyBackdrop(`linear-gradient(135deg, ${colors[0]}, ${colors[1]})`);
+        return;
+    }
+
+    // Preload then cross-fade
+    const img = new Image();
+    img.src = `/api/artwork/${game.id}/${artType}`;
+    img.onload = () => {
+        if (_heroGameId !== game.id) return;
+        applyBackdrop(`url('${img.src}')`);
+    };
+    img.onerror = () => {
+        if (_heroGameId !== game.id) return;
+        const colors = SYS_COLORS[game.system] || SYS_COLORS[game.source] || ['#0c1628', '#060b14'];
+        applyBackdrop(`linear-gradient(135deg, ${colors[0]}, ${colors[1]})`);
+    };
+}
+
+// ── Detail Panel ──────────────────────────────────────────────────────────
+
+function updateDetailPanel(game) {
+    const panel = $('detailPanel');
+    if (!game) {
+        panel.classList.remove('visible');
+        return;
+    }
+
+    // Description
+    $('detailDesc').textContent = game.description || '';
+
+    // Favorite button state
+    const isFav = state.favorites.has(game.id);
+    $('detailFavIcon').textContent = isFav ? '★' : '☆';
+    const favBtn = $('detailFavorite');
+    favBtn.classList.toggle('fav-active', isFav);
+
+    // Close any open dropdown
+    $('collectionDropdown').classList.add('hidden');
+
+    // Show the panel with slide-up animation
+    panel.classList.add('visible');
 }
 
 function updateGameCount() {
@@ -595,9 +675,30 @@ function bindEvents() {
     $('catbyteInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendCatbyteMessage(); });
     $('dismissCatbyteInfo').addEventListener('click', () => $('catbyteInfoOverlay').classList.add('hidden'));
 
+    // Detail panel actions
+    $('detailLaunch').addEventListener('click', launchSelected);
+    $('detailFavorite').addEventListener('click', () => {
+        const game = state.filteredGames[state.selectedIndex];
+        if (game) toggleFavorite(game.id);
+    });
+    $('detailCollection').addEventListener('click', toggleCollectionDropdown);
+    $('newCollectionBtn').addEventListener('click', createCollectionFromDetail);
+    $('newCollectionInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') createCollectionFromDetail(); });
+
+    // Close collection dropdown on outside click
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.detail-collection-wrap')) {
+            $('collectionDropdown').classList.add('hidden');
+        }
+    });
+
     // Settings
     $('btnSettings').addEventListener('click', openSettings);
     $('closeSettings').addEventListener('click', () => $('settingsOverlay').classList.add('hidden'));
+    $('settingsTabs').addEventListener('click', (e) => {
+        const tab = e.target.closest('.settings-tab');
+        if (tab) switchSettingsTab(tab.dataset.stab);
+    });
     $('addRomDir').addEventListener('click', addRomDir);
     $('addLocalDir').addEventListener('click', addLocalDir);
     $('addBiosDir').addEventListener('click', addBiosDir);
@@ -689,6 +790,74 @@ async function toggleFavorite(gameId) {
         // Refresh carousel to update star badge
         renderCarousel();
         updateGameInfo();
+    } catch {}
+}
+
+// ── Collection Dropdown (detail panel) ────────────────────────────────────
+
+async function toggleCollectionDropdown(e) {
+    e.stopPropagation();
+    const dd = $('collectionDropdown');
+    if (!dd.classList.contains('hidden')) {
+        dd.classList.add('hidden');
+        return;
+    }
+
+    const game = state.filteredGames[state.selectedIndex];
+    if (!game) return;
+
+    // Build the list
+    const collections = state.collections || {};
+    const list = $('collectionList');
+    list.innerHTML = '';
+
+    for (const [name, games] of Object.entries(collections)) {
+        const inCol = (games || []).includes(game.id);
+        const item = document.createElement('div');
+        item.className = 'detail-collection-item';
+        item.innerHTML = `<span class="check">${inCol ? '\u2713' : ''}</span><span>${escapeHtml(name)}</span>`;
+        item.addEventListener('click', async () => {
+            if (inCol) {
+                await fetch(`/api/collections/${encodeURIComponent(name)}/games/${encodeURIComponent(game.id)}`, { method: 'DELETE' });
+            } else {
+                await fetch(`/api/collections/${encodeURIComponent(name)}/games`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ game_id: game.id }),
+                });
+            }
+            await loadCollections();
+            toggleCollectionDropdown(e);
+        });
+        list.appendChild(item);
+    }
+
+    $('newCollectionInput').value = '';
+    dd.classList.remove('hidden');
+}
+
+async function createCollectionFromDetail() {
+    const input = $('newCollectionInput');
+    const name = input.value.trim();
+    if (!name) return;
+
+    const game = state.filteredGames[state.selectedIndex];
+    try {
+        await fetch('/api/collections', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name }),
+        });
+        if (game) {
+            await fetch(`/api/collections/${encodeURIComponent(name)}/games`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ game_id: game.id }),
+            });
+        }
+        await loadCollections();
+        input.value = '';
+        $('collectionDropdown').classList.add('hidden');
     } catch {}
 }
 
@@ -841,7 +1010,18 @@ async function toggleShowUninstalled() {
 
 async function openSettings() {
     $('settingsOverlay').classList.remove('hidden');
+    // Default to first tab
+    switchSettingsTab('accounts');
     await renderSettings();
+}
+
+function switchSettingsTab(tabId) {
+    document.querySelectorAll('.settings-tab').forEach(t => {
+        t.classList.toggle('active', t.dataset.stab === tabId);
+    });
+    document.querySelectorAll('.settings-pane').forEach(p => {
+        p.classList.toggle('active', p.id === 'settingsPane-' + tabId);
+    });
 }
 
 async function renderSettings() {

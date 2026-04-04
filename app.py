@@ -272,21 +272,27 @@ def api_artwork(game_id, art_type):
     if not game:
         abort(404)
 
+    def _send_artwork(path: str):
+        """Send an artwork file with cache headers."""
+        resp = send_file(path)
+        resp.headers['Cache-Control'] = 'public, max-age=86400'
+        return resp
+
     # 1. Check game's own artwork dict (local Steam files)
     artwork_path = game.get('artwork', {}).get(art_type, '')
     if artwork_path and not artwork_path.startswith('http') and Path(artwork_path).exists():
-        return send_file(artwork_path)
+        return _send_artwork(artwork_path)
 
     # 2. Use the artwork scraper (checks cache, then fetches)
     scraped = artwork_scraper.get_artwork_path(game, art_type)
     if scraped and Path(scraped).exists():
-        return send_file(scraped)
+        return _send_artwork(scraped)
 
     # 3. Fallback: try remote URL from game data
     if artwork_path and artwork_path.startswith('http'):
         downloaded = artwork_scraper._download_and_cache(game_id, art_type, artwork_path)
         if downloaded:
-            return send_file(downloaded)
+            return _send_artwork(downloaded)
 
     abort(404)
 

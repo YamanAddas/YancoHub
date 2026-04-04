@@ -68,11 +68,13 @@
             <button class="tab" data-tab="retro">Retro</button>
         </nav>
 
+        <!-- Hero Backdrop (blurred art behind carousel) -->
+        <div class="hero-backdrop" id="heroBackdrop"></div>
+
         <!-- Game Info (above carousel) -->
         <div class="game-info" id="gameInfo">
             <div class="game-info-title" id="gameInfoTitle"></div>
             <div class="game-info-meta" id="gameInfoMeta"></div>
-            <div class="game-info-desc" id="gameInfoDesc" style="display:none"></div>
         </div>
 
         <!-- 3D Carousel -->
@@ -80,6 +82,36 @@
             <div class="carousel-glow" id="carouselGlow"></div>
             <div class="carousel" id="carousel"></div>
             <div class="carousel-shadow"></div>
+        </div>
+
+        <!-- Game Detail Panel (below carousel) -->
+        <div class="detail-panel" id="detailPanel">
+            <div class="detail-panel-inner">
+                <div class="detail-desc" id="detailDesc"></div>
+                <div class="detail-actions">
+                    <button class="detail-btn detail-btn-primary" id="detailLaunch">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                        Launch
+                    </button>
+                    <button class="detail-btn" id="detailFavorite">
+                        <span id="detailFavIcon">☆</span>
+                        Favorite
+                    </button>
+                    <div class="detail-collection-wrap">
+                        <button class="detail-btn" id="detailCollection">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                            Collection
+                        </button>
+                        <div class="detail-collection-dropdown hidden" id="collectionDropdown">
+                            <div class="detail-collection-list" id="collectionList"></div>
+                            <div class="detail-collection-new">
+                                <input type="text" id="newCollectionInput" placeholder="New collection...">
+                                <button class="detail-collection-add" id="newCollectionBtn">+</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Game Count -->
@@ -155,81 +187,187 @@
     <!-- Settings Panel -->
     <div class="overlay hidden" id="settingsOverlay">
         <div class="overlay-panel settings-panel">
-            <div class="overlay-header">
+            <div class="settings-header">
                 <h3>Settings</h3>
                 <button class="close-btn" id="closeSettings">&times;</button>
             </div>
-            <div class="settings-content">
-                <!-- Connected Accounts -->
-                <section class="settings-section">
-                    <h4>Connected Accounts</h4>
-                    <div id="settingsAccounts" class="settings-accounts"></div>
-                </section>
+            <nav class="settings-tabs" id="settingsTabs">
+                <button class="settings-tab active" data-stab="accounts">Accounts</button>
+                <button class="settings-tab" data-stab="directories">Directories</button>
+                <button class="settings-tab" data-stab="emulation">Emulation</button>
+                <button class="settings-tab" data-stab="about">About</button>
+            </nav>
+            <div class="settings-body">
 
-                <!-- Steam Account Connection -->
-                <section class="settings-section hidden" id="steamConnectSection">
-                    <h4>Connect Steam</h4>
-                    <p class="settings-hint">Get your API key from <a href="https://steamcommunity.com/dev/apikey" target="_blank" style="color:var(--accent)">steamcommunity.com/dev/apikey</a></p>
-                    <div class="settings-add-row" style="margin-top:8px">
-                        <input type="text" id="steamApiKey" placeholder="Steam Web API Key">
-                    </div>
-                    <p class="settings-hint" style="margin-top:8px">Your Steam ID, profile URL, or vanity name</p>
-                    <div class="settings-add-row" style="margin-top:4px">
-                        <input type="text" id="steamIdInput" placeholder="76561198... or profile URL or vanity name">
-                        <button class="btn-small" id="btnConnectSteam">Connect</button>
-                    </div>
-                    <div id="steamConnectStatus" style="margin-top:8px;font-size:12px"></div>
-                </section>
+                <!-- ═══ Accounts Tab ═══ -->
+                <div class="settings-pane active" id="settingsPane-accounts">
+                    <section class="settings-card">
+                        <div class="settings-card-header">
+                            <h4>Connected Accounts</h4>
+                            <p class="settings-card-hint">Link your store accounts to import owned game libraries.</p>
+                        </div>
+                        <div id="settingsAccounts" class="settings-accounts"></div>
+                    </section>
 
-                <!-- GOG Galaxy -->
-                <section class="settings-section" id="gogGalaxySection">
-                    <h4>GOG Galaxy Integration</h4>
-                    <div id="settingsGogGalaxy"></div>
-                </section>
+                    <section class="settings-card hidden" id="steamConnectSection">
+                        <div class="settings-card-header">
+                            <h4>Connect Steam</h4>
+                            <p class="settings-card-hint">Get your API key from <a href="https://steamcommunity.com/dev/apikey" target="_blank">steamcommunity.com/dev/apikey</a></p>
+                        </div>
+                        <div class="settings-field">
+                            <label class="settings-label">Steam Web API Key</label>
+                            <input type="text" class="settings-input" id="steamApiKey" placeholder="Paste your API key">
+                        </div>
+                        <div class="settings-field">
+                            <label class="settings-label">Steam ID</label>
+                            <div class="settings-input-row">
+                                <input type="text" class="settings-input" id="steamIdInput" placeholder="76561198... or profile URL or vanity name">
+                                <button class="btn-small" id="btnConnectSteam">Connect</button>
+                            </div>
+                        </div>
+                        <div id="steamConnectStatus" class="settings-status"></div>
+                    </section>
 
-                <!-- Show/Hide Uninstalled -->
-                <section class="settings-section">
-                    <h4>Display</h4>
-                    <button class="btn-action" id="btnToggleUninstalled" style="margin-bottom:8px">Loading...</button>
-                </section>
+                    <section class="settings-card">
+                        <div class="settings-card-header">
+                            <h4>Detected Stores</h4>
+                            <p class="settings-card-hint">Auto-detected launchers on this system.</p>
+                        </div>
+                        <div id="settingsStores" class="settings-stores"></div>
+                    </section>
 
-                <section class="settings-section">
-                    <h4>Detected Stores (Local)</h4>
-                    <div id="settingsStores" class="settings-stores"></div>
-                </section>
-                <section class="settings-section">
-                    <h4>ROM Directories</h4>
-                    <div id="settingsRomDirs" class="settings-dirs"></div>
-                    <div class="settings-add-row">
-                        <input type="text" id="romDirInput" placeholder="Path to ROMs folder...">
-                        <button class="btn-small" id="addRomDir">Add</button>
+                    <section class="settings-card">
+                        <div class="settings-card-header">
+                            <h4>Display</h4>
+                        </div>
+                        <button class="btn-action" id="btnToggleUninstalled">Loading...</button>
+                    </section>
+                </div>
+
+                <!-- ═══ Directories Tab ═══ -->
+                <div class="settings-pane" id="settingsPane-directories">
+                    <section class="settings-card">
+                        <div class="settings-card-header">
+                            <h4>ROM Directories</h4>
+                            <p class="settings-card-hint">Folders containing ROM files, organized by system subdirectories.</p>
+                        </div>
+                        <div id="settingsRomDirs" class="settings-dirs"></div>
+                        <div class="settings-input-row">
+                            <input type="text" class="settings-input" id="romDirInput" placeholder="Path to ROMs folder...">
+                            <button class="btn-small" id="addRomDir">Add</button>
+                        </div>
+                    </section>
+
+                    <section class="settings-card">
+                        <div class="settings-card-header">
+                            <h4>Local Game Directories</h4>
+                            <p class="settings-card-hint">Folders containing standalone executables or portable games.</p>
+                        </div>
+                        <div id="settingsLocalDirs" class="settings-dirs"></div>
+                        <div class="settings-input-row">
+                            <input type="text" class="settings-input" id="localDirInput" placeholder="Path to games folder...">
+                            <button class="btn-small" id="addLocalDir">Add</button>
+                        </div>
+                    </section>
+
+                    <section class="settings-card">
+                        <div class="settings-card-header">
+                            <h4>Library</h4>
+                            <p class="settings-card-hint">Force a full rescan of all configured sources.</p>
+                        </div>
+                        <button class="btn-action" id="btnRescan">Rescan All Libraries</button>
+                    </section>
+                </div>
+
+                <!-- ═══ Emulation Tab ═══ -->
+                <div class="settings-pane" id="settingsPane-emulation">
+                    <section class="settings-card">
+                        <div class="settings-card-header">
+                            <h4>BIOS Files</h4>
+                            <p class="settings-card-hint">Required for PS1, GBA, and other systems. Add folders containing BIOS files.</p>
+                        </div>
+                        <div id="settingsBiosDirs" class="settings-dirs"></div>
+                        <div class="settings-input-row">
+                            <input type="text" class="settings-input" id="biosDirInput" placeholder="Path to BIOS folder...">
+                            <button class="btn-small" id="addBiosDir">Add</button>
+                        </div>
+                        <div id="settingsBiosStatus" class="settings-bios-grid"></div>
+                    </section>
+
+                    <section class="settings-card">
+                        <div class="settings-card-header">
+                            <h4>Visible Systems</h4>
+                            <p class="settings-card-hint">Toggle which retro systems appear in your library.</p>
+                        </div>
+                        <div id="settingsVisibleSystems" class="settings-systems"></div>
+                    </section>
+                </div>
+
+                <!-- ═══ About Tab ═══ -->
+                <div class="settings-pane" id="settingsPane-about">
+                    <section class="settings-card settings-about-hero">
+                        <div class="about-logo">
+                            <span class="about-logo-text">YANCO</span><span class="about-logo-accent">HUB</span>
+                        </div>
+                        <div class="about-version">v1.0.0</div>
+                        <div class="about-tagline">All your games. One place.</div>
+                    </section>
+
+                    <section class="settings-card">
+                        <div class="settings-card-header">
+                            <h4>About</h4>
+                        </div>
+                        <p class="about-text">YancoHub is a unified game launcher that aggregates Steam, Epic, GOG, Xbox, EA, Ubisoft, Battle.net, local games, and retro ROMs into one cinematic interface.</p>
+                        <p class="about-text">Part of the <span class="about-highlight">YancoVerse</span> ecosystem.</p>
+                    </section>
+
+                    <section class="settings-card">
+                        <div class="settings-card-header">
+                            <h4>Credits</h4>
+                        </div>
+                        <div class="about-credits">
+                            <div class="about-credit-row">
+                                <span class="about-credit-role">Design &amp; Development</span>
+                                <span class="about-credit-name">Yaman Addas</span>
+                            </div>
+                            <div class="about-credit-row">
+                                <span class="about-credit-role">AI Companion</span>
+                                <span class="about-credit-name">CatByte (powered by OpenClaw)</span>
+                            </div>
+                            <div class="about-credit-row">
+                                <span class="about-credit-role">Emulation</span>
+                                <span class="about-credit-name">EmulatorJS</span>
+                            </div>
+                            <div class="about-credit-row">
+                                <span class="about-credit-role">Metadata</span>
+                                <span class="about-credit-name">Steam Store API, Wikipedia</span>
+                            </div>
+                            <div class="about-credit-row">
+                                <span class="about-credit-role">Artwork</span>
+                                <span class="about-credit-name">Steam CDN, LibRetro, SteamGridDB</span>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="settings-card">
+                        <div class="settings-card-header">
+                            <h4>Tech Stack</h4>
+                        </div>
+                        <div class="about-tech">
+                            <span class="about-tech-tag">Python</span>
+                            <span class="about-tech-tag">Flask</span>
+                            <span class="about-tech-tag">pywebview</span>
+                            <span class="about-tech-tag">Vanilla JS</span>
+                            <span class="about-tech-tag">SQLite</span>
+                            <span class="about-tech-tag">EmulatorJS</span>
+                        </div>
+                    </section>
+
+                    <div class="about-footer">
+                        Made with care for gamers who hate alt-tabbing between launchers.
                     </div>
-                </section>
-                <section class="settings-section">
-                    <h4>Local Game Directories</h4>
-                    <div id="settingsLocalDirs" class="settings-dirs"></div>
-                    <div class="settings-add-row">
-                        <input type="text" id="localDirInput" placeholder="Path to games folder...">
-                        <button class="btn-small" id="addLocalDir">Add</button>
-                    </div>
-                </section>
-                <section class="settings-section">
-                    <h4>BIOS Files</h4>
-                    <div id="settingsBiosDirs" class="settings-dirs"></div>
-                    <div class="settings-add-row">
-                        <input type="text" id="biosDirInput" placeholder="Path to BIOS folder...">
-                        <button class="btn-small" id="addBiosDir">Add</button>
-                    </div>
-                    <div id="settingsBiosStatus" style="margin-top:12px"></div>
-                </section>
-                <section class="settings-section">
-                    <h4>Visible Systems</h4>
-                    <div id="settingsVisibleSystems" class="settings-systems"></div>
-                </section>
-                <section class="settings-section">
-                    <h4>Library</h4>
-                    <button class="btn-action" id="btnRescan">Rescan All Libraries</button>
-                </section>
+                </div>
+
             </div>
         </div>
     </div>
