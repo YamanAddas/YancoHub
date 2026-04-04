@@ -8,6 +8,7 @@ import sys
 import json
 import time
 import logging
+import shlex
 import subprocess
 import threading
 from pathlib import Path
@@ -58,10 +59,32 @@ if _bios_dirs:
 # In-memory game library (refreshed on scan)
 game_library = []
 game_index = {}  # id → game dict
+_library_lock = threading.Lock()
 
 # Active game process tracking
 active_process = None
 active_game_id = None
+_active_lock = threading.Lock()
+
+
+def _set_active(proc, gid):
+    global active_process, active_game_id
+    with _active_lock:
+        active_process = proc
+        active_game_id = gid
+
+
+def _clear_active(gid):
+    global active_process, active_game_id
+    with _active_lock:
+        if active_game_id == gid:
+            active_process = None
+            active_game_id = None
+
+
+def _get_active():
+    with _active_lock:
+        return active_process, active_game_id
 
 
 def _build_library():
@@ -138,18 +161,23 @@ def _build_library():
             ag['installed'] = False
             merged[ag['id']] = ag
 
-    game_library = list(merged.values())
-    game_index = {g['id']: g for g in game_library}
-    logger.info(f"Library built: {len(game_library)} games ({len(local_games)} installed, {len(game_library) - len(local_games)} from accounts)")
+    new_library = list(merged.values())
+    new_index = {g['id']: g for g in new_library}
+
+    with _library_lock:
+        game_library = new_library
+        game_index = new_index
+
+    logger.info(f"Library built: {len(new_library)} games ({len(local_games)} installed, {len(new_library) - len(local_games)} from accounts)")
 
     # Background: enrich metadata and fetch artwork for new games
     def _enrich():
         try:
-            metadata_fetcher.enrich_games(game_library[:50])  # First 50 to avoid rate limits
+            metadata_fetcher.enrich_games(new_library[:50])  # First 50 to avoid rate limits
         except Exception as e:
             logger.debug(f"Metadata enrichment error: {e}")
         try:
-            artwork_scraper.fetch_for_games(game_library[:100])
+            artwork_scraper.fetch_for_games(new_library[:100])
         except Exception as e:
             logger.debug(f"Artwork fetch error: {e}")
     threading.Thread(target=_enrich, daemon=True).start()
@@ -175,7 +203,9 @@ def index():
 
 @app.route('/health')
 def health():
-    return jsonify({'status': 'ok', 'games': len(game_library)})
+    with _library_lock:
+        count = len(game_library)
+    return jsonify({'status': 'ok', 'games': count})
 
 
 # ── Games API ───────────────────────────────────────────────────────────────
@@ -188,8 +218,11 @@ def api_games():
     playtime = userdata.get_playtime()
     favorites = set(userdata.get_favorites())
 
+    with _library_lock:
+        snapshot = list(game_library)
+
     results = []
-    for game in game_library:
+    for game in snapshot:
         # Filter by source
         if source and game['source'] != source:
             continue
@@ -224,7 +257,8 @@ def api_games():
 
 @app.route('/api/artwork/<game_id>/<art_type>')
 def api_artwork(game_id, art_type):
-    game = game_index.get(game_id)
+    with _library_lock:
+        game = game_index.get(game_id)
     if not game:
         abort(404)
 
@@ -249,9 +283,8 @@ def api_artwork(game_id, art_type):
 
 @app.route('/api/launch/<game_id>', methods=['POST'])
 def api_launch(game_id):
-    global active_process, active_game_id
-
-    game = game_index.get(game_id)
+    with _library_lock:
+        game = game_index.get(game_id)
     if not game:
         return jsonify({'error': 'Game not found'}), 404
 
@@ -268,18 +301,18 @@ def api_launch(game_id):
                                    'link2ea://', 'origin://', 'shell:')):
             # URL protocol launch
             os.startfile(launch_cmd)
-            active_game_id = game_id
+            _set_active(None, game_id)
             # Monitor via polling (URL launches are fire-and-forget)
             _start_url_monitor(game_id)
         else:
             # Direct executable launch
+            args = shlex.split(launch_cmd)
             proc = subprocess.Popen(
-                launch_cmd,
-                shell=True,
+                args,
+                shell=False,
                 cwd=game.get('install_dir', None) or None,
             )
-            active_process = proc
-            active_game_id = game_id
+            _set_active(proc, game_id)
             # Monitor process in background
             _start_process_monitor(game_id, proc)
 
@@ -293,12 +326,9 @@ def api_launch(game_id):
 def _start_process_monitor(game_id, proc):
     """Monitor a subprocess and end session when it exits."""
     def monitor():
-        global active_process, active_game_id
         proc.wait()
         userdata.session_end(game_id)
-        if active_game_id == game_id:
-            active_process = None
-            active_game_id = None
+        _clear_active(game_id)
         logger.info(f"Game exited: {game_id}")
 
     t = threading.Thread(target=monitor, daemon=True)
@@ -308,11 +338,11 @@ def _start_process_monitor(game_id, proc):
 def _start_url_monitor(game_id):
     """Monitor a URL-launched game by checking if its process is still running."""
     def monitor():
-        global active_game_id
         import psutil
         # Wait for game to start
         time.sleep(10)
-        game = game_index.get(game_id, {})
+        with _library_lock:
+            game = game_index.get(game_id, {})
         game_name = game.get('name', '').lower()
 
         # Poll for game process
@@ -330,10 +360,11 @@ def _start_url_monitor(game_id):
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
 
-            if not found and active_game_id == game_id:
+            _, current_game_id = _get_active()
+            if not found and current_game_id == game_id:
                 # Game seems to have exited
                 userdata.session_end(game_id)
-                active_game_id = None
+                _clear_active(game_id)
                 logger.info(f"URL-launched game exited: {game_id}")
                 return
 
@@ -343,15 +374,25 @@ def _start_url_monitor(game_id):
 
 @app.route('/api/active-game')
 def api_active_game():
-    if active_game_id:
-        game = game_index.get(active_game_id, {})
+    _, current_game_id = _get_active()
+    if current_game_id:
+        with _library_lock:
+            game = game_index.get(current_game_id, {})
         return jsonify({
-            'game_id': active_game_id,
+            'game_id': current_game_id,
             'name': game.get('name', ''),
             'source': game.get('source', ''),
             'system': game.get('system', ''),
         })
     return jsonify(None)
+
+
+@app.route('/api/session/end/<game_id>', methods=['POST'])
+def api_session_end(game_id):
+    userdata.session_end(game_id)
+    _clear_active(game_id)
+    logger.info(f"Session ended via API: {game_id}")
+    return jsonify({'status': 'ok'})
 
 
 @app.route('/api/rescan', methods=['POST'])
@@ -371,8 +412,11 @@ def api_search():
         return jsonify([])
 
     favorites = set(userdata.get_favorites())
+    with _library_lock:
+        snapshot = list(game_library)
+
     results = []
-    for game in game_library:
+    for game in snapshot:
         if query in game['name'].lower():
             enriched = dict(game)
             enriched['is_favorite'] = game['id'] in favorites
@@ -675,9 +719,12 @@ def api_catbyte_chat():
         return jsonify({'error': 'Message required'}), 400
 
     # Auto-detect game context from active game
-    if not game_context and active_game_id:
-        game = game_index.get(active_game_id, {})
-        game_context = game.get('name', '')
+    if not game_context:
+        _, current_game_id = _get_active()
+        if current_game_id:
+            with _library_lock:
+                game = game_index.get(current_game_id, {})
+            game_context = game.get('name', '')
 
     result = catbyte.chat(message, game_context=game_context, history=history)
     return jsonify(result)
@@ -694,9 +741,12 @@ def api_catbyte_chat_vision():
     if not message or not image:
         return jsonify({'error': 'Message and image required'}), 400
 
-    if not game_context and active_game_id:
-        game = game_index.get(active_game_id, {})
-        game_context = game.get('name', '')
+    if not game_context:
+        _, current_game_id = _get_active()
+        if current_game_id:
+            with _library_lock:
+                game = game_index.get(current_game_id, {})
+            game_context = game.get('name', '')
 
     result = catbyte.chat_vision(message, image, game_context=game_context, history=history)
     return jsonify(result)
@@ -707,7 +757,8 @@ def api_catbyte_chat_vision():
 @app.route('/api/metadata/<game_id>')
 def api_metadata(game_id):
     """Get rich metadata for a game (description, genre, developer, etc.)."""
-    game = game_index.get(game_id)
+    with _library_lock:
+        game = game_index.get(game_id)
     if not game:
         abort(404)
 
@@ -785,7 +836,8 @@ BUILTIN_SYSTEMS = {
 @app.route('/api/rom/<game_id>')
 def api_serve_rom(game_id):
     """Serve a ROM file for the built-in emulator."""
-    game = game_index.get(game_id)
+    with _library_lock:
+        game = game_index.get(game_id)
     if not game:
         abort(404)
 

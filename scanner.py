@@ -244,7 +244,7 @@ class GameScanner:
                         pass
 
                 self.games.append({
-                    'id': f"epic_{make_game_id('epic', app_name or name)}",
+                    'id': f"epic_{app_name or name}",
                     'name': name,
                     'source': 'epic',
                     'app_name': app_name,
@@ -279,7 +279,7 @@ class GameScanner:
                     try:
                         name = winreg.QueryValueEx(subkey, "GAMENAME")[0]
                         path = winreg.QueryValueEx(subkey, "PATH")[0]
-                        game_id = winreg.QueryValueEx(subkey, "GAMEID")[0]
+                        game_id = str(winreg.QueryValueEx(subkey, "GAMEID")[0])
                         exe = ''
                         try:
                             exe = winreg.QueryValueEx(subkey, "EXE")[0]
@@ -305,33 +305,59 @@ class GameScanner:
         except Exception as e:
             logger.debug(f"GOG registry scan failed: {e}")
 
-        # Try Galaxy database
+        # Try Galaxy database (read-only to avoid corrupting GOG's DB)
         db_path = Path(os.environ.get('PROGRAMDATA', 'C:/ProgramData')) / \
                   "GOG.com" / "Galaxy" / "storage" / "galaxy-2.0.db"
         if db_path.exists() and count == 0:
+            conn = None
             try:
-                conn = sqlite3.connect(str(db_path))
+                conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
                 cursor = conn.cursor()
-                cursor.execute("""
-                    SELECT productId, title
-                    FROM InstalledBaseProducts
-                    WHERE isInstalled = 1
-                """)
-                for row in cursor.fetchall():
-                    prod_id, title = row
+                cursor.execute("SELECT DISTINCT releaseKey FROM LibraryReleases")
+                existing_ids = {g['id'] for g in self.games if g['source'] == 'gog'}
+                for (release_key,) in cursor.fetchall():
+                    if '_' not in release_key:
+                        continue
+                    platform, game_id_raw = release_key.split('_', 1)
+                    if platform != 'gog':
+                        continue
+                    gid = f"gog_{game_id_raw}"
+                    if gid in existing_ids:
+                        continue
+                    # Try to get title from GamePieces
+                    title = None
+                    try:
+                        cursor.execute("""
+                            SELECT value FROM GamePieces
+                            WHERE releaseKey = ? AND gamePieceTypeId IN (
+                                SELECT id FROM GamePieceTypes WHERE type = 'title'
+                            )
+                        """, (release_key,))
+                        row = cursor.fetchone()
+                        if row:
+                            data = json.loads(row[0])
+                            title = data if isinstance(data, str) else data.get('title', '')
+                    except Exception:
+                        pass
+                    if not title:
+                        title = game_id_raw.replace('_', ' ').title()
                     self.games.append({
-                        'id': f"gog_{prod_id}",
+                        'id': gid,
                         'name': title,
                         'source': 'gog',
                         'install_dir': '',
                         'size': 0,
                         'artwork': {},
-                        'launch_cmd': f'goggalaxy://openGameView/{prod_id}',
+                        'launch_cmd': f'goggalaxy://openGameView/{game_id_raw}',
                     })
                     count += 1
-                conn.close()
+            except sqlite3.OperationalError as e:
+                logger.debug(f"GOG Galaxy DB scan failed (table missing?): {e}")
             except Exception as e:
                 logger.debug(f"GOG Galaxy DB scan failed: {e}")
+            finally:
+                if conn:
+                    conn.close()
 
         logger.info(f"GOG: found {count} games")
 

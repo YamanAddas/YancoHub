@@ -73,88 +73,79 @@ class MetadataDB:
         self._init_db()
 
     def _init_db(self):
-        conn = sqlite3.connect(str(self.db_path))
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS game_metadata (
-                game_id TEXT PRIMARY KEY,
-                title TEXT,
-                developer TEXT,
-                publisher TEXT,
-                genre TEXT,
-                release_year INTEGER,
-                description TEXT,
-                rating REAL,
-                rating_count INTEGER,
-                cover_url TEXT,
-                screenshot_url TEXT,
-                logo_url TEXT,
-                players TEXT,
-                cached_at REAL
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS artwork_cache (
-                game_id TEXT,
-                art_type TEXT,
-                local_path TEXT,
-                remote_url TEXT,
-                cached_at REAL,
-                PRIMARY KEY (game_id, art_type)
-            )
-        """)
-        conn.commit()
-        conn.close()
+        with sqlite3.connect(str(self.db_path)) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS game_metadata (
+                    game_id TEXT PRIMARY KEY,
+                    title TEXT,
+                    developer TEXT,
+                    publisher TEXT,
+                    genre TEXT,
+                    release_year INTEGER,
+                    description TEXT,
+                    rating REAL,
+                    rating_count INTEGER,
+                    cover_url TEXT,
+                    screenshot_url TEXT,
+                    logo_url TEXT,
+                    players TEXT,
+                    cached_at REAL
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS artwork_cache (
+                    game_id TEXT,
+                    art_type TEXT,
+                    local_path TEXT,
+                    remote_url TEXT,
+                    cached_at REAL,
+                    PRIMARY KEY (game_id, art_type)
+                )
+            """)
 
     def get(self, game_id):
-        conn = sqlite3.connect(str(self.db_path))
-        conn.row_factory = sqlite3.Row
-        row = conn.execute("SELECT * FROM game_metadata WHERE game_id = ?", (game_id,)).fetchone()
-        conn.close()
-        return dict(row) if row else None
+        with sqlite3.connect(str(self.db_path)) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM game_metadata WHERE game_id = ?", (game_id,)).fetchone()
+            return dict(row) if row else None
 
     def put(self, game_id, **kwargs):
-        conn = sqlite3.connect(str(self.db_path))
-        kwargs['game_id'] = game_id
-        kwargs['cached_at'] = time.time()
+        with sqlite3.connect(str(self.db_path)) as conn:
+            kwargs['game_id'] = game_id
+            kwargs['cached_at'] = time.time()
 
-        cols = list(kwargs.keys())
-        placeholders = ','.join(['?'] * len(cols))
-        updates = ','.join([f'{c}=excluded.{c}' for c in cols if c != 'game_id'])
+            cols = list(kwargs.keys())
+            placeholders = ','.join(['?'] * len(cols))
+            updates = ','.join([f'{c}=excluded.{c}' for c in cols if c != 'game_id'])
 
-        conn.execute(
-            f"INSERT INTO game_metadata ({','.join(cols)}) VALUES ({placeholders}) "
-            f"ON CONFLICT(game_id) DO UPDATE SET {updates}",
-            [kwargs[c] for c in cols]
-        )
-        conn.commit()
-        conn.close()
+            conn.execute(
+                f"INSERT INTO game_metadata ({','.join(cols)}) VALUES ({placeholders}) "
+                f"ON CONFLICT(game_id) DO UPDATE SET {updates}",
+                [kwargs[c] for c in cols]
+            )
 
     def get_artwork(self, game_id, art_type):
-        conn = sqlite3.connect(str(self.db_path))
-        conn.row_factory = sqlite3.Row
-        row = conn.execute(
-            "SELECT * FROM artwork_cache WHERE game_id = ? AND art_type = ?",
-            (game_id, art_type)
-        ).fetchone()
-        conn.close()
-        return dict(row) if row else None
+        with sqlite3.connect(str(self.db_path)) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT * FROM artwork_cache WHERE game_id = ? AND art_type = ?",
+                (game_id, art_type)
+            ).fetchone()
+            return dict(row) if row else None
 
     def put_artwork(self, game_id, art_type, local_path='', remote_url=''):
-        conn = sqlite3.connect(str(self.db_path))
-        conn.execute(
-            "INSERT OR REPLACE INTO artwork_cache (game_id, art_type, local_path, remote_url, cached_at) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (game_id, art_type, local_path, remote_url, time.time())
-        )
-        conn.commit()
-        conn.close()
+        with sqlite3.connect(str(self.db_path)) as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO artwork_cache (game_id, art_type, local_path, remote_url, cached_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (game_id, art_type, local_path, remote_url, time.time())
+            )
 
     def get_stats(self):
-        conn = sqlite3.connect(str(self.db_path))
-        meta_count = conn.execute("SELECT COUNT(*) FROM game_metadata").fetchone()[0]
-        art_count = conn.execute("SELECT COUNT(*) FROM artwork_cache").fetchone()[0]
-        conn.close()
-        return {'metadata_entries': meta_count, 'artwork_entries': art_count}
+        with sqlite3.connect(str(self.db_path)) as conn:
+            meta_count = conn.execute("SELECT COUNT(*) FROM game_metadata").fetchone()[0]
+            art_count = conn.execute("SELECT COUNT(*) FROM artwork_cache").fetchone()[0]
+            return {'metadata_entries': meta_count, 'artwork_entries': art_count}
 
 
 # ── Metadata Fetcher ────────────────────────────────────────────────────────

@@ -106,9 +106,9 @@ function exitEmulator() {
         document.getElementById('emuBootScreen').classList.add('hidden');
     }, 500);
 
-    // Notify backend
+    // Notify backend that emulator session ended
     if (emuGameId) {
-        // Session end will be handled by the active game monitor
+        fetch(`/api/session/end/${emuGameId}`, { method: 'POST' });
     }
 
     emuActive = false;
