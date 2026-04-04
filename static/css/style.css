@@ -2061,6 +2061,71 @@ body::before {
 ::-webkit-scrollbar-thumb { background: var(--accent-dim); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 
+/* ── Mood Picker ──────────────────────────────────────────── */
+
+.mood-panel { max-width: 540px; }
+.mood-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    padding: 8px 0;
+}
+.mood-card {
+    background: rgba(12, 22, 40, 0.7);
+    border: 1px solid rgba(0, 229, 193, 0.08);
+    border-radius: 12px;
+    padding: 20px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    animation: moodFadeIn 0.4s ease backwards;
+}
+@keyframes moodFadeIn {
+    from { opacity: 0; transform: translateY(12px) scale(0.95); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.mood-card:hover {
+    border-color: rgba(0, 229, 193, 0.25);
+    background: rgba(12, 22, 40, 0.9);
+    box-shadow: 0 0 20px rgba(0, 229, 193, 0.1), inset 0 0 20px rgba(0, 229, 193, 0.03);
+    transform: translateY(-2px);
+}
+.mood-icon { font-size: 32px; margin-bottom: 8px; }
+.mood-name { font-size: 15px; font-weight: 600; color: var(--text-bright); margin-bottom: 4px; }
+.mood-desc { font-size: 12px; color: var(--text-dim); line-height: 1.4; }
+.mood-label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 6px 0;
+    font-size: 13px;
+    color: var(--accent);
+    opacity: 0.85;
+}
+.mood-label-icon { font-size: 16px; }
+.mood-label-text { font-weight: 500; }
+.mood-label-clear {
+    background: none;
+    border: 1px solid rgba(0, 229, 193, 0.2);
+    color: var(--text-dim);
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    font-size: 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    padding: 0;
+    line-height: 1;
+}
+.mood-label-clear:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 
 @media (max-width: 900px) {

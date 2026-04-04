@@ -22,6 +22,7 @@ const state = {
     chatHistory: [],
     scanning: false,
     catbyteOnline: false,
+    activeMood: null,
 };
 
 // ── DOM ────────────────────────────────────────────────────────────────────
@@ -266,6 +267,80 @@ function applyFilter() {
         updateGameInfo();
         updateGameCount();
     }
+}
+
+function applyMoodFilter(mood) {
+    state.activeMood = mood;
+    const now = Date.now() / 1000;
+    const sixMonthsAgo = now - (180 * 24 * 60 * 60);
+    let games = [...state.games];
+
+    const MOOD_META = {
+        quick:     { icon: '\u26A1', label: 'Quick Session' },
+        deep:      { icon: '\uD83C\uDF0A', label: 'Deep Dive' },
+        nostalgia: { icon: '\uD83D\uDD79\uFE0F', label: 'Nostalgia Trip' },
+        new:       { icon: '\u2728', label: 'Something New' },
+    };
+
+    switch (mood) {
+        case 'quick':
+            games = games.filter(g =>
+                g.source === 'retro' ||
+                ((g.playtime_hours || 0) + (g.playtime_from_api || 0)) < 2
+            );
+            games.sort(() => Math.random() - 0.5);
+            break;
+        case 'deep':
+            games = games.filter(g => {
+                const hours = (g.playtime_hours || 0) + (g.playtime_from_api || 0);
+                return hours > 0 && !state.favorites.has(g.id) && g.source !== 'retro';
+            });
+            games.sort((a, b) => (b.last_played || 0) - (a.last_played || 0));
+            break;
+        case 'nostalgia':
+            games = games.filter(g =>
+                g.source === 'retro' ||
+                (g.last_played && g.last_played < sixMonthsAgo)
+            );
+            games.sort(() => Math.random() - 0.5);
+            break;
+        case 'new':
+            games = games.filter(g => {
+                const hours = (g.playtime_hours || 0) + (g.playtime_from_api || 0);
+                return hours === 0 && !g.last_played;
+            });
+            games.sort(() => Math.random() - 0.5);
+            break;
+    }
+
+    state.filteredGames = games;
+    state.selectedIndex = 0;
+
+    // Show mood label
+    const meta = MOOD_META[mood];
+    $('moodLabelIcon').textContent = meta.icon;
+    $('moodLabelText').textContent = meta.label + ' — ' + games.length + ' game' + (games.length !== 1 ? 's' : '');
+    $('moodLabel').classList.remove('hidden');
+
+    // Update carousel
+    if (games.length === 0) {
+        $('carousel').innerHTML = '';
+        $('carouselContainer').classList.add('hidden');
+        $('gameInfo').style.visibility = 'hidden';
+        $('detailPanel').classList.remove('visible');
+        $('gameCount').textContent = '';
+    } else {
+        $('carouselContainer').classList.remove('hidden');
+        $('gameInfo').style.visibility = 'visible';
+        renderCarousel();
+        updateGameInfo();
+    }
+}
+
+function clearMoodFilter() {
+    state.activeMood = null;
+    $('moodLabel').classList.add('hidden');
+    applyFilter();
 }
 
 // ── 3D Carousel ────────────────────────────────────────────────────────────
@@ -720,6 +795,7 @@ function bindEvents() {
         if (e.ctrlKey && e.key === ',') { e.preventDefault(); openSettings(); }
 
         if (e.key === 'Escape') {
+            if (!$('moodOverlay').classList.contains('hidden')) { $('moodOverlay').classList.add('hidden'); return; }
             if (!$('catbyteInfoOverlay').classList.contains('hidden')) $('catbyteInfoOverlay').classList.add('hidden');
             else if (!$('searchOverlay').classList.contains('hidden')) closeSearch();
             else if (!$('settingsOverlay').classList.contains('hidden')) $('settingsOverlay').classList.add('hidden');
@@ -740,9 +816,21 @@ function bindEvents() {
         else navigateCarousel(-1);
     }, { passive: false });
 
+    // Mood picker
+    $('btnMoodPicker').addEventListener('click', () => $('moodOverlay').classList.remove('hidden'));
+    $('closeMood').addEventListener('click', () => $('moodOverlay').classList.add('hidden'));
+    $('moodLabelClear').addEventListener('click', clearMoodFilter);
+    $$('.mood-card').forEach(card => {
+        card.addEventListener('click', () => {
+            $('moodOverlay').classList.add('hidden');
+            applyMoodFilter(card.dataset.mood);
+        });
+    });
+
     // Close overlays on backdrop click
     $('searchOverlay').addEventListener('click', (e) => { if (e.target === $('searchOverlay')) closeSearch(); });
     $('settingsOverlay').addEventListener('click', (e) => { if (e.target === $('settingsOverlay')) $('settingsOverlay').classList.add('hidden'); });
+    $('moodOverlay').addEventListener('click', (e) => { if (e.target === $('moodOverlay')) $('moodOverlay').classList.add('hidden'); });
 }
 
 // ── Game Launch ────────────────────────────────────────────────────────────
