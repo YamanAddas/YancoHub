@@ -1,0 +1,399 @@
+/* ── YancoHub Built-in Emulator — Cinematic Theme ────────────────────────── */
+
+/* ── Container (fullscreen overlay) ──────────────────────────────────────── */
+
+.emu-container {
+    position: fixed;
+    inset: 0;
+    z-index: 500;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: emuFadeIn 0.4s ease;
+}
+
+.emu-container.hidden { display: none !important; }
+
+.emu-container.emu-exit {
+    animation: emuFadeOut 0.5s ease forwards;
+}
+
+@keyframes emuFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes emuFadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+
+/* ── Boot Screen ─────────────────────────────────────────────────────────── */
+
+.emu-boot {
+    position: absolute;
+    inset: 0;
+    z-index: 510;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(ellipse 60% 50% at 50% 40%, rgba(20, 30, 50, 1) 0%, #050a12 100%);
+    overflow: hidden;
+}
+
+.emu-boot.hidden { display: none !important; }
+
+/* Scanline overlay */
+.emu-boot::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0, 0, 0, 0.15) 2px,
+        rgba(0, 0, 0, 0.15) 4px
+    );
+    pointer-events: none;
+    z-index: 1;
+    animation: scanlineScroll 8s linear infinite;
+}
+
+@keyframes scanlineScroll {
+    from { background-position: 0 0; }
+    to { background-position: 0 100px; }
+}
+
+/* Ambient glow behind icon */
+.emu-boot::after {
+    content: '';
+    position: absolute;
+    width: 300px;
+    height: 300px;
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--emu-accent, #00e5c1) 0%, transparent 70%);
+    opacity: 0.08;
+    filter: blur(60px);
+    animation: bootGlow 2s ease-in-out infinite;
+    z-index: 0;
+}
+
+@keyframes bootGlow {
+    0%, 100% { opacity: 0.06; transform: scale(1); }
+    50% { opacity: 0.12; transform: scale(1.1); }
+}
+
+.emu-boot-content {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+
+.emu-boot-icon {
+    font-size: 64px;
+    opacity: 0;
+    transform: scale(0.5);
+    transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    filter: drop-shadow(0 0 30px var(--emu-accent, #00e5c1));
+}
+
+.boot-phase-1 .emu-boot-icon {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.emu-boot-system {
+    font-size: 14px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 4px;
+    color: var(--emu-accent, #00e5c1);
+    opacity: 0;
+    transform: translateY(10px);
+    transition: all 0.4s ease 0.2s;
+    text-shadow: 0 0 20px var(--emu-accent, #00e5c1);
+}
+
+.boot-phase-1 .emu-boot-system {
+    opacity: 0.8;
+    transform: translateY(0);
+}
+
+.emu-boot-title {
+    font-size: 28px;
+    font-weight: 800;
+    color: #e8f0f8;
+    max-width: 600px;
+    opacity: 0;
+    transform: translateY(20px);
+    transition: all 0.5s ease;
+    text-shadow: 0 2px 20px rgba(0, 0, 0, 0.5);
+    line-height: 1.2;
+}
+
+.boot-phase-2 .emu-boot-title {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Loading ring */
+.emu-boot-ring {
+    width: 36px;
+    height: 36px;
+    border: 3px solid rgba(255, 255, 255, 0.08);
+    border-top-color: var(--emu-accent, #00e5c1);
+    border-radius: 50%;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    animation: emuSpin 0.7s linear infinite;
+}
+
+.boot-phase-3 .emu-boot-ring {
+    opacity: 1;
+}
+
+@keyframes emuSpin {
+    to { transform: rotate(360deg); }
+}
+
+/* Progress bar at bottom */
+.emu-boot-progress-track {
+    position: absolute;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 200px;
+    height: 2px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 1px;
+    overflow: hidden;
+    z-index: 2;
+}
+
+.emu-boot-progress {
+    height: 100%;
+    width: 0%;
+    border-radius: 1px;
+    transition: width 0.4s ease;
+    box-shadow: 0 0 8px var(--emu-accent, #00e5c1);
+}
+
+/* Fade out on done */
+.boot-done {
+    opacity: 0;
+    transition: opacity 0.5s ease;
+}
+
+/* ── Game Container ──────────────────────────────────────────────────────── */
+
+.emu-game-wrapper {
+    position: absolute;
+    inset: 0;
+    z-index: 505;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+}
+
+.emu-game-wrapper.hidden { display: none; }
+
+#emuGame {
+    width: 100%;
+    height: 100%;
+}
+
+/* Override EmulatorJS styles to match our theme */
+#emuGame .ejs--css-filter-bar,
+#emuGame [class*="ejs_"] {
+    font-family: 'Inter', sans-serif !important;
+}
+
+/* ── Pause Menu ──────────────────────────────────────────────────────────── */
+
+.emu-pause {
+    position: absolute;
+    inset: 0;
+    z-index: 520;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(16px);
+    animation: emuFadeIn 0.2s ease;
+}
+
+.emu-pause.hidden { display: none !important; }
+
+.emu-pause-panel {
+    background: rgba(8, 15, 28, 0.95);
+    border: 1px solid rgba(0, 229, 193, 0.15);
+    border-radius: 20px;
+    padding: 32px 40px;
+    text-align: center;
+    min-width: 320px;
+    animation: emuScaleIn 0.25s ease;
+    box-shadow:
+        0 0 40px rgba(0, 229, 193, 0.08),
+        0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+@keyframes emuScaleIn {
+    from { transform: scale(0.9); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+
+.emu-pause-title {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    color: #00e5c1;
+    margin-bottom: 6px;
+    opacity: 0.7;
+}
+
+.emu-pause-game {
+    font-size: 20px;
+    font-weight: 700;
+    color: #e8f0f8;
+    margin-bottom: 28px;
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.emu-pause-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.emu-pause-btn {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 20px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 12px;
+    color: #c8d6e5;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-family: inherit;
+    text-align: left;
+}
+
+.emu-pause-btn:hover {
+    background: rgba(0, 229, 193, 0.08);
+    border-color: rgba(0, 229, 193, 0.2);
+    color: #00e5c1;
+    transform: translateX(4px);
+}
+
+.emu-pause-btn .btn-icon {
+    font-size: 18px;
+    width: 24px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.emu-pause-btn .btn-label {
+    flex: 1;
+}
+
+.emu-pause-btn .btn-hint {
+    font-size: 11px;
+    color: #4a5a6a;
+    font-weight: 400;
+}
+
+.emu-pause-btn.exit-btn:hover {
+    background: rgba(255, 71, 87, 0.08);
+    border-color: rgba(255, 71, 87, 0.2);
+    color: #ff4757;
+}
+
+.emu-pause-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.06);
+    margin: 8px 0;
+}
+
+/* ── Toast Notification ──────────────────────────────────────────────────── */
+
+.emu-toast {
+    position: absolute;
+    bottom: 60px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    z-index: 530;
+    padding: 10px 24px;
+    background: rgba(0, 229, 193, 0.15);
+    border: 1px solid rgba(0, 229, 193, 0.25);
+    border-radius: 10px;
+    color: #00e5c1;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    backdrop-filter: blur(16px);
+    opacity: 0;
+    transition: all 0.3s ease;
+    pointer-events: none;
+}
+
+.emu-toast.emu-toast-show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+/* ── HUD (brief control hints on game start) ─────────────────────────────── */
+
+.emu-hud {
+    position: absolute;
+    bottom: 16px;
+    right: 16px;
+    z-index: 515;
+    display: flex;
+    gap: 8px;
+    opacity: 0;
+    transition: opacity 0.5s ease;
+    pointer-events: none;
+}
+
+.emu-game-active ~ .emu-hud-container .emu-hud {
+    animation: hudFadeInOut 4s ease forwards;
+}
+
+@keyframes hudFadeInOut {
+    0% { opacity: 0; }
+    10% { opacity: 0.7; }
+    70% { opacity: 0.7; }
+    100% { opacity: 0; }
+}
+
+.emu-hud-key {
+    padding: 4px 10px;
+    background: rgba(0, 0, 0, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    font-size: 10px;
+    color: #8a9bb0;
+    backdrop-filter: blur(8px);
+}
+
+.emu-hud-key span {
+    color: #00e5c1;
+    font-weight: 700;
+}

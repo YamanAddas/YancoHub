@@ -1,0 +1,36 @@
+# ── Personal data (never commit) ──
+userdata.json
+config/openclaw/USER.md
+logs/*.log
+logs/
+
+# ── Cached content (downloaded at runtime) ──
+cache/
+__pycache__/
+*.pyc
+
+# ── BIOS files (user provides, except open-source ones) ──
+bios/*.bin
+bios/*.zip
+bios/user/
+!bios/README.md
+
+# ── Virtual environment ──
+venv/
+.venv/
+
+# ── OS / IDE ──
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Reference codebase (not part of YancoHub) ──
+YancoDeck-main/
+
+# ── Distribution ──
+dist/
+build/
+*.egg-info/

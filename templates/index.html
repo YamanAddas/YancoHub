@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YancoHub</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Starfield Canvas -->
+    <canvas id="starfield"></canvas>
+
+    <!-- Particles -->
+    <div id="particles"></div>
+
+    <!-- Splash Screen -->
+    <div id="splash" class="splash">
+        <div class="splash-content">
+            <div class="splash-logo">
+                <span class="splash-logo-text">YANCO</span><span class="splash-logo-accent">HUB</span>
+            </div>
+            <div class="splash-tagline">All your games. One place.</div>
+            <div class="splash-progress">
+                <div class="splash-progress-bar" id="splashProgress"></div>
+            </div>
+            <div class="splash-status" id="splashStatus">Scanning libraries...</div>
+        </div>
+    </div>
+
+    <!-- Main App -->
+    <div id="app" class="app hidden">
+        <!-- Top Bar -->
+        <header class="top-bar">
+            <div class="logo">
+                <span class="logo-text">YANCO</span><span class="logo-accent">HUB</span>
+            </div>
+            <div class="top-bar-center">
+                <div class="store-indicators" id="storeIndicators"></div>
+            </div>
+            <div class="top-bar-right">
+                <button class="icon-btn" id="btnSearch" title="Search (Ctrl+F)">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                </button>
+                <button class="icon-btn" id="btnCatbyte" title="CatByte AI (Ctrl+B)">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+                    <span class="catbyte-status-dot" id="catbyteStatusDot"></span>
+                </button>
+                <button class="icon-btn" id="btnSettings" title="Settings (Ctrl+,)">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Category Tabs -->
+        <nav class="tab-bar" id="tabBar">
+            <button class="tab active" data-tab="all">All Games</button>
+            <button class="tab" data-tab="favorites">Favorites</button>
+            <button class="tab" data-tab="recent">Recent</button>
+            <button class="tab" data-tab="steam">Steam</button>
+            <button class="tab" data-tab="epic">Epic</button>
+            <button class="tab" data-tab="gog">GOG</button>
+            <button class="tab" data-tab="xbox">Xbox</button>
+            <button class="tab" data-tab="ea">EA</button>
+            <button class="tab" data-tab="ubisoft">Ubisoft</button>
+            <button class="tab" data-tab="battlenet">Battle.net</button>
+            <button class="tab" data-tab="local">Local</button>
+            <button class="tab" data-tab="retro">Retro</button>
+        </nav>
+
+        <!-- Game Info (above carousel) -->
+        <div class="game-info" id="gameInfo">
+            <div class="game-info-title" id="gameInfoTitle"></div>
+            <div class="game-info-meta" id="gameInfoMeta"></div>
+        </div>
+
+        <!-- 3D Carousel -->
+        <div class="carousel-container" id="carouselContainer">
+            <div class="carousel-glow" id="carouselGlow"></div>
+            <div class="carousel" id="carousel"></div>
+            <div class="carousel-shadow"></div>
+        </div>
+
+        <!-- Game Count -->
+        <div class="game-count" id="gameCount"></div>
+
+        <!-- Empty State -->
+        <div class="empty-state hidden" id="emptyState">
+            <div class="empty-icon">🎮</div>
+            <div class="empty-text">No games found</div>
+            <div class="empty-hint">Try adding game directories in Settings</div>
+        </div>
+    </div>
+
+    <!-- Search Overlay -->
+    <div class="overlay hidden" id="searchOverlay">
+        <div class="overlay-panel search-panel">
+            <div class="overlay-header">
+                <h3>Search Games</h3>
+                <button class="close-btn" id="closeSearch">&times;</button>
+            </div>
+            <input type="text" class="search-input" id="searchInput" placeholder="Type to search..." autofocus>
+            <div class="search-results" id="searchResults"></div>
+        </div>
+    </div>
+
+    <!-- CatByte Panel -->
+    <div class="catbyte-panel hidden" id="catbytePanel">
+        <div class="catbyte-header">
+            <div class="catbyte-avatar">🐱</div>
+            <div class="catbyte-title">
+                <span>CatByte</span>
+                <span class="catbyte-status" id="catbyteStatus">checking...</span>
+            </div>
+            <button class="close-btn" id="closeCatbyte">&times;</button>
+        </div>
+        <div class="catbyte-messages" id="catbyteMessages">
+            <div class="chat-msg bot">
+                <div class="chat-bubble">Hey there! I'm CatByte, your gaming companion. Ask me anything about your games! 😺</div>
+            </div>
+        </div>
+        <div class="catbyte-input-row">
+            <input type="text" class="catbyte-input" id="catbyteInput" placeholder="Ask CatByte...">
+            <button class="catbyte-send" id="catbyteSend">→</button>
+        </div>
+    </div>
+
+    <!-- Settings Panel -->
+    <div class="overlay hidden" id="settingsOverlay">
+        <div class="overlay-panel settings-panel">
+            <div class="overlay-header">
+                <h3>Settings</h3>
+                <button class="close-btn" id="closeSettings">&times;</button>
+            </div>
+            <div class="settings-content">
+                <!-- Connected Accounts -->
+                <section class="settings-section">
+                    <h4>Connected Accounts</h4>
+                    <div id="settingsAccounts" class="settings-accounts"></div>
+                </section>
+
+                <!-- Steam Account Connection -->
+                <section class="settings-section hidden" id="steamConnectSection">
+                    <h4>Connect Steam</h4>
+                    <p class="settings-hint">Get your API key from <a href="https://steamcommunity.com/dev/apikey" target="_blank" style="color:var(--accent)">steamcommunity.com/dev/apikey</a></p>
+                    <div class="settings-add-row" style="margin-top:8px">
+                        <input type="text" id="steamApiKey" placeholder="Steam Web API Key">
+                    </div>
+                    <p class="settings-hint" style="margin-top:8px">Your Steam ID, profile URL, or vanity name</p>
+                    <div class="settings-add-row" style="margin-top:4px">
+                        <input type="text" id="steamIdInput" placeholder="76561198... or profile URL or vanity name">
+                        <button class="btn-small" id="btnConnectSteam">Connect</button>
+                    </div>
+                    <div id="steamConnectStatus" style="margin-top:8px;font-size:12px"></div>
+                </section>
+
+                <!-- GOG Galaxy -->
+                <section class="settings-section" id="gogGalaxySection">
+                    <h4>GOG Galaxy Integration</h4>
+                    <div id="settingsGogGalaxy"></div>
+                </section>
+
+                <!-- Show/Hide Uninstalled -->
+                <section class="settings-section">
+                    <h4>Display</h4>
+                    <button class="btn-action" id="btnToggleUninstalled" style="margin-bottom:8px">Loading...</button>
+                </section>
+
+                <section class="settings-section">
+                    <h4>Detected Stores (Local)</h4>
+                    <div id="settingsStores" class="settings-stores"></div>
+                </section>
+                <section class="settings-section">
+                    <h4>ROM Directories</h4>
+                    <div id="settingsRomDirs" class="settings-dirs"></div>
+                    <div class="settings-add-row">
+                        <input type="text" id="romDirInput" placeholder="Path to ROMs folder...">
+                        <button class="btn-small" id="addRomDir">Add</button>
+                    </div>
+                </section>
+                <section class="settings-section">
+                    <h4>Local Game Directories</h4>
+                    <div id="settingsLocalDirs" class="settings-dirs"></div>
+                    <div class="settings-add-row">
+                        <input type="text" id="localDirInput" placeholder="Path to games folder...">
+                        <button class="btn-small" id="addLocalDir">Add</button>
+                    </div>
+                </section>
+                <section class="settings-section">
+                    <h4>Visible Systems</h4>
+                    <div id="settingsVisibleSystems" class="settings-systems"></div>
+                </section>
+                <section class="settings-section">
+                    <h4>Library</h4>
+                    <button class="btn-action" id="btnRescan">Rescan All Libraries</button>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <!-- Launch Overlay -->
+    <div class="launch-overlay hidden" id="launchOverlay">
+        <div class="launch-content">
+            <div class="launch-spinner"></div>
+            <div class="launch-text" id="launchText">Launching...</div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         BUILT-IN EMULATOR
+         ═══════════════════════════════════════════════════════════════════ -->
+    <div class="emu-container hidden" id="emuContainer">
+
+        <!-- Boot Screen -->
+        <div class="emu-boot hidden" id="emuBootScreen">
+            <div class="emu-boot-content">
+                <div class="emu-boot-icon" id="emuBootIcon">🎮</div>
+                <div class="emu-boot-system" id="emuBootSystem">SYSTEM</div>
+                <div class="emu-boot-title" id="emuBootTitle">Game Title</div>
+                <div class="emu-boot-ring" id="emuBootRing"></div>
+            </div>
+            <div class="emu-boot-progress-track">
+                <div class="emu-boot-progress" id="emuBootProgress"></div>
+            </div>
+        </div>
+
+        <!-- Game (EmulatorJS renders here) -->
+        <div class="emu-game-wrapper hidden" id="emuGameWrapper">
+            <div id="emuGame"></div>
+        </div>
+
+        <!-- HUD (brief control hints) -->
+        <div class="emu-hud-container">
+            <div class="emu-hud">
+                <div class="emu-hud-key"><span>ESC</span> Pause</div>
+                <div class="emu-hud-key"><span>F5</span> Save</div>
+                <div class="emu-hud-key"><span>F8</span> Load</div>
+            </div>
+        </div>
+
+        <!-- Pause Menu -->
+        <div class="emu-pause hidden" id="emuPauseMenu">
+            <div class="emu-pause-panel">
+                <div class="emu-pause-title">Paused</div>
+                <div class="emu-pause-game" id="emuPauseGame"></div>
+                <div class="emu-pause-actions">
+                    <button class="emu-pause-btn" onclick="togglePauseMenu()">
+                        <span class="btn-icon">▶</span>
+                        <span class="btn-label">Resume</span>
+                        <span class="btn-hint">ESC</span>
+                    </button>
+                    <button class="emu-pause-btn" onclick="emuSaveState()">
+                        <span class="btn-icon">💾</span>
+                        <span class="btn-label">Save State</span>
+                        <span class="btn-hint">F5</span>
+                    </button>
+                    <button class="emu-pause-btn" onclick="emuLoadState()">
+                        <span class="btn-icon">📂</span>
+                        <span class="btn-label">Load State</span>
+                        <span class="btn-hint">F8</span>
+                    </button>
+                    <button class="emu-pause-btn" onclick="emuScreenshot()">
+                        <span class="btn-icon">📸</span>
+                        <span class="btn-label">Screenshot</span>
+                    </button>
+                    <button class="emu-pause-btn" onclick="emuRestart()">
+                        <span class="btn-icon">🔄</span>
+                        <span class="btn-label">Restart</span>
+                    </button>
+                    <div class="emu-pause-divider"></div>
+                    <button class="emu-pause-btn exit-btn" onclick="exitEmulator()">
+                        <span class="btn-icon">🚪</span>
+                        <span class="btn-label">Exit to Hub</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toast -->
+        <div class="emu-toast hidden" id="emuToast">Saved</div>
+    </div>
+
+    <link rel="stylesheet" href="/static/css/emulator.css">
+    <script src="/static/js/emulator.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
