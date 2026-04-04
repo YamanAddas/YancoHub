@@ -445,6 +445,19 @@ function updateGameInfo() {
     const badges = [];
     badges.push(`<span class="meta-badge source">${game.system_name || game.source}</span>`);
 
+    if (game.developer) {
+        badges.push(`<span class="meta-badge">${escapeHtml(game.developer.split(';')[0].trim())}</span>`);
+    }
+    if (game.release_year) {
+        badges.push(`<span class="meta-badge">${game.release_year}</span>`);
+    }
+    if (game.genre) {
+        badges.push(`<span class="meta-badge">${escapeHtml(game.genre.split(';')[0].trim())}</span>`);
+    }
+    if (game.community_rating) {
+        const stars = '★'.repeat(Math.round(game.community_rating)) + '☆'.repeat(5 - Math.round(game.community_rating));
+        badges.push(`<span class="meta-badge fav">${stars}</span>`);
+    }
     if (game.installed === false) {
         badges.push(`<span class="meta-badge" style="background:rgba(255,255,255,0.05);color:var(--text-dim)">Not Installed</span>`);
     }
@@ -455,14 +468,22 @@ function updateGameInfo() {
     if (displayHours > 0) {
         badges.push(`<span class="meta-badge playtime">${displayHours}h played</span>`);
     }
-    if (game.size > 0) {
-        badges.push(`<span class="meta-badge size">${formatSize(game.size)}</span>`);
-    }
     if (state.favorites.has(game.id)) {
         badges.push(`<span class="meta-badge fav">★ Favorite</span>`);
     }
 
     $('gameInfoMeta').innerHTML = badges.join('');
+
+    // Show description below badges if available
+    const descEl = document.getElementById('gameInfoDesc');
+    if (descEl) {
+        if (game.description) {
+            descEl.textContent = game.description;
+            descEl.style.display = 'block';
+        } else {
+            descEl.style.display = 'none';
+        }
+    }
 }
 
 function updateGameCount() {
@@ -529,6 +550,7 @@ function bindEvents() {
     $('closeSettings').addEventListener('click', () => $('settingsOverlay').classList.add('hidden'));
     $('addRomDir').addEventListener('click', addRomDir);
     $('addLocalDir').addEventListener('click', addLocalDir);
+    $('addBiosDir').addEventListener('click', addBiosDir);
     $('btnRescan').addEventListener('click', rescanLibrary);
     $('btnConnectSteam').addEventListener('click', connectSteam);
     $('btnToggleUninstalled').addEventListener('click', toggleShowUninstalled);
@@ -946,6 +968,26 @@ async function renderSettings() {
         `).join('') || '<div style="color:var(--text-dim);font-size:12px;padding:4px 0">No local game directories configured</div>';
     } catch {}
 
+    // BIOS dirs + status
+    try {
+        const bd = await fetch('/api/bios/dirs');
+        const biosDirs = await bd.json();
+        $('settingsBiosDirs').innerHTML = biosDirs.map(d => `
+            <div class="dir-entry"><span>${escapeHtml(d)}</span><button class="dir-remove" data-dir="${escapeAttr(d)}" data-type="bios">&times;</button></div>
+        `).join('') || '<div style="color:var(--text-dim);font-size:12px;padding:4px 0">No BIOS directories configured</div>';
+
+        const bs = await fetch('/api/bios/status');
+        const biosStatus = await bs.json();
+        let biosHtml = '<div style="display:flex;flex-wrap:wrap;gap:6px">';
+        for (const [sysId, info] of Object.entries(biosStatus)) {
+            const color = info.ready ? 'var(--success)' : 'var(--text-dim)';
+            const icon = info.ready ? '●' : '○';
+            biosHtml += `<span style="font-size:11px;color:${color}" title="${info.files.map(f => f.name + (f.found ? ' ✓' : ' ✗')).join(', ')}">${icon} ${info.system_name}</span>`;
+        }
+        biosHtml += '</div>';
+        $('settingsBiosStatus').innerHTML = biosHtml;
+    } catch {}
+
     // Systems
     const systems = {
         snes: 'SNES', nes: 'NES', gba: 'GBA', gb: 'GB', gbc: 'GBC',
@@ -964,7 +1006,8 @@ async function renderSettings() {
     // Bind remove buttons
     $$('.dir-remove').forEach(btn => {
         btn.addEventListener('click', async () => {
-            const endpoint = btn.dataset.type === 'rom' ? '/api/rom-dirs' : '/api/local-dirs';
+            const typeMap = { rom: '/api/rom-dirs', local: '/api/local-dirs', bios: '/api/bios/dirs' };
+            const endpoint = typeMap[btn.dataset.type] || '/api/local-dirs';
             await fetch(endpoint, {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json' },
@@ -1018,6 +1061,19 @@ async function addLocalDir() {
     renderSettings();
     await fetch('/api/rescan', { method: 'POST' });
     setTimeout(async () => { await loadGames(); applyFilter(); }, 3000);
+}
+
+async function addBiosDir() {
+    const input = $('biosDirInput');
+    const path = input.value.trim();
+    if (!path) return;
+    await fetch('/api/bios/dirs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path }),
+    });
+    input.value = '';
+    renderSettings();
 }
 
 async function rescanLibrary() {

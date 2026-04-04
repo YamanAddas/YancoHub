@@ -18,6 +18,9 @@ from scanner import GameScanner
 from userdata import UserData
 from catbyte import CatByte
 from accounts import SteamAccount, GogGalaxyDB, EpicAccount, resolve_steam_vanity_url
+from metadata import MetadataFetcher
+from artwork import ArtworkScraper
+from biosmanager import BIOSManager
 
 # ── Logging ─────────────────────────────────────────────────────────────────
 
@@ -43,6 +46,14 @@ app = Flask(__name__,
 scanner = GameScanner()
 userdata = UserData()
 catbyte = CatByte()
+metadata_fetcher = MetadataFetcher()
+artwork_scraper = ArtworkScraper()
+bios_manager = BIOSManager()
+
+# Initialize BIOS dirs from settings
+_bios_dirs = userdata.get_settings().get('bios_dirs', [])
+if _bios_dirs:
+    bios_manager.set_bios_dirs(_bios_dirs)
 
 # In-memory game library (refreshed on scan)
 game_library = []
@@ -131,6 +142,18 @@ def _build_library():
     game_index = {g['id']: g for g in game_library}
     logger.info(f"Library built: {len(game_library)} games ({len(local_games)} installed, {len(game_library) - len(local_games)} from accounts)")
 
+    # Background: enrich metadata and fetch artwork for new games
+    def _enrich():
+        try:
+            metadata_fetcher.enrich_games(game_library[:50])  # First 50 to avoid rate limits
+        except Exception as e:
+            logger.debug(f"Metadata enrichment error: {e}")
+        try:
+            artwork_scraper.fetch_for_games(game_library[:100])
+        except Exception as e:
+            logger.debug(f"Artwork fetch error: {e}")
+    threading.Thread(target=_enrich, daemon=True).start()
+
 
 # Initial scan in background
 def _initial_scan():
@@ -183,6 +206,17 @@ def api_games():
         enriched['playtime_hours'] = pt.get('total_hours', 0)
         enriched['last_played'] = pt.get('last_played')
         enriched['is_favorite'] = game['id'] in favorites
+
+        # Enrich with cached metadata (non-blocking, only if already cached)
+        meta = metadata_fetcher.db.get(game['id'])
+        if meta:
+            enriched['description'] = meta.get('description', '')
+            enriched['genre'] = meta.get('genre', '')
+            enriched['developer'] = meta.get('developer', '')
+            enriched['publisher'] = meta.get('publisher', '')
+            enriched['release_year'] = meta.get('release_year')
+            enriched['community_rating'] = meta.get('rating')
+
         results.append(enriched)
 
     return jsonify(results)
@@ -194,31 +228,21 @@ def api_artwork(game_id, art_type):
     if not game:
         abort(404)
 
+    # 1. Check game's own artwork dict (local Steam files)
     artwork_path = game.get('artwork', {}).get(art_type, '')
-
-    # Local file path
     if artwork_path and not artwork_path.startswith('http') and Path(artwork_path).exists():
         return send_file(artwork_path)
 
-    # Check cache first
-    cache_dir = Path(__file__).parent / 'cache' / 'artwork'
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    cached = cache_dir / f"{game_id}_{art_type}.jpg"
-    if cached.exists():
-        return send_file(str(cached))
+    # 2. Use the artwork scraper (checks cache, then fetches)
+    scraped = artwork_scraper.get_artwork_path(game, art_type)
+    if scraped and Path(scraped).exists():
+        return send_file(scraped)
 
-    # Remote URL (e.g. Steam CDN) — download and cache
+    # 3. Fallback: try remote URL from game data
     if artwork_path and artwork_path.startswith('http'):
-        try:
-            import requests as req
-            resp = req.get(artwork_path, timeout=10, stream=True)
-            if resp.status_code == 200:
-                with open(cached, 'wb') as f:
-                    for chunk in resp.iter_content(8192):
-                        f.write(chunk)
-                return send_file(str(cached))
-        except Exception as e:
-            logger.debug(f"Artwork download failed for {game_id}: {e}")
+        downloaded = artwork_scraper._download_and_cache(game_id, art_type, artwork_path)
+        if downloaded:
+            return send_file(downloaded)
 
     abort(404)
 
@@ -678,6 +702,74 @@ def api_catbyte_chat_vision():
     return jsonify(result)
 
 
+# ── Metadata ────────────────────────────────────────────────────────────────
+
+@app.route('/api/metadata/<game_id>')
+def api_metadata(game_id):
+    """Get rich metadata for a game (description, genre, developer, etc.)."""
+    game = game_index.get(game_id)
+    if not game:
+        abort(404)
+
+    meta = metadata_fetcher.get_metadata(
+        game_id, game.get('name', ''),
+        source=game.get('source', ''),
+        system=game.get('system', ''),
+    )
+    return jsonify(meta or {})
+
+
+@app.route('/api/metadata/stats')
+def api_metadata_stats():
+    """Get metadata cache statistics."""
+    return jsonify(metadata_fetcher.db.get_stats())
+
+
+# ── BIOS Management ────────────────────────────────────────────────────────
+
+@app.route('/api/bios/status')
+def api_bios_status():
+    """Get per-system BIOS file status."""
+    return jsonify(bios_manager.get_status())
+
+
+@app.route('/api/bios/dirs', methods=['GET'])
+def api_get_bios_dirs():
+    return jsonify(bios_manager.get_bios_dirs())
+
+
+@app.route('/api/bios/dirs', methods=['POST'])
+def api_add_bios_dir():
+    data = request.get_json()
+    path = data.get('path', '').strip()
+    if not path or not Path(path).exists():
+        return jsonify({'error': 'Invalid path'}), 400
+
+    settings = userdata.get_settings()
+    bios_dirs = settings.get('bios_dirs', [])
+    if path not in bios_dirs:
+        bios_dirs.append(path)
+        userdata.update_settings({'bios_dirs': bios_dirs})
+        bios_manager.set_bios_dirs(bios_dirs)
+
+    return jsonify(bios_manager.get_status())
+
+
+@app.route('/api/bios/dirs', methods=['DELETE'])
+def api_remove_bios_dir():
+    data = request.get_json()
+    path = data.get('path', '').strip()
+
+    settings = userdata.get_settings()
+    bios_dirs = settings.get('bios_dirs', [])
+    if path in bios_dirs:
+        bios_dirs.remove(path)
+        userdata.update_settings({'bios_dirs': bios_dirs})
+        bios_manager.set_bios_dirs(bios_dirs)
+
+    return jsonify(bios_manager.get_status())
+
+
 # ── Built-in Emulator ───────────────────────────────────────────────────────
 
 # Systems that use the built-in emulator (EmulatorJS via webview)
@@ -710,28 +802,13 @@ def api_serve_rom(game_id):
 
 
 @app.route('/api/bios/<system>')
-def api_serve_bios(system):
-    """Serve open-source BIOS files for built-in emulator systems."""
-    bios_dir = Path(__file__).parent / 'bios'
-
-    bios_files = {
-        'gba': 'gba_bios.bin',     # Open-source GBA BIOS (Normmatt/Cult-of-GBA)
-        'psx': 'scph1001.bin',     # OpenBIOS for PS1 (MIT licensed)
-    }
-
-    filename = bios_files.get(system)
-    if not filename:
-        abort(404)
-
-    bios_path = bios_dir / filename
-    if not bios_path.exists():
-        # Try user-provided BIOS directory
-        user_bios = Path(__file__).parent / 'bios' / 'user'
-        bios_path = user_bios / filename
-        if not bios_path.exists():
-            abort(404)
-
-    return send_file(str(bios_path), mimetype='application/octet-stream')
+@app.route('/api/bios/<system>/<filename>')
+def api_serve_bios(system, filename=None):
+    """Serve BIOS files for the built-in emulator."""
+    bios_path = bios_manager.get_bios_path(system, filename)
+    if bios_path and Path(bios_path).exists():
+        return send_file(bios_path, mimetype='application/octet-stream')
+    abort(404)
 
 
 @app.route('/api/emulator/info/<system>')

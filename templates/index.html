@@ -72,6 +72,7 @@
         <div class="game-info" id="gameInfo">
             <div class="game-info-title" id="gameInfoTitle"></div>
             <div class="game-info-meta" id="gameInfoMeta"></div>
+            <div class="game-info-desc" id="gameInfoDesc" style="display:none"></div>
         </div>
 
         <!-- 3D Carousel -->
@@ -185,6 +186,15 @@
                         <input type="text" id="localDirInput" placeholder="Path to games folder...">
                         <button class="btn-small" id="addLocalDir">Add</button>
                     </div>
+                </section>
+                <section class="settings-section">
+                    <h4>BIOS Files</h4>
+                    <div id="settingsBiosDirs" class="settings-dirs"></div>
+                    <div class="settings-add-row">
+                        <input type="text" id="biosDirInput" placeholder="Path to BIOS folder...">
+                        <button class="btn-small" id="addBiosDir">Add</button>
+                    </div>
+                    <div id="settingsBiosStatus" style="margin-top:12px"></div>
                 </section>
                 <section class="settings-section">
                     <h4>Visible Systems</h4>
