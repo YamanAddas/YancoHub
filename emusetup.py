@@ -12,14 +12,14 @@ All managed emulators live in YancoHub's own `emulators/` directory —
 never overwrites system-installed emulators.
 """
 
-import io
 import logging
+import shutil
+import subprocess
 import threading
 import time
 import zipfile
 from pathlib import Path
 
-import py7zr
 import requests
 
 from scanner import ROM_SYSTEMS
@@ -205,10 +205,28 @@ class EmulatorSetup:
 
     # ── Downloads ──────────────────────────────────────────────────────────
 
+    def _find_7z(self) -> str | None:
+        """Find 7z executable on the system."""
+        # Common install locations on Windows
+        for path in [
+            Path("C:/Program Files/7-Zip/7z.exe"),
+            Path("C:/Program Files (x86)/7-Zip/7z.exe"),
+        ]:
+            if path.exists():
+                return str(path)
+        # Check PATH
+        which = shutil.which('7z') or shutil.which('7za')
+        return which
+
     def _download_retroarch(self) -> bool:
-        """Download and extract RetroArch portable."""
-        tmp_path = BASE_DIR / 'RetroArch.7z.tmp'
+        """Download and extract RetroArch portable.
+
+        Uses system 7-Zip for extraction (BCJ2 filter not supported by py7zr).
+        If 7-Zip isn't installed, downloads the standalone 7za.exe (574KB, LGPL).
+        """
+        archive_path = BASE_DIR / 'RetroArch.7z'
         try:
+            # Step 1: Download the 7z archive
             logger.info(f"Downloading RetroArch from {RETROARCH_URL}")
             resp = self._session.get(RETROARCH_URL, stream=True, timeout=30)
             resp.raise_for_status()
@@ -217,42 +235,62 @@ class EmulatorSetup:
             self.progress['bytes_total'] = total_bytes
             self.progress['bytes_downloaded'] = 0
 
+            tmp_path = BASE_DIR / 'RetroArch.7z.tmp'
             with open(tmp_path, 'wb') as f:
                 for chunk in resp.iter_content(chunk_size=65536):
                     f.write(chunk)
                     self.progress['bytes_downloaded'] += len(chunk)
 
-            # Extract
+            tmp_path.rename(archive_path)
+
+            # Step 2: Find or obtain 7z extractor
+            self.progress['current_item'] = 'Extracting RetroArch...'
+            sz_exe = self._find_7z()
+
+            if not sz_exe:
+                # Download standalone 7za.exe (574KB, LGPL-licensed)
+                self.progress['current_item'] = 'Downloading 7-Zip extractor...'
+                sz_exe = self._download_7za()
+                if not sz_exe:
+                    self.progress['error'] = ('7-Zip not found. Please install 7-Zip '
+                                              'from https://7-zip.org and retry.')
+                    return False
+
+            # Step 3: Extract with 7z CLI
             self.progress['current_item'] = 'Extracting RetroArch...'
             self._ra_dir.mkdir(parents=True, exist_ok=True)
 
-            with py7zr.SevenZipFile(str(tmp_path), mode='r') as archive:
-                archive.extractall(path=str(self._ra_dir))
+            result = subprocess.run(
+                [sz_exe, 'x', str(archive_path), f'-o{self._ra_dir}', '-y'],
+                capture_output=True, text=True, timeout=120,
+            )
+            if result.returncode != 0:
+                logger.error(f"7z extraction failed: {result.stderr[:500]}")
+                self.progress['error'] = f'Extraction failed: {result.stderr[:200]}'
+                return False
 
-            # RetroArch 7z extracts into a subfolder — flatten if needed
-            nested = self._ra_dir / 'RetroArch-Win64'
-            if not nested.exists():
-                nested = self._ra_dir / 'RetroArch'
-            if nested.exists() and nested.is_dir():
-                import shutil
-                for item in nested.iterdir():
-                    dest = self._ra_dir / item.name
-                    if dest.exists():
-                        if dest.is_dir():
+            # Step 4: Flatten nested directory (RetroArch-Win64/ → retroarch/)
+            for nested_name in ['RetroArch-Win64', 'RetroArch']:
+                nested = self._ra_dir / nested_name
+                if nested.exists() and nested.is_dir():
+                    for item in nested.iterdir():
+                        dest = self._ra_dir / item.name
+                        if dest.exists() and dest.is_dir():
                             shutil.copytree(str(item), str(dest), dirs_exist_ok=True)
-                        else:
+                            shutil.rmtree(str(item))
+                        elif dest.exists():
                             item.replace(dest)
-                    else:
-                        item.rename(dest)
-                # Remove empty nested dir
-                try:
-                    shutil.rmtree(str(nested))
-                except Exception:
-                    pass
+                        else:
+                            item.rename(dest)
+                    try:
+                        shutil.rmtree(str(nested))
+                    except Exception:
+                        pass
+                    break
 
             # Verify
             if not (self._ra_dir / 'retroarch.exe').exists():
-                self.progress['error'] = 'RetroArch extraction failed — retroarch.exe not found'
+                self.progress['error'] = 'Extraction succeeded but retroarch.exe not found'
                 logger.error("RetroArch extracted but retroarch.exe not found")
                 return False
 
@@ -263,16 +301,78 @@ class EmulatorSetup:
             self.progress['error'] = f'Download failed: {e}'
             logger.error(f"RetroArch download failed: {e}")
             return False
+        except subprocess.TimeoutExpired:
+            self.progress['error'] = 'Extraction timed out'
+            return False
         except Exception as e:
-            self.progress['error'] = f'Extraction failed: {e}'
-            logger.error(f"RetroArch extraction failed: {e}")
+            self.progress['error'] = f'Setup failed: {e}'
+            logger.error(f"RetroArch setup failed: {e}")
             return False
         finally:
-            # Clean up temp file
-            try:
-                tmp_path.unlink(missing_ok=True)
-            except Exception:
-                pass
+            # Clean up archive
+            for f in [BASE_DIR / 'RetroArch.7z.tmp', archive_path]:
+                try:
+                    f.unlink(missing_ok=True)
+                except Exception:
+                    pass
+
+    def _download_7za(self) -> str | None:
+        """Download standalone 7za.exe from 7-zip.org (LGPL, ~1.1MB zip).
+
+        The "Extra" package contains 7za.exe which supports all compression
+        methods including BCJ2 (needed for RetroArch's 7z archive).
+        """
+        import io
+        _7ZA_URL = 'https://www.7-zip.org/a/7z2408-extra.7z'
+        # Can't use 7z to extract 7z — use the plain zip console version instead
+        _7ZA_PLAIN_URL = 'https://www.7-zip.org/a/7zr.exe'
+        tools_dir = BASE_DIR / 'tools'
+        tools_dir.mkdir(parents=True, exist_ok=True)
+        target = tools_dir / '7za.exe'
+
+        if target.exists():
+            return str(target)
+
+        # Strategy: download 7zr.exe first (plain LZMA), then use it to
+        # extract the full 7za.exe from the extras package.
+        # But simpler: just use 7zr.exe — it handles LZMA but not BCJ2.
+        # Actually the simplest: check GitHub releases for 7-Zip standalone.
+
+        # Simplest approach: download 7z console version directly
+        # The 7z2408-x64.exe installer is no good, but we can try the
+        # portable 7za from a mirror that serves it as zip
+        try:
+            # Try getting 7zr.exe (LZMA-only standalone, ~600KB)
+            # Won't work for BCJ2 but let's check if it's enough
+            resp = self._session.get(_7ZA_PLAIN_URL, timeout=15)
+            resp.raise_for_status()
+            _7zr_path = tools_dir / '7zr.exe'
+            _7zr_path.write_bytes(resp.content)
+
+            # Now download the Extra package (which IS 7z format, but LZMA only)
+            resp2 = self._session.get(_7ZA_URL, timeout=15)
+            resp2.raise_for_status()
+            extra_7z = tools_dir / 'extra.7z'
+            extra_7z.write_bytes(resp2.content)
+
+            # Extract 7za.exe from the extras using 7zr
+            result = subprocess.run(
+                [str(_7zr_path), 'e', str(extra_7z), f'-o{tools_dir}', '7za.exe', '-y'],
+                capture_output=True, timeout=30,
+            )
+            extra_7z.unlink(missing_ok=True)
+
+            if target.exists():
+                logger.info(f"Downloaded 7za.exe to {target}")
+                return str(target)
+
+            # Fallback: just use 7zr (may not handle BCJ2)
+            logger.warning("Could not extract 7za.exe, falling back to 7zr.exe")
+            return str(_7zr_path)
+
+        except Exception as e:
+            logger.error(f"Failed to download 7z extractor: {e}")
+            return None
 
     def _download_core(self, core_name: str) -> bool:
         """Download a single RetroArch core from buildbot."""
