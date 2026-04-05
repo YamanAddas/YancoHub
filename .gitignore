@@ -15,6 +15,12 @@ bios/*.zip
 bios/user/
 !bios/README.md
 
+# ── Downloaded emulators (managed by emusetup.py) ──
+emulators/
+
+# ── Claude Code ──
+.claude/
+
 # ── Virtual environment ──
 venv/
 .venv/
