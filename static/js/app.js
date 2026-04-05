@@ -27,8 +27,9 @@ const state = {
 
 // ── DOM ────────────────────────────────────────────────────────────────────
 
-const $ = (id) => document.getElementById(id) || document.querySelector(id);
+const $ = (id) => document.getElementById(id);
 const $$ = (sel) => document.querySelectorAll(sel);
+const qs = (sel) => document.querySelector(sel);
 
 // ── Per-system fallback color gradients ────────────────────────────────────
 
@@ -94,6 +95,8 @@ async function init() {
     updateSplash(90, 'Preparing interface...');
 
     checkCatbyteStatus();
+    setInterval(checkCatbyteStatus, 60000);
+    buildRetroTabs();
     applyFilter();
 
     if (state.scanning) {
@@ -103,6 +106,7 @@ async function init() {
             await loadGames();
             if (!state.scanning) {
                 clearInterval(pollScan);
+                buildRetroTabs();
                 applyFilter();
             }
         }, 2000);
@@ -187,19 +191,20 @@ async function loadPlaytimes() {
 }
 
 async function checkCatbyteStatus() {
+    let d = null;
     try {
         const r = await fetch('/api/catbyte/status');
-        const d = await r.json();
+        d = await r.json();
         state.catbyteOnline = d.status === 'online';
     } catch {
         state.catbyteOnline = false;
     }
     const on = state.catbyteOnline;
     $('catbyteStatusDot').classList.toggle('online', on);
-    $('catbyteStatus').textContent = on ? 'Online' : 'Offline';
+    $('catbyteStatus').textContent = on ? (d && d.model ? `Online (${d.model.toUpperCase()})` : 'Online') : 'Offline';
     $('catbyteStatus').classList.toggle('online', on);
     $('btnCatbyte').classList.toggle('dimmed', !on);
-    $('btnCatbyte').title = on ? 'CatByte AI (Ctrl+B)' : 'CatByte requires OpenClaw';
+    $('btnCatbyte').title = on ? 'CatByte AI (Ctrl+B)' : 'CatByte offline — check Settings (Ctrl+B)';
 }
 
 // ── Filtering & Carousel ───────────────────────────────────────────────────
@@ -221,7 +226,13 @@ function applyFilter() {
             games = games.filter(g => g.source === 'retro');
             break;
         default:
-            games = games.filter(g => g.source === tab);
+            // Check if it's a retro system tab (e.g. "retro_snes")
+            if (tab.startsWith('retro_')) {
+                const sys = tab.slice(6);
+                games = games.filter(g => g.source === 'retro' && g.system === sys);
+            } else {
+                games = games.filter(g => g.source === tab);
+            }
             break;
     }
 
@@ -269,45 +280,175 @@ function applyFilter() {
     }
 }
 
+// ── Dynamic Retro System Tabs ─────────────────────────────────────────────
+
+const RETRO_SYSTEM_NAMES = {
+    snes: 'SNES', nes: 'NES', gba: 'GBA', gb: 'GB', gbc: 'GBC',
+    n64: 'N64', nds: 'NDS', megadrive: 'Genesis', mastersystem: 'Master Sys',
+    gamegear: 'Game Gear', atari2600: 'Atari 2600', psx: 'PS1', ps2: 'PS2',
+    ps3: 'PS3', psp: 'PSP', dreamcast: 'Dreamcast', saturn: 'Saturn',
+    gamecube: 'GameCube', wii: 'Wii', neogeo: 'Neo Geo', fbneo: 'FBNeo',
+    cps1: 'CPS-1', cps2: 'CPS-2', cps3: 'CPS-3', mame: 'MAME', ngp: 'NGP',
+};
+
+const RETRO_SYSTEM_ICONS = {
+    snes: '\uD83C\uDFAE', nes: '\uD83D\uDD79\uFE0F', gba: '\uD83D\uDCF1',
+    gb: '\uD83D\uDCDF', gbc: '\uD83C\uDF08', n64: '\uD83D\uDD79\uFE0F',
+    nds: '\u270F\uFE0F', megadrive: '\uD83D\uDC99', mastersystem: '\uD83D\uDD35',
+    gamegear: '\uD83D\uDD0D', atari2600: '\uD83D\uDD78\uFE0F', psx: '\uD83D\uDCBF',
+    ps2: '\uD83D\uDCBF', ps3: '\uD83C\uDFAE', psp: '\uD83C\uDFAE',
+    dreamcast: '\uD83C\uDF00', saturn: '\uD83E\uDE90', gamecube: '\uD83D\uDFEA',
+    wii: '\u2B1C', neogeo: '\uD83C\uDFB0', fbneo: '\uD83D\uDD25',
+    cps1: '\uD83E\uDD4A', cps2: '\uD83E\uDD4A', cps3: '\uD83E\uDD4A',
+    mame: '\uD83D\uDC7E', ngp: '\uD83D\uDCDF',
+};
+
+function buildRetroTabs() {
+    // Remove any previously injected retro system tabs
+    document.querySelectorAll('.tab-retro-system').forEach(t => t.remove());
+
+    // Count retro games per system (respecting hidden systems)
+    const systemCounts = {};
+    for (const g of state.games) {
+        if (g.source !== 'retro' || !g.system) continue;
+        if (state.hiddenSystems.has(g.system)) continue;
+        systemCounts[g.system] = (systemCounts[g.system] || 0) + 1;
+    }
+
+    const systemKeys = Object.keys(systemCounts).sort((a, b) => {
+        return systemCounts[b] - systemCounts[a]; // most games first
+    });
+
+    // Show/hide divider and All Retro tab based on whether there are ROMs
+    const divider = $('retroDivider');
+    const allRetroTab = document.querySelector('[data-tab="retro"]');
+    if (systemKeys.length === 0) {
+        if (divider) divider.classList.add('hidden');
+        if (allRetroTab) allRetroTab.classList.add('hidden');
+        return;
+    }
+    if (divider) divider.classList.remove('hidden');
+    if (allRetroTab) allRetroTab.classList.remove('hidden');
+
+    // Inject per-system tabs after the "All Retro" button
+    const tabBar = $('tabBar');
+    for (const sys of systemKeys) {
+        const btn = document.createElement('button');
+        btn.className = 'tab tab-retro-system';
+        btn.dataset.tab = `retro_${sys}`;
+        const icon = RETRO_SYSTEM_ICONS[sys] || '\uD83C\uDFAE';
+        const name = RETRO_SYSTEM_NAMES[sys] || sys;
+        btn.innerHTML = `<span class="tab-sys-icon">${icon}</span>${name}<span class="tab-count">${systemCounts[sys]}</span>`;
+        btn.title = `${name} \u2014 ${systemCounts[sys]} game${systemCounts[sys] !== 1 ? 's' : ''}`;
+        tabBar.appendChild(btn);
+    }
+}
+
+// ── Mood Helpers ──────────────────────────────────────────────────────────
+
+const MOOD_META = {
+    quick:      { icon: '\u26A1',              label: 'Quick Session' },
+    deep:       { icon: '\uD83C\uDF0A',        label: 'Deep Dive' },
+    nostalgia:  { icon: '\uD83D\uDD79\uFE0F',  label: 'Nostalgia Trip' },
+    new:        { icon: '\u2728',              label: 'Something New' },
+    unfinished: { icon: '\uD83D\uDCCC',        label: 'Unfinished Business' },
+    comfort:    { icon: '\u2615',              label: 'Comfort Pick' },
+    surprise:   { icon: '\uD83C\uDFB0',        label: 'Surprise Me' },
+    chill:      { icon: '\uD83C\uDF19',        label: 'Chill Vibes' },
+};
+
+function totalPlaytime(g) {
+    return (g.playtime_hours || 0) + (g.playtime_from_api || 0);
+}
+
+function hasGenre(g, keywords) {
+    if (!g.genre) return false;
+    const lower = g.genre.toLowerCase();
+    return keywords.some(k => lower.includes(k.toLowerCase()));
+}
+
+// ── Mood Filter ───────────────────────────────────────────────────────────
+
 function applyMoodFilter(mood) {
     state.activeMood = mood;
+    $('moodCatbyteBubble').classList.add('hidden');
+
+    // Surprise Me has its own flow
+    if (mood === 'surprise') {
+        applySurpriseMood();
+        return;
+    }
+
     const now = Date.now() / 1000;
     const sixMonthsAgo = now - (180 * 24 * 60 * 60);
+    const threeMonthsAgo = now - (90 * 24 * 60 * 60);
+    const sixtyDaysAgo = now - (60 * 24 * 60 * 60);
+    const fourteenDaysAgo = now - (14 * 24 * 60 * 60);
     let games = [...state.games];
-
-    const MOOD_META = {
-        quick:     { icon: '\u26A1', label: 'Quick Session' },
-        deep:      { icon: '\uD83C\uDF0A', label: 'Deep Dive' },
-        nostalgia: { icon: '\uD83D\uDD79\uFE0F', label: 'Nostalgia Trip' },
-        new:       { icon: '\u2728', label: 'Something New' },
-    };
 
     switch (mood) {
         case 'quick':
             games = games.filter(g =>
                 g.source === 'retro' ||
-                ((g.playtime_hours || 0) + (g.playtime_from_api || 0)) < 2
+                totalPlaytime(g) < 2 ||
+                hasGenre(g, ['arcade', 'puzzle', 'racing', 'platformer'])
             );
             games.sort(() => Math.random() - 0.5);
             break;
+
         case 'deep':
             games = games.filter(g => {
-                const hours = (g.playtime_hours || 0) + (g.playtime_from_api || 0);
-                return hours > 0 && !state.favorites.has(g.id) && g.source !== 'retro';
+                const hours = totalPlaytime(g);
+                return hours >= 2 && hours < 100 &&
+                       g.last_played && g.last_played > sixtyDaysAgo &&
+                       g.source !== 'retro';
             });
             games.sort((a, b) => (b.last_played || 0) - (a.last_played || 0));
             break;
+
         case 'nostalgia':
             games = games.filter(g =>
                 g.source === 'retro' ||
-                (g.last_played && g.last_played < sixMonthsAgo)
+                (g.last_played && g.last_played < sixMonthsAgo) ||
+                (state.favorites.has(g.id) && g.last_played && g.last_played < threeMonthsAgo) ||
+                (g.release_year && g.release_year < 2010)
             );
             games.sort(() => Math.random() - 0.5);
             break;
+
         case 'new':
+            games = games.filter(g => totalPlaytime(g) === 0 && !g.last_played);
+            games.sort((a, b) => {
+                const ra = a.community_rating || 0;
+                const rb = b.community_rating || 0;
+                if (rb !== ra) return rb - ra;
+                return Math.random() - 0.5;
+            });
+            break;
+
+        case 'unfinished':
             games = games.filter(g => {
-                const hours = (g.playtime_hours || 0) + (g.playtime_from_api || 0);
-                return hours === 0 && !g.last_played;
+                const hours = totalPlaytime(g);
+                return hours >= 1 && hours <= 30 &&
+                       g.last_played && g.last_played < fourteenDaysAgo;
+            });
+            games.sort((a, b) => totalPlaytime(b) - totalPlaytime(a));
+            break;
+
+        case 'comfort':
+            games = games.filter(g =>
+                state.favorites.has(g.id) ||
+                (totalPlaytime(g) > 10 && (g.session_count || 0) > 5)
+            );
+            games.sort((a, b) => totalPlaytime(b) - totalPlaytime(a));
+            break;
+
+        case 'chill':
+            games = games.filter(g => {
+                if (hasGenre(g, ['horror', 'competitive', 'battle royale'])) return false;
+                return hasGenre(g, ['rpg', 'adventure', 'simulation', 'sandbox', 'visual novel', 'walking simulator']) ||
+                       (g.source === 'retro' && ['gb', 'gbc', 'gba', 'snes'].includes(g.system)) ||
+                       totalPlaytime(g) < 5;
             });
             games.sort(() => Math.random() - 0.5);
             break;
@@ -319,7 +460,7 @@ function applyMoodFilter(mood) {
     // Show mood label
     const meta = MOOD_META[mood];
     $('moodLabelIcon').textContent = meta.icon;
-    $('moodLabelText').textContent = meta.label + ' — ' + games.length + ' game' + (games.length !== 1 ? 's' : '');
+    $('moodLabelText').textContent = meta.label + ' \u2014 ' + games.length + ' game' + (games.length !== 1 ? 's' : '');
     $('moodLabel').classList.remove('hidden');
 
     // Update carousel
@@ -335,11 +476,149 @@ function applyMoodFilter(mood) {
         renderCarousel();
         updateGameInfo();
     }
+
+    // Async CatByte recommendation (non-blocking)
+    if (games.length > 0) fetchCatbyteMoodRec(mood, games);
+}
+
+// ── Surprise Me ───────────────────────────────────────────────────────────
+
+function applySurpriseMood() {
+    const games = state.games.filter(g => g.installed !== false);
+    if (games.length === 0) {
+        $('moodLabelIcon').textContent = MOOD_META.surprise.icon;
+        $('moodLabelText').textContent = 'No games to pick from!';
+        $('moodLabel').classList.remove('hidden');
+        return;
+    }
+
+    const now = Date.now() / 1000;
+    const thirtyDaysAgo = now - (30 * 24 * 60 * 60);
+
+    // Build weighted pool
+    const pool = games.map(g => {
+        const hours = totalPlaytime(g);
+        let weight;
+        if (hours === 0 && !g.last_played) weight = 3;
+        else if (hours < 2) weight = 2;
+        else if (g.last_played && g.last_played < thirtyDaysAgo) weight = 1;
+        else weight = 0.5;
+        return { game: g, weight };
+    });
+
+    const totalWeight = pool.reduce((s, p) => s + p.weight, 0);
+    let pick = Math.random() * totalWeight;
+    let chosen = pool[0].game;
+    for (const p of pool) {
+        pick -= p.weight;
+        if (pick <= 0) { chosen = p.game; break; }
+    }
+
+    showSurpriseReveal(chosen, () => {
+        // After animation: show full library scrolled to chosen game
+        state.filteredGames = [...state.games];
+        const idx = state.filteredGames.findIndex(g => g.id === chosen.id);
+        state.selectedIndex = idx >= 0 ? idx : 0;
+
+        $('moodLabelIcon').textContent = MOOD_META.surprise.icon;
+        $('moodLabelText').textContent = 'Surprise Me \u2014 ' + chosen.name;
+        $('moodLabel').classList.remove('hidden');
+
+        $('carouselContainer').classList.remove('hidden');
+        $('gameInfo').style.visibility = 'visible';
+        renderCarousel();
+        updateGameInfo();
+
+        fetchCatbyteMoodRec('surprise', [chosen]);
+    });
+}
+
+function showSurpriseReveal(game, callback) {
+    const overlay = $('surpriseReveal');
+    const cardArt = $('surpriseCardArt');
+    const card = $('surpriseCard');
+    const title = $('surpriseTitle');
+    const subtitle = $('surpriseSubtitle');
+
+    // Reset state
+    overlay.classList.remove('hidden', 'surprise-reveal--active', 'surprise-reveal--exit');
+    card.classList.remove('surprise-card--visible');
+    title.textContent = '';
+    subtitle.textContent = '';
+    cardArt.src = '';
+
+    // Build subtitle from available metadata
+    const parts = [];
+    if (game.source) parts.push((SOURCE_ICONS[game.source] || '') + ' ' + game.source);
+    if (game.genre) parts.push(game.genre.split(/[;,]/)[0].trim());
+    if (game.release_year) parts.push(String(game.release_year));
+    subtitle.textContent = parts.join('  \u00B7  ');
+
+    // Phase 1: glow burst
+    requestAnimationFrame(() => {
+        overlay.classList.add('surprise-reveal--active');
+    });
+
+    // Phase 2: card reveal
+    setTimeout(() => {
+        const artType = (game.artwork && game.artwork.cover) ? 'cover' : 'header';
+        cardArt.src = `/api/artwork/${game.id}/${artType}`;
+        cardArt.onerror = () => { cardArt.style.display = 'none'; };
+        card.classList.add('surprise-card--visible');
+        title.textContent = game.name;
+    }, 600);
+
+    // Phase 3: exit
+    setTimeout(() => {
+        overlay.classList.add('surprise-reveal--exit');
+    }, 2200);
+
+    // Cleanup and callback
+    setTimeout(() => {
+        overlay.classList.add('hidden');
+        overlay.classList.remove('surprise-reveal--active', 'surprise-reveal--exit');
+        card.classList.remove('surprise-card--visible');
+        cardArt.src = '';
+        cardArt.style.display = '';
+        callback();
+    }, 2700);
+}
+
+// ── CatByte Mood Recommendation (async, non-blocking) ────────────────────
+
+async function fetchCatbyteMoodRec(mood, games) {
+    if (!state.catbyteOnline) return;
+
+    const bubble = $('moodCatbyteBubble');
+    const textEl = $('moodCatbyteText');
+    bubble.classList.add('hidden');
+
+    const sampleNames = games.slice(0, 15).map(g => g.name).join(', ');
+    const prompt = `The user picked the "${MOOD_META[mood].label}" mood in their game launcher. ` +
+        `Here are some matching games: ${sampleNames}. ` +
+        `Give a fun one-liner recommendation or comment (1 sentence max, stay in character as CatByte).`;
+
+    try {
+        const r = await fetch('/api/catbyte/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: prompt, history: [] }),
+        });
+        const d = await r.json();
+        // Only show if mood hasn't changed while we were waiting
+        if (d.response && d.status !== 'offline' && state.activeMood === mood) {
+            textEl.textContent = d.response;
+            bubble.classList.remove('hidden');
+        }
+    } catch {
+        // Silent fail — non-blocking
+    }
 }
 
 function clearMoodFilter() {
     state.activeMood = null;
     $('moodLabel').classList.add('hidden');
+    $('moodCatbyteBubble').classList.add('hidden');
     applyFilter();
 }
 
@@ -747,8 +1026,14 @@ function bindEvents() {
     $('btnCatbyte').addEventListener('click', toggleCatbyte);
     $('closeCatbyte').addEventListener('click', () => $('catbytePanel').classList.add('hidden'));
     $('catbyteSend').addEventListener('click', sendCatbyteMessage);
+    $('catbyteScreenshot').addEventListener('click', sendScreenshot);
     $('catbyteInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendCatbyteMessage(); });
     $('dismissCatbyteInfo').addEventListener('click', () => $('catbyteInfoOverlay').classList.add('hidden'));
+    $('btnOpenCatbyteSettings').addEventListener('click', () => {
+        $('catbyteInfoOverlay').classList.add('hidden');
+        openSettings();
+        switchSettingsTab('catbyte');
+    });
 
     // Detail panel actions
     $('detailLaunch').addEventListener('click', launchSelected);
@@ -781,10 +1066,30 @@ function bindEvents() {
     $('btnConnectSteam').addEventListener('click', connectSteam);
     $('btnToggleUninstalled').addEventListener('click', toggleShowUninstalled);
 
+    // Browse buttons — native folder dialogs via pywebview bridge
+    $('browseRomDir').addEventListener('click', () => browseFolder('romDirInput'));
+    $('browseLocalDir').addEventListener('click', () => browseFolder('localDirInput'));
+    $('browseBiosDir').addEventListener('click', () => browseFolder('biosDirInput'));
+    $('browseRetroarch').addEventListener('click', () => browseFolder('retroarchPathInput'));
+
+    // Save original placeholders for browse fallback
+    ['romDirInput', 'localDirInput', 'biosDirInput'].forEach(id => {
+        const el = $(id);
+        if (el) el.dataset.originalPlaceholder = el.placeholder;
+    });
+
+    // Input validation on type
+    $('romDirInput').addEventListener('input', () => validateDirInput('romDirInput'));
+    $('localDirInput').addEventListener('input', () => validateDirInput('localDirInput'));
+
+    // CatByte test connection
+    bindCatbyteTest();
+
     // Keyboard navigation
     document.addEventListener('keydown', (e) => {
-        // Don't navigate if an input is focused
-        if (e.target.tagName === 'INPUT') return;
+        // Don't navigate if a text input is focused
+        if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) ||
+            e.target.isContentEditable) return;
 
         if (e.key === 'ArrowLeft')  { e.preventDefault(); navigateCarousel(-1); }
         if (e.key === 'ArrowRight') { e.preventDefault(); navigateCarousel(1); }
@@ -793,6 +1098,7 @@ function bindEvents() {
         if (e.ctrlKey && e.key === 'f') { e.preventDefault(); openSearch(); }
         if (e.ctrlKey && e.key === 'b') { e.preventDefault(); toggleCatbyte(); }
         if (e.ctrlKey && e.key === ',') { e.preventDefault(); openSettings(); }
+        if (e.ctrlKey && e.shiftKey && e.key === 'S') { e.preventDefault(); sendScreenshot(); }
 
         if (e.key === 'Escape') {
             if (!$('moodOverlay').classList.contains('hidden')) { $('moodOverlay').classList.add('hidden'); return; }
@@ -802,8 +1108,11 @@ function bindEvents() {
             else if (!$('catbytePanel').classList.contains('hidden')) $('catbytePanel').classList.add('hidden');
         }
 
-        // F for favorite toggle
-        if (e.key === 'f' && !e.ctrlKey) {
+        // F for favorite toggle (only when no overlay/panel is open)
+        if (e.key === 'f' && !e.ctrlKey && !e.altKey &&
+            $('searchOverlay').classList.contains('hidden') &&
+            $('settingsOverlay').classList.contains('hidden') &&
+            $('catbytePanel').classList.contains('hidden')) {
             const game = state.filteredGames[state.selectedIndex];
             if (game) toggleFavorite(game.id);
         }
@@ -969,7 +1278,7 @@ async function doSearch() {
         const results = await r.json();
 
         $('searchResults').innerHTML = results.map(g => `
-            <div class="search-result" data-id="${g.id}">
+            <div class="search-result" data-id="${escapeAttr(g.id)}">
                 <span class="search-result-name">${escapeHtml(g.name)}</span>
                 <span class="search-result-source">${g.system_name || g.source}</span>
             </div>
@@ -998,10 +1307,6 @@ async function doSearch() {
 // ── CatByte ────────────────────────────────────────────────────────────────
 
 function toggleCatbyte() {
-    if (!state.catbyteOnline) {
-        $('catbyteInfoOverlay').classList.remove('hidden');
-        return;
-    }
     $('catbytePanel').classList.toggle('hidden');
     if (!$('catbytePanel').classList.contains('hidden')) {
         $('catbyteInput').focus();
@@ -1033,7 +1338,7 @@ async function sendCatbyteMessage() {
         appendChat('bot', d.response);
         state.chatHistory.push({ role: 'assistant', content: d.response });
     } catch {
-        appendChat('bot', 'Connection error... is OpenClaw running?');
+        appendChat('bot', '\uD83D\uDE3F Connection error — check your AI backend in Settings.');
     }
 }
 
@@ -1043,6 +1348,61 @@ function appendChat(role, text) {
     div.innerHTML = `<div class="chat-bubble">${escapeHtml(text)}</div>`;
     $('catbyteMessages').appendChild(div);
     $('catbyteMessages').scrollTop = $('catbyteMessages').scrollHeight;
+}
+
+async function sendScreenshot() {
+    if (!state.catbyteOnline) return;
+
+    try {
+        const canvas = document.createElement('canvas');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        const ctx = canvas.getContext('2d');
+
+        // Draw the starfield canvas first
+        const starfield = document.getElementById('starfield');
+        if (starfield) ctx.drawImage(starfield, 0, 0);
+
+        // For game screenshots during emulator play, grab the emulator canvas
+        const emuCanvas = document.querySelector('#emuGame canvas');
+        if (emuCanvas) {
+            ctx.drawImage(emuCanvas, 0, 0, canvas.width, canvas.height);
+        }
+
+        // Convert to base64 JPEG (smaller than PNG)
+        const base64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+
+        // Show a prompt for the user's question
+        const question = prompt('What do you want to ask CatByte about this screenshot?');
+        if (!question) return;
+
+        // Show in chat — open panel if hidden
+        if ($('catbytePanel').classList.contains('hidden')) {
+            $('catbytePanel').classList.remove('hidden');
+        }
+
+        appendChat('user', '\uD83D\uDCF8 ' + question);
+        state.chatHistory.push({ role: 'user', content: '[Screenshot] ' + question });
+
+        // Send to vision endpoint
+        const game = state.filteredGames[state.selectedIndex];
+        const r = await fetch('/api/catbyte/chat-vision', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                message: question,
+                image: base64,
+                history: state.chatHistory.slice(-6),
+                game_context: game?.name || '',
+            }),
+        });
+        const d = await r.json();
+        appendChat('bot', d.response);
+        state.chatHistory.push({ role: 'assistant', content: d.response });
+    } catch (err) {
+        console.error('Screenshot capture failed:', err);
+        appendChat('bot', '\uD83D\uDE3F Screenshot capture failed. Try again!');
+    }
 }
 
 // ── Settings ───────────────────────────────────────────────────────────────
@@ -1085,6 +1445,93 @@ async function connectSteam() {
     }
 }
 
+// ── Browse Folder (pywebview native dialog) ───────────────────────────────
+
+async function browseFolder(inputId) {
+    // pywebview.api is only available when running in pywebview desktop window
+    if (typeof pywebview !== 'undefined' && pywebview.api && pywebview.api.browse_folder) {
+        try {
+            const currentVal = $(inputId)?.value || '';
+            const path = await pywebview.api.browse_folder('Select Folder', currentVal);
+            if (path && $(inputId)) {
+                $(inputId).value = path;
+                // Trigger validation
+                validateDirInput(inputId);
+            }
+        } catch (e) {
+            console.warn('Browse dialog failed:', e);
+        }
+    } else {
+        // Fallback for browser dev mode — flash hint
+        const input = $(inputId);
+        if (input) {
+            input.placeholder = 'Paste a folder path (browse available in desktop mode)';
+            input.focus();
+            setTimeout(() => {
+                input.placeholder = input.dataset.originalPlaceholder || 'Path...';
+            }, 3000);
+        }
+    }
+}
+
+async function browseFile(inputId, fileTypes) {
+    if (typeof pywebview !== 'undefined' && pywebview.api && pywebview.api.browse_file) {
+        try {
+            const path = await pywebview.api.browse_file('Select File', '', fileTypes || []);
+            if (path && $(inputId)) {
+                $(inputId).value = path;
+            }
+        } catch (e) {
+            console.warn('Browse dialog failed:', e);
+        }
+    }
+}
+
+// ── Directory Validation ──────────────────────────────────────────────────
+
+let _validateTimer = null;
+
+function validateDirInput(inputId) {
+    const input = $(inputId);
+    if (!input) return;
+    const path = input.value.trim();
+    const validationId = inputId.replace('Input', 'Validation').replace('Dir', 'Dir');
+
+    const validationEl = $(validationId);
+    if (!validationEl) return;
+
+    if (!path) {
+        validationEl.className = 'dir-validation';
+        validationEl.textContent = '';
+        return;
+    }
+
+    clearTimeout(_validateTimer);
+    validationEl.className = 'dir-validation checking';
+    validationEl.textContent = 'Checking...';
+
+    _validateTimer = setTimeout(async () => {
+        try {
+            const r = await fetch('/api/validate-path', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path }),
+            });
+            const d = await r.json();
+            if (d.valid) {
+                validationEl.className = 'dir-validation valid';
+                validationEl.textContent = `\u2713 Valid \u2014 ${d.message}`;
+            } else {
+                validationEl.className = 'dir-validation invalid';
+                validationEl.textContent = `\u2717 ${d.message}`;
+            }
+        } catch {
+            validationEl.className = 'dir-validation invalid';
+            validationEl.textContent = '\u2717 Could not validate';
+        }
+    }, 300);
+}
+
 async function toggleShowUninstalled() {
     try {
         const r = await fetch('/api/settings/show-uninstalled', { method: 'POST' });
@@ -1113,10 +1560,24 @@ function switchSettingsTab(tabId) {
 }
 
 async function renderSettings() {
-    // ── Accounts ──
+    await Promise.all([
+        renderAccountsTab(),
+        renderDirectoriesTab(),
+        renderEmulationTab(),
+        renderCatbyteTab(),
+    ]);
+}
+
+// ── Accounts Tab ──────────────────────────────────────────────────────────
+
+async function renderAccountsTab() {
     try {
-        const r = await fetch('/api/accounts');
-        const accounts = await r.json();
+        const [accountsResp, epicManifestResp] = await Promise.all([
+            fetch('/api/accounts'),
+            fetch('/api/epic/manifest-count'),
+        ]);
+        const accounts = await accountsResp.json();
+        const epicManifest = await epicManifestResp.json();
 
         let accountsHtml = '';
 
@@ -1157,7 +1618,7 @@ async function renderSettings() {
                         <div class="account-name">GOG Galaxy</div>
                         <div class="account-detail">${galaxy.enabled
                             ? `${platCount} platform${platCount !== 1 ? 's' : ''} connected`
-                            : 'Available — click to enable'}</div>
+                            : 'Available \u2014 click to enable'}</div>
                         ${galaxy.enabled && galaxy.connected_platforms?.length ? `
                             <div class="galaxy-platforms">
                                 ${galaxy.connected_platforms.map(p =>
@@ -1170,36 +1631,47 @@ async function renderSettings() {
                 </div>`;
         }
 
-        // Epic
+        // Epic — reads owned games from local catalog cache (like GOG Galaxy)
         const epic = accounts.epic || {};
-        if (epic.authenticated) {
+        const epicInstalledCount = epicManifest.count || 0;
+        const epicOwnedCount = epicManifest.owned_count || 0;
+        const epicLauncher = epic.launcher_installed || epicManifest.launcher_installed;
+        const epicCatalog = epic.catalog_available || epicManifest.catalog_available;
+        const epicHasGames = epicOwnedCount > 0 || epicInstalledCount > 0;
+
+        if (epicCatalog && epicHasGames) {
+            // Epic catalog found with owned games — fully working (like Steam connected / GOG enabled)
+            const detail = epicOwnedCount > 0
+                ? `${epicOwnedCount} owned game${epicOwnedCount !== 1 ? 's' : ''}${epicInstalledCount > 0 ? ` \u2014 ${epicInstalledCount} installed` : ''}`
+                : `${epicInstalledCount} installed game${epicInstalledCount !== 1 ? 's' : ''}`;
             accountsHtml += `
                 <div class="account-card">
                     <div class="account-icon">🏔️</div>
                     <div class="account-info">
                         <div class="account-name">Epic Games</div>
-                        <div class="account-detail">Connected via legendary</div>
+                        <div class="account-detail">${detail}</div>
                     </div>
                     <div class="account-status connected"></div>
                 </div>`;
-        } else if (epic.legendary_installed) {
+        } else if (epicLauncher) {
+            // Launcher installed but no catalog cache (not logged in yet or empty)
             accountsHtml += `
                 <div class="account-card">
                     <div class="account-icon">🏔️</div>
                     <div class="account-info">
                         <div class="account-name">Epic Games</div>
-                        <div class="account-detail">Not logged in</div>
+                        <div class="account-detail">Launcher detected \u2014 log in to Epic to see your library</div>
                     </div>
                     <div class="account-status disconnected"></div>
-                    <button class="account-btn" id="btnEpicAuth">Login</button>
                 </div>`;
         } else {
+            // No Epic detected at all
             accountsHtml += `
                 <div class="account-card">
                     <div class="account-icon">🏔️</div>
                     <div class="account-info">
                         <div class="account-name">Epic Games</div>
-                        <div class="account-detail">Install legendary: pip install legendary-gl</div>
+                        <div class="account-detail">Not detected \u2014 install Epic Games Launcher to get started</div>
                     </div>
                     <div class="account-status disconnected"></div>
                 </div>`;
@@ -1231,11 +1703,10 @@ async function renderSettings() {
                 setTimeout(async () => { await loadGames(); applyFilter(); }, 3000);
             });
         }
-
         const btnEpicAuth = document.getElementById('btnEpicAuth');
         if (btnEpicAuth) {
             btnEpicAuth.addEventListener('click', async () => {
-                btnEpicAuth.textContent = 'Opening browser...';
+                btnEpicAuth.textContent = 'Connecting...';
                 btnEpicAuth.disabled = true;
                 const r = await fetch('/api/accounts/epic/auth', { method: 'POST' });
                 const d = await r.json();
@@ -1244,12 +1715,11 @@ async function renderSettings() {
                     setTimeout(async () => { await loadGames(); applyFilter(); }, 5000);
                 } else {
                     btnEpicAuth.textContent = d.message || 'Failed';
-                    setTimeout(() => { btnEpicAuth.textContent = 'Login'; btnEpicAuth.disabled = false; }, 3000);
+                    setTimeout(() => { btnEpicAuth.textContent = 'Import Full Library'; btnEpicAuth.disabled = false; }, 3000);
                 }
             });
         }
 
-        // Hide steam connect form if already connected
         if (steam.connected) {
             $('steamConnectSection').classList.add('hidden');
         }
@@ -1257,12 +1727,14 @@ async function renderSettings() {
 
     // ── Show/Hide Uninstalled toggle ──
     try {
-        const r = await fetch('/api/stores');  // reuse to check settings
-        const settings = await (await fetch('/api/games')).json();  // check current state
-        // Just read the setting from a game's installed state
-    } catch {}
-    // We'll fetch settings state via a dedicated check
-    $('btnToggleUninstalled').textContent = 'Toggle Show Uninstalled Games';
+        const uResp = await fetch('/api/settings/show-uninstalled');
+        const uData = await uResp.json();
+        $('btnToggleUninstalled').textContent = uData.show_uninstalled
+            ? 'Hide Uninstalled Games'
+            : 'Show Uninstalled Games';
+    } catch {
+        $('btnToggleUninstalled').textContent = 'Toggle Show Uninstalled Games';
+    }
 
     // ── Detected Stores ──
     const storeNames = {
@@ -1272,13 +1744,21 @@ async function renderSettings() {
     $('settingsStores').innerHTML = Object.entries(state.stores)
         .map(([k, v]) => `<div class="store-badge"><span class="store-status ${v ? 'detected' : 'missing'}"></span>${storeNames[k] || k}</div>`)
         .join('');
+}
 
+// ── Directories Tab ───────────────────────────────────────────────────────
+
+async function renderDirectoriesTab() {
     // ROM dirs
     try {
         const r = await fetch('/api/rom-dirs');
         const dirs = await r.json();
         $('settingsRomDirs').innerHTML = dirs.map(d => `
-            <div class="dir-entry"><span>${escapeHtml(d)}</span><button class="dir-remove" data-dir="${escapeAttr(d)}" data-type="rom">&times;</button></div>
+            <div class="dir-entry">
+                <span class="dir-icon">\uD83D\uDCC2</span>
+                <span>${escapeHtml(d)}</span>
+                <button class="dir-remove" data-dir="${escapeAttr(d)}" data-type="rom">&times;</button>
+            </div>
         `).join('') || '<div style="color:var(--text-dim);font-size:12px;padding:4px 0">No ROM directories configured</div>';
     } catch {}
 
@@ -1287,44 +1767,13 @@ async function renderSettings() {
         const r = await fetch('/api/local-dirs');
         const dirs = await r.json();
         $('settingsLocalDirs').innerHTML = dirs.map(d => `
-            <div class="dir-entry"><span>${escapeHtml(d)}</span><button class="dir-remove" data-dir="${escapeAttr(d)}" data-type="local">&times;</button></div>
+            <div class="dir-entry">
+                <span class="dir-icon">\uD83C\uDFAE</span>
+                <span>${escapeHtml(d)}</span>
+                <button class="dir-remove" data-dir="${escapeAttr(d)}" data-type="local">&times;</button>
+            </div>
         `).join('') || '<div style="color:var(--text-dim);font-size:12px;padding:4px 0">No local game directories configured</div>';
     } catch {}
-
-    // BIOS dirs + status
-    try {
-        const bd = await fetch('/api/bios/dirs');
-        const biosDirs = await bd.json();
-        $('settingsBiosDirs').innerHTML = biosDirs.map(d => `
-            <div class="dir-entry"><span>${escapeHtml(d)}</span><button class="dir-remove" data-dir="${escapeAttr(d)}" data-type="bios">&times;</button></div>
-        `).join('') || '<div style="color:var(--text-dim);font-size:12px;padding:4px 0">No BIOS directories configured</div>';
-
-        const bs = await fetch('/api/bios/status');
-        const biosStatus = await bs.json();
-        let biosHtml = '<div style="display:flex;flex-wrap:wrap;gap:6px">';
-        for (const [sysId, info] of Object.entries(biosStatus)) {
-            const color = info.ready ? 'var(--success)' : 'var(--text-dim)';
-            const icon = info.ready ? '●' : '○';
-            biosHtml += `<span style="font-size:11px;color:${color}" title="${info.files.map(f => f.name + (f.found ? ' ✓' : ' ✗')).join(', ')}">${icon} ${info.system_name}</span>`;
-        }
-        biosHtml += '</div>';
-        $('settingsBiosStatus').innerHTML = biosHtml;
-    } catch {}
-
-    // Systems
-    const systems = {
-        snes: 'SNES', nes: 'NES', gba: 'GBA', gb: 'GB', gbc: 'GBC',
-        n64: 'N64', nds: 'NDS', megadrive: 'Genesis', mastersystem: 'Master System',
-        gamegear: 'Game Gear', atari2600: 'Atari 2600', psx: 'PS1', ps2: 'PS2',
-        ps3: 'PS3', psp: 'PSP', dreamcast: 'Dreamcast', saturn: 'Saturn',
-        gamecube: 'GameCube', wii: 'Wii', neogeo: 'Neo Geo', fbneo: 'FBNeo',
-        cps1: 'CPS-1', cps2: 'CPS-2', cps3: 'CPS-3', mame: 'MAME', ngp: 'NGP'
-    };
-    $('settingsVisibleSystems').innerHTML = Object.entries(systems)
-        .map(([id, name]) => {
-            const hidden = state.hiddenSystems.has(id);
-            return `<button class="system-toggle ${hidden ? 'hidden-sys' : 'active'}" data-system="${id}">${name}</button>`;
-        }).join('');
 
     // Bind remove buttons
     $$('.dir-remove').forEach(btn => {
@@ -1339,6 +1788,87 @@ async function renderSettings() {
             renderSettings();
         });
     });
+}
+
+// ── Emulation Tab ─────────────────────────────────────────────────────────
+
+const SYSTEM_ICONS = {
+    snes: '\uD83C\uDFAE', nes: '\uD83D\uDD79\uFE0F', gba: '\uD83D\uDCF1', gb: '\uD83D\uDCDF',
+    gbc: '\uD83C\uDF08', n64: '\uD83D\uDD79\uFE0F', nds: '\u270F\uFE0F', megadrive: '\uD83D\uDC99',
+    mastersystem: '\uD83D\uDD35', gamegear: '\uD83D\uDD0D', atari2600: '\uD83D\uDD78\uFE0F',
+    psx: '\uD83D\uDCBF', ps2: '\uD83D\uDCBF', ps3: '\uD83C\uDFAE', psp: '\uD83C\uDFAE',
+    dreamcast: '\uD83C\uDF00', saturn: '\uD83E\uDE90', gamecube: '\uD83D\uDFEA', wii: '\u2B1C',
+    neogeo: '\uD83C\uDFB0', fbneo: '\uD83D\uDD25', cps1: '\uD83E\uDD4A', cps2: '\uD83E\uDD4A',
+    cps3: '\uD83E\uDD4A', mame: '\uD83D\uDC7E', ngp: '\uD83D\uDCDF',
+};
+
+async function renderEmulationTab() {
+    // BIOS dirs + status
+    try {
+        const [bdResp, bsResp] = await Promise.all([
+            fetch('/api/bios/dirs'),
+            fetch('/api/bios/status'),
+        ]);
+        const biosDirs = await bdResp.json();
+        const biosStatus = await bsResp.json();
+
+        $('settingsBiosDirs').innerHTML = biosDirs.map(d => `
+            <div class="dir-entry">
+                <span class="dir-icon">\uD83D\uDCC1</span>
+                <span>${escapeHtml(d)}</span>
+                <button class="dir-remove" data-dir="${escapeAttr(d)}" data-type="bios">&times;</button>
+            </div>
+        `).join('') || '<div style="color:var(--text-dim);font-size:12px;padding:4px 0">No BIOS directories configured</div>';
+
+        // BIOS cards grid
+        let biosHtml = '';
+        for (const [sysId, info] of Object.entries(biosStatus)) {
+            const ready = info.ready;
+            const fileDetails = (info.files || [])
+                .map(f => `${f.name}: ${f.found ? 'Found' : 'Missing'}`)
+                .join('\n');
+            biosHtml += `
+                <div class="bios-card ${ready ? 'ready' : ''}" title="${escapeAttr(fileDetails)}">
+                    <span class="bios-card-dot ${ready ? 'ready' : 'missing'}"></span>
+                    <div>
+                        <div class="bios-card-name">${escapeHtml(info.system_name || sysId)}</div>
+                        <div class="bios-card-files">${(info.files || []).filter(f => f.found).length}/${(info.files || []).length} files</div>
+                    </div>
+                </div>`;
+        }
+        $('settingsBiosStatus').innerHTML = biosHtml;
+
+        // Re-bind BIOS dir remove buttons
+        $('settingsBiosDirs').querySelectorAll('.dir-remove').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                await fetch('/api/bios/dirs', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: btn.dataset.dir }),
+                });
+                renderEmulationTab();
+            });
+        });
+    } catch {}
+
+    // Systems with icons
+    const systems = {
+        snes: 'SNES', nes: 'NES', gba: 'GBA', gb: 'GB', gbc: 'GBC',
+        n64: 'N64', nds: 'NDS', megadrive: 'Genesis', mastersystem: 'Master System',
+        gamegear: 'Game Gear', atari2600: 'Atari 2600', psx: 'PS1', ps2: 'PS2',
+        ps3: 'PS3', psp: 'PSP', dreamcast: 'Dreamcast', saturn: 'Saturn',
+        gamecube: 'GameCube', wii: 'Wii', neogeo: 'Neo Geo', fbneo: 'FBNeo',
+        cps1: 'CPS-1', cps2: 'CPS-2', cps3: 'CPS-3', mame: 'MAME', ngp: 'NGP'
+    };
+    $('settingsVisibleSystems').innerHTML = Object.entries(systems)
+        .map(([id, name]) => {
+            const hidden = state.hiddenSystems.has(id);
+            const icon = SYSTEM_ICONS[id] || '\uD83C\uDFAE';
+            return `<button class="system-toggle ${hidden ? 'hidden-sys' : 'active'}" data-system="${id}">
+                <span class="sys-icon">${icon}</span>
+                <span class="sys-name">${name}</span>
+            </button>`;
+        }).join('');
 
     // Bind system toggles
     $$('.system-toggle').forEach(btn => {
@@ -1357,16 +1887,272 @@ async function renderSettings() {
     });
 }
 
+// ── CatByte Settings Tab ──────────────────────────────────────────────────
+
+async function renderCatbyteTab() {
+    try {
+        const [configResp, presetsResp] = await Promise.all([
+            fetch('/api/catbyte/config'),
+            fetch('/api/catbyte/presets'),
+        ]);
+        const config = await configResp.json();
+        const presets = await presetsResp.json();
+
+        // Backend selector cards
+        const backendOrder = ['openclaw', 'ollama', 'lmstudio', 'openai', 'custom'];
+        let backendHtml = '';
+        for (const key of backendOrder) {
+            const p = presets[key];
+            if (!p) continue;
+            const selected = config.backend === key;
+            const badgeClass = p.local ? 'local' : 'cloud';
+            const badgeText = p.local ? 'Local' : 'Cloud';
+            backendHtml += `
+                <div class="backend-card ${selected ? 'selected' : ''}" data-backend="${key}">
+                    <div class="backend-card-header">
+                        <span class="backend-card-radio"></span>
+                        <span class="backend-card-name">${escapeHtml(p.name)}</span>
+                        <span class="backend-card-badge ${badgeClass}">${badgeText}</span>
+                    </div>
+                    <div class="backend-card-desc">${escapeHtml(p.description)}</div>
+                </div>`;
+        }
+        $('catbyteBackendSelector').innerHTML = backendHtml;
+
+        // Bind backend card clicks
+        $$('.backend-card').forEach(card => {
+            card.addEventListener('click', async () => {
+                const backend = card.dataset.backend;
+                await fetch('/api/catbyte/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ backend }),
+                });
+                renderCatbyteTab();
+            });
+        });
+
+        // Custom fields (URL, API key, model) based on selected backend
+        const preset = presets[config.backend] || {};
+        let fieldsHtml = '';
+
+        if (config.backend === 'custom' || config.backend === 'openai') {
+            if (config.backend === 'custom') {
+                fieldsHtml += `
+                    <div class="settings-field">
+                        <label class="settings-label">Base URL</label>
+                        <input type="text" class="settings-input" id="catbyteBaseUrl"
+                               value="${escapeAttr(config.base_url || '')}"
+                               placeholder="http://localhost:8080">
+                    </div>`;
+            }
+            fieldsHtml += `
+                <div class="settings-field">
+                    <label class="settings-label">API Key</label>
+                    <input type="password" class="settings-input" id="catbyteApiKey"
+                           value="${config.has_api_key ? '••••••••' : ''}"
+                           placeholder="${preset.api_key_required ? 'Required' : 'Optional'}">
+                </div>`;
+        }
+
+        // Model field for backends that support multiple models
+        if (['openclaw', 'ollama', 'lmstudio', 'openai', 'custom'].includes(config.backend)) {
+            fieldsHtml += `
+                <div class="settings-field">
+                    <label class="settings-label">Model</label>
+                    <div class="settings-input-row">
+                        <input type="text" class="settings-input" id="catbyteModel"
+                               value="${escapeAttr(config.model || '')}"
+                               placeholder="${escapeAttr(preset.default_model || 'default')}">
+                        <button class="btn-small" id="btnRefreshModels" title="Refresh available models">&#8635;</button>
+                    </div>
+                    <div id="catbyteModelList" class="catbyte-model-list"></div>
+                </div>`;
+        }
+
+        // Save button for custom fields
+        if (fieldsHtml) {
+            fieldsHtml += `
+                <button class="btn-small" id="btnSaveCatbyteConfig" style="margin-top:4px">Save</button>`;
+        }
+
+        $('catbyteCustomFields').innerHTML = fieldsHtml;
+
+        // Bind save button
+        const btnSave = document.getElementById('btnSaveCatbyteConfig');
+        if (btnSave) {
+            btnSave.addEventListener('click', async () => {
+                const updates = {};
+                const urlInput = document.getElementById('catbyteBaseUrl');
+                const keyInput = document.getElementById('catbyteApiKey');
+                const modelInput = document.getElementById('catbyteModel');
+                if (urlInput) updates.base_url = urlInput.value.trim();
+                if (keyInput && keyInput.value && !keyInput.value.startsWith('\u2022'))
+                    updates.api_key = keyInput.value.trim();
+                if (modelInput) updates.model = modelInput.value.trim();
+
+                btnSave.textContent = 'Saving...';
+                await fetch('/api/catbyte/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(updates),
+                });
+                btnSave.textContent = 'Saved!';
+                setTimeout(() => { btnSave.textContent = 'Save'; }, 1500);
+            });
+        }
+
+        // Bind refresh models button
+        const btnRefresh = document.getElementById('btnRefreshModels');
+        if (btnRefresh) {
+            btnRefresh.addEventListener('click', async () => {
+                btnRefresh.textContent = '...';
+                btnRefresh.disabled = true;
+                try {
+                    const r = await fetch('/api/catbyte/models');
+                    const models = await r.json();
+                    const listEl = $('catbyteModelList');
+                    if (listEl && models.length > 0) {
+                        listEl.innerHTML = models.slice(0, 15).map(m =>
+                            `<span class="about-tech-tag" style="cursor:pointer;margin-top:4px" data-model="${escapeAttr(m)}">${escapeHtml(m)}</span>`
+                        ).join(' ');
+                        listEl.querySelectorAll('[data-model]').forEach(tag => {
+                            tag.addEventListener('click', () => {
+                                const modelInput = document.getElementById('catbyteModel');
+                                if (modelInput) modelInput.value = tag.dataset.model;
+                            });
+                        });
+                    } else if (listEl) {
+                        listEl.innerHTML = '<span style="font-size:11px;color:var(--text-dim)">No models found \u2014 is the backend running?</span>';
+                    }
+                } catch {}
+                btnRefresh.textContent = '\u21BB';
+                btnRefresh.disabled = false;
+            });
+        }
+
+        // Toggle switches
+        const catPunsToggle = $('toggleCatPuns');
+        const gameAwareToggle = $('toggleGameAwareness');
+        if (catPunsToggle) {
+            catPunsToggle.setAttribute('aria-checked', config.cat_puns ? 'true' : 'false');
+            catPunsToggle.onclick = async () => {
+                const newVal = catPunsToggle.getAttribute('aria-checked') !== 'true';
+                catPunsToggle.setAttribute('aria-checked', newVal);
+                await fetch('/api/catbyte/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cat_puns: newVal }),
+                });
+            };
+        }
+        if (gameAwareToggle) {
+            gameAwareToggle.setAttribute('aria-checked', config.game_awareness ? 'true' : 'false');
+            gameAwareToggle.onclick = async () => {
+                const newVal = gameAwareToggle.getAttribute('aria-checked') !== 'true';
+                gameAwareToggle.setAttribute('aria-checked', newVal);
+                await fetch('/api/catbyte/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ game_awareness: newVal }),
+                });
+            };
+        }
+
+        // Setup hint
+        $('catbyteSetupHint').innerHTML = escapeHtml(preset.setup_hint || '').replace(
+            /`([^`]+)`/g, '<code>$1</code>'
+        );
+
+        // Check connection status
+        const statusResp = await fetch('/api/catbyte/status');
+        const status = await statusResp.json();
+        const dot = $('catbyteConnDot');
+        const text = $('catbyteConnText');
+        if (status.status === 'online') {
+            dot.className = 'catbyte-conn-dot online';
+            text.textContent = `Connected \u2014 ${status.backend_name || status.backend} (${status.model || 'default'})`;
+        } else {
+            dot.className = 'catbyte-conn-dot';
+            text.textContent = status.message || 'Offline';
+        }
+    } catch (e) {
+        console.error('CatByte settings error:', e);
+    }
+}
+
+// Bind test connection button
+function bindCatbyteTest() {
+    const btn = $('btnTestCatbyte');
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+        btn.textContent = 'Testing...';
+        btn.disabled = true;
+        try {
+            const r = await fetch('/api/catbyte/test', { method: 'POST' });
+            const d = await r.json();
+            const dot = $('catbyteConnDot');
+            const text = $('catbyteConnText');
+            if (d.success) {
+                dot.className = 'catbyte-conn-dot online';
+                text.textContent = d.message;
+                // Also refresh the main CatByte status
+                checkCatbyteStatus();
+            } else {
+                dot.className = 'catbyte-conn-dot error';
+                text.textContent = d.message;
+            }
+        } catch {
+            $('catbyteConnDot').className = 'catbyte-conn-dot error';
+            $('catbyteConnText').textContent = 'Network error';
+        }
+        btn.textContent = 'Test Connection';
+        btn.disabled = false;
+    });
+}
+
 async function addRomDir() {
     const input = $('romDirInput');
     const path = input.value.trim();
     if (!path) return;
+
+    const addBtn = $('addRomDir');
+    addBtn.textContent = 'Adding...';
+    addBtn.disabled = true;
+
     await fetch('/api/rom-dirs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path }),
     });
+
+    // Scan preview
+    try {
+        const scanResp = await fetch('/api/scan-rom-dir', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path }),
+        });
+        const scanData = await scanResp.json();
+        const preview = $('romDirPreview');
+        if (preview && scanData.total > 0) {
+            let tagsHtml = Object.entries(scanData.systems)
+                .sort((a, b) => b[1] - a[1])
+                .map(([sys, count]) => `<span class="dir-preview-tag">${escapeHtml(sys)}: ${count}</span>`)
+                .join('');
+            preview.innerHTML = `
+                <div class="dir-preview-title">Found ${scanData.total} ROM files</div>
+                <div class="dir-preview-systems">${tagsHtml}</div>`;
+            preview.classList.remove('hidden');
+            // Auto-hide after 8 seconds
+            setTimeout(() => preview.classList.add('hidden'), 8000);
+        }
+    } catch {}
+
     input.value = '';
+    $('romDirValidation').textContent = '';
+    addBtn.textContent = 'Add';
+    addBtn.disabled = false;
     renderSettings();
     setTimeout(async () => { await loadGames(); applyFilter(); }, 3000);
 }
@@ -1375,12 +2161,20 @@ async function addLocalDir() {
     const input = $('localDirInput');
     const path = input.value.trim();
     if (!path) return;
+
+    const addBtn = $('addLocalDir');
+    addBtn.textContent = 'Adding...';
+    addBtn.disabled = true;
+
     await fetch('/api/local-dirs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path }),
     });
     input.value = '';
+    $('localDirValidation').textContent = '';
+    addBtn.textContent = 'Add';
+    addBtn.disabled = false;
     renderSettings();
     await fetch('/api/rescan', { method: 'POST' });
     setTimeout(async () => { await loadGames(); applyFilter(); }, 3000);
@@ -1390,13 +2184,20 @@ async function addBiosDir() {
     const input = $('biosDirInput');
     const path = input.value.trim();
     if (!path) return;
+
+    const addBtn = $('addBiosDir');
+    addBtn.textContent = 'Adding...';
+    addBtn.disabled = true;
+
     await fetch('/api/bios/dirs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path }),
     });
     input.value = '';
-    renderSettings();
+    addBtn.textContent = 'Add';
+    addBtn.disabled = false;
+    renderEmulationTab();
 }
 
 async function rescanLibrary() {
@@ -1512,12 +2313,6 @@ function debounce(fn, ms) {
     return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
 }
 
-function formatSize(bytes) {
-    if (!bytes) return '';
-    const u = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    return (bytes / Math.pow(1024, i)).toFixed(1) + ' ' + u[i];
-}
 
 // ── Gamepad Support ─────────────────────────────────────────────────────────
 
