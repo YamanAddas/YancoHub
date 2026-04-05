@@ -3,17 +3,16 @@ YancoHub — Main Entry Point
 Starts Flask backend, waits for health check, then opens the window.
 """
 
-import os
 import sys
 import time
 import subprocess
-import signal
 import requests
 import threading
+from pathlib import Path
 
-PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
-FLASK_PORT = 8745
-OPENCLAW_PORT = 18789
+from constants import FLASK_PORT, OPENCLAW_PORT
+
+PROJECT_DIR = Path(__file__).parent
 
 processes = []
 
@@ -21,8 +20,8 @@ processes = []
 def start_flask():
     """Start the Flask backend."""
     proc = subprocess.Popen(
-        [sys.executable, os.path.join(PROJECT_DIR, 'app.py')],
-        cwd=PROJECT_DIR,
+        [sys.executable, str(PROJECT_DIR / 'app.py')],
+        cwd=str(PROJECT_DIR),
     )
     processes.append(proc)
     return proc
@@ -31,22 +30,23 @@ def start_flask():
 def start_openclaw():
     """Start OpenClaw gateway (optional, non-critical)."""
     try:
-        openclaw_path = os.path.expanduser('~/.openclaw')
-        if not os.path.exists(openclaw_path):
+        openclaw_path = Path.home() / '.openclaw'
+        if not openclaw_path.exists():
             print("[YancoHub] OpenClaw not found — CatByte will be offline")
             return None
 
         # Try to find openclaw executable
         import shutil
+        import os
         openclaw_exe = shutil.which('openclaw')
         if not openclaw_exe:
             # Try common locations
             for p in [
-                os.path.join(os.environ.get('LOCALAPPDATA', ''), 'openclaw', 'openclaw.exe'),
-                os.path.join(os.environ.get('PROGRAMFILES', ''), 'OpenClaw', 'openclaw.exe'),
+                Path(os.environ.get('LOCALAPPDATA', '')) / 'openclaw' / 'openclaw.exe',
+                Path(os.environ.get('PROGRAMFILES', '')) / 'OpenClaw' / 'openclaw.exe',
             ]:
-                if os.path.exists(p):
-                    openclaw_exe = p
+                if p.exists():
+                    openclaw_exe = str(p)
                     break
 
         if not openclaw_exe:
@@ -54,7 +54,7 @@ def start_openclaw():
             return None
 
         proc = subprocess.Popen(
-            [openclaw_exe, 'serve', '--port', str(OPENCLAW_PORT)],
+            [openclaw_exe, 'gateway', '--port', str(OPENCLAW_PORT)],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )

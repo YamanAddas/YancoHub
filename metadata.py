@@ -2,13 +2,13 @@
 YancoHub Metadata Engine — Auto-fetches game metadata from free public APIs.
 
 Sources:
-  - IGDB (Twitch) — descriptions, genres, developer, publisher, ratings
-  - LibRetro thumbnails — retro game cover art URLs
-  - SteamGridDB — PC game artwork
-  - Steam CDN — Steam game artwork (direct URLs)
+  - Steam Store API — descriptions, genres, developer, publisher, ratings
+  - Wikipedia REST API — short summaries for non-Steam games (CC-BY-SA)
+
+Results cached in SQLite (cache/metadata.db) to avoid repeated requests.
 """
 
-import os
+
 import re
 import json
 import time
@@ -17,39 +17,11 @@ import sqlite3
 import requests
 from pathlib import Path
 
+from constants import LIBRETRO_SYSTEMS
+
 logger = logging.getLogger('yancohub.metadata')
 
 DB_PATH = Path(__file__).parent / 'cache' / 'metadata.db'
-
-# ── LibRetro thumbnail system name mapping ──────────────────────────────────
-
-LIBRETRO_SYSTEMS = {
-    'nes':          'Nintendo - Nintendo Entertainment System',
-    'snes':         'Nintendo - Super Nintendo Entertainment System',
-    'gb':           'Nintendo - Game Boy',
-    'gbc':          'Nintendo - Game Boy Color',
-    'gba':          'Nintendo - Game Boy Advance',
-    'n64':          'Nintendo - Nintendo 64',
-    'nds':          'Nintendo - Nintendo DS',
-    'megadrive':    'Sega - Mega Drive - Genesis',
-    'mastersystem': 'Sega - Master System - Mark III',
-    'gamegear':     'Sega - Game Gear',
-    'atari2600':    'Atari - 2600',
-    'psx':          'Sony - PlayStation',
-    'ps2':          'Sony - PlayStation 2',
-    'psp':          'Sony - PlayStation Portable',
-    'dreamcast':    'Sega - Dreamcast',
-    'saturn':       'Sega - Saturn',
-    'gamecube':     'Nintendo - GameCube',
-    'wii':          'Nintendo - Wii',
-    'neogeo':       'SNK - Neo Geo',
-    'ngp':          'SNK - Neo Geo Pocket',
-    'fbneo':        'FBNeo - Arcade Games',
-    'cps1':         'FBNeo - Arcade Games',
-    'cps2':         'FBNeo - Arcade Games',
-    'cps3':         'FBNeo - Arcade Games',
-    'mame':         'MAME',
-}
 
 LIBRETRO_THUMB_BASE = 'https://thumbnails.libretro.com'
 

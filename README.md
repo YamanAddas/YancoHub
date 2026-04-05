@@ -21,7 +21,7 @@ YancoHub is a unified PC game launcher that aggregates Steam, Epic, GOG, Xbox, E
 
 ### Game Library
 - **8 stores** — Steam, Epic, GOG, Xbox/Game Pass, EA, Ubisoft, Battle.net
-- **Account sync** — Steam Web API (full owned library), GOG Galaxy DB (multi-platform), Epic via legendary
+- **Account sync** — Steam Web API (full owned library), GOG Galaxy DB (multi-platform), Epic catalog cache (automatic)
 - **Local games** — Scan any directory for executables
 - **Retro ROMs** — 25 systems with auto-detection and deduplication
 
@@ -64,14 +64,17 @@ venv\Scripts\python launch.py
 2. Settings → Accounts → Connect Steam → paste API key + Steam ID/profile URL
 
 ### Connect Epic
-1. `pip install legendary-gl` then `legendary auth`
-2. Settings → Accounts → Epic → Login
+Epic games are detected automatically from the Epic Games Launcher's local catalog cache — just log in to the Epic Launcher and your owned games will appear in YancoHub. No extra tools needed.
 
 ### Add ROMs
 Settings → Directories → ROM Directories → Add a folder organized by system (e.g., `roms/snes/`, `roms/gba/`)
 
 ### BIOS
 Place BIOS files in `bios/` directory. Open-source GBA and PS1 BIOS included. See `bios/README.md`.
+
+## Security Note
+
+`userdata.json` stores your settings, including your Steam API key. This file is gitignored and local-only — **do not share it** or commit it to version control.
 
 ## Part of YancoVerse
 

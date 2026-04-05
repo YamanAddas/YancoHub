@@ -9,7 +9,7 @@ User opens app
   → launch.py opens pywebview window pointing at http://127.0.0.1:8745
   → Flask fires _initial_scan() in daemon thread
     → scanner.scan_all() reads registries, manifests, DBs, directories
-    → accounts module fetches Steam API / GOG Galaxy DB / Epic legendary
+    → accounts module fetches Steam API / GOG Galaxy DB / Epic catalog cache
     → _build_library() merges local + account games by ID then by name
     → enrichment thread fetches metadata (Steam Store + Wikipedia) and artwork (CDN cascade)
   → Frontend polls /api/games → renders carousel
@@ -86,17 +86,13 @@ Game IDs are the primary key for merging, deduplication, favorites, playtime, an
 | Local | `local_{hash}` | `local_c4d5e6f7a8b9` |
 | Retro ROM | `rom_{hash}` | `rom_a1b2c3d4e5f6` |
 
-### Known Bug: Epic ID Mismatch
+### ~~Known Bug: Epic ID Mismatch~~ FIXED
 
-**scanner.py** uses `epic_{make_game_id('epic', app_name)}` (MD5 hash) but **accounts.py** uses `epic_{app_name}` (raw string). These will never match during merge.
+Both scanner and accounts now use `epic_{app_name}` consistently.
 
-**Fix:** Use `epic_{app_name}` consistently in both files.
+### ~~Known Bug: GOG ID Mismatch~~ FIXED
 
-### Known Bug: GOG ID Mismatch
-
-**scanner.py** uses `gog_{registry_GAMEID}` but **accounts.py** uses `gog_{releaseKey_suffix}`. These may differ.
-
-**Fix:** Normalize both to the same format. The registry GAMEID is the most reliable since it comes from GOG's own installer.
+Both scanner and accounts now use consistent GOG ID format.
 
 ## Library Merge Logic
 
@@ -126,13 +122,13 @@ _scan_local_dir()   — Subdirectory scan for .exe files
 _scan_roms()        — System subdirectories → extension matching → dedup by format priority
 ```
 
-### Known Bug: GOG Galaxy DB Wrong Table
+### ~~Known Bug: GOG Galaxy DB Wrong Table~~ FIXED
 
-**scanner.py:316** queries `InstalledBaseProducts` which doesn't exist. The correct tables are `LibraryReleases`, `GamePieces`, `GamePieceTypes` (as used in accounts.py).
+Uses correct `LibraryReleases` table.
 
-### Known Bug: GOG Galaxy DB Not Read-Only
+### ~~Known Bug: GOG Galaxy DB Not Read-Only~~ FIXED
 
-**scanner.py:313** opens the DB in read-write mode. Must use `sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)`.
+Opens with `?mode=ro` URI.
 
 ## Launch Flow
 
@@ -157,23 +153,17 @@ _scan_roms()        — System subdirectories → extension matching → dedup b
     → session end MUST be signaled by exitEmulator() calling backend
 ```
 
-### Known Bug: Command Injection
+### ~~Known Bug: Command Injection~~ FIXED
 
-**app.py:276** uses `shell=True`. This is a security vulnerability — shell metacharacters in game paths/names could execute arbitrary commands.
+Uses `shell=False` with `shlex.split()`.
 
-**Fix:** Use `shell=False` with `shlex.split()` or argument lists. For emulator commands built as strings with quotes, parse them into lists properly.
+### ~~Known Bug: Emulator Session Never Ends~~ FIXED
 
-### Known Bug: Emulator Session Never Ends
+`exitEmulator()` calls `/api/session/end/<game_id>`.
 
-`exitEmulator()` in emulator.js doesn't call the backend to end the session. The `active_game_id` stays set forever.
+### ~~Known Bug: URL Monitor Unreliable~~ FIXED
 
-**Fix:** Add `fetch('/api/session/end/' + emuGameId, {method: 'POST'})` to `exitEmulator()` and create the endpoint.
-
-### Known Bug: URL Monitor Unreliable
-
-`_start_url_monitor()` matches game names against process names by splitting on spaces and checking if any word > 3 chars appears in any running process name. This is fundamentally broken for many games.
-
-**Better approach:** Timer-based with user prompt, or track the store launcher process itself.
+Uses process-snapshot diffing: snapshots PIDs before launch, identifies new large processes (>50MB), monitors those specific PIDs until exit. Falls back to 30-min timeout if no clear game process found. Manual session end always available via `/api/session/end/<game_id>`.
 
 ## Artwork Cascade
 

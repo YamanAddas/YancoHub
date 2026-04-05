@@ -321,6 +321,11 @@ document.addEventListener('keydown', (e) => {
         e.preventDefault();
         emuLoadState();
     }
+    if (e.key === 'F10') {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleCatbyte();
+    }
 }, true);
 
 // ── Utility ────────────────────────────────────────────────────────────────

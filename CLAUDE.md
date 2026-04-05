@@ -42,12 +42,13 @@ Storage:  userdata.json (settings/favorites/playtime) + cache/metadata.db (SQLit
 |------|----------------|
 | `app.py` | Flask routes, library builder, game launcher, process monitor |
 | `scanner.py` | Detect installed games from 8 stores + local dirs + ROM dirs |
-| `accounts.py` | Steam Web API, GOG Galaxy DB, Epic (legendary CLI) |
+| `accounts.py` | Steam Web API, GOG Galaxy DB, Epic catalog cache (+ legendary fallback) |
 | `metadata.py` | Steam Store API + Wikipedia REST API → SQLite cache |
 | `artwork.py` | Steam CDN → LibRetro thumbnails → SteamGridDB → fallback gradient |
 | `biosmanager.py` | Auto-detect BIOS files by filename/MD5, per-system readiness |
 | `userdata.py` | JSON persistence for settings, playtime, collections |
 | `catbyte.py` | OpenClaw proxy with offline fallback |
+| `constants.py` | Shared constants (ports, LIBRETRO_SYSTEMS, VALID_ART_TYPES) |
 | `static/js/app.js` | 3D hexagonal carousel, starfield, tabs, search, settings UI |
 | `static/js/emulator.js` | EmulatorJS integration (19 retro systems in-browser via WASM) |
 
@@ -97,7 +98,7 @@ Every change must meet ALL of these:
 - **pywebview blocks the main thread** — Flask runs in a subprocess, not a background thread
 - **Steam API rate limits** — always check `MetadataDB` cache before fetching; 0.2s delay between batch requests
 - **GOG Galaxy DB is read-only** — never write to `galaxy-2.0.db`; always open with `?mode=ro` URI
-- **legendary CLI requires prior auth** — user must `legendary auth` once manually
+- **Epic catalog cache** — `catcache.bin` at `ProgramData/Epic/EpicGamesLauncher/Data/Catalog/` is auto-populated when user logs into Epic Launcher; legendary CLI is a fallback only
 - **EmulatorJS loads from CDN** (`cdn.emulatorjs.org`) — needs internet for first retro game launch; cores cached by browser
 - **Windows registry keys vary by bitness** — use `KEY_READ | KEY_WOW64_32KEY` or `KEY_WOW64_64KEY`
 - **`userdata.json` is single source of truth** for user prefs — never split config across files

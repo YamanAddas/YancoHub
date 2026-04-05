@@ -4,10 +4,12 @@ YancoHub Accounts — Connect to game store accounts to fetch full libraries.
 Supports:
   - Steam Web API (API key + Steam ID) → all owned games
   - GOG Galaxy 2.0 database → all games from all connected platforms
+  - Epic Games local catalog cache → all owned games (no third-party tools needed)
 """
 
 import os
 import json
+import base64
 import logging
 import sqlite3
 import requests
@@ -135,7 +137,8 @@ class SteamAccount:
 
             data = resp.json()
             return data.get('response', {}).get('games', [])
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Failed to fetch recently played games: {e}")
             return []
 
 
@@ -157,7 +160,8 @@ def resolve_steam_vanity_url(api_key, vanity_name):
         if result.get('success') == 1:
             return result.get('steamid')
         return None
-    except Exception:
+    except Exception as e:
+        logger.debug(f"Failed to resolve Steam vanity URL '{vanity_name}': {e}")
         return None
 
 
@@ -188,17 +192,16 @@ class GogGalaxyDB:
 
         platforms = set()
         try:
-            conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True)
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT DISTINCT substr(releaseKey, 1, instr(releaseKey, '_') - 1)
-                FROM LibraryReleases
-                WHERE releaseKey LIKE '%_%'
-            """)
-            for (p,) in cursor.fetchall():
-                if p:
-                    platforms.add(p)
-            conn.close()
+            with sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT DISTINCT substr(releaseKey, 1, instr(releaseKey, '_') - 1)
+                    FROM LibraryReleases
+                    WHERE releaseKey LIKE '%_%'
+                """)
+                for (p,) in cursor.fetchall():
+                    if p:
+                        platforms.add(p)
         except Exception as e:
             logger.warning(f"GOG Galaxy DB read failed: {e}")
 
@@ -212,68 +215,66 @@ class GogGalaxyDB:
 
         games = []
         try:
-            conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True)
-            cursor = conn.cursor()
+            with sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True) as conn:
+                cursor = conn.cursor()
 
-            # Get type IDs we care about
-            # 157 = title, 80 = originalTitle, 77 = originalImages, 76 = media
-            type_map = {}
-            cursor.execute("SELECT id, type FROM GamePieceTypes")
-            for tid, ttype in cursor.fetchall():
-                type_map[tid] = ttype
+                # Get type IDs we care about
+                # 157 = title, 80 = originalTitle, 77 = originalImages, 76 = media
+                type_map = {}
+                cursor.execute("SELECT id, type FROM GamePieceTypes")
+                for tid, ttype in cursor.fetchall():
+                    type_map[tid] = ttype
 
-            title_ids = [tid for tid, t in type_map.items() if t in ('title', 'originalTitle')]
-            image_ids = [tid for tid, t in type_map.items() if t in ('originalImages', 'media')]
+                title_ids = [tid for tid, t in type_map.items() if t in ('title', 'originalTitle')]
+                image_ids = [tid for tid, t in type_map.items() if t in ('originalImages', 'media')]
 
-            # Get all owned release keys
-            cursor.execute("SELECT DISTINCT releaseKey FROM LibraryReleases")
-            release_keys = [r[0] for r in cursor.fetchall()]
+                # Get all owned release keys
+                cursor.execute("SELECT DISTINCT releaseKey FROM LibraryReleases")
+                release_keys = [r[0] for r in cursor.fetchall()]
 
-            # Fetch titles
-            titles = {}
-            if title_ids:
-                ph = ','.join('?' * len(title_ids))
-                cursor.execute(f"""
-                    SELECT releaseKey, gamePieceTypeId, value
-                    FROM GamePieces
-                    WHERE gamePieceTypeId IN ({ph})
-                """, title_ids)
-                for rk, tid, val in cursor.fetchall():
-                    try:
-                        data = json.loads(val)
-                        title = data.get('title', '') if isinstance(data, dict) else str(data)
-                        if title and rk not in titles:
-                            titles[rk] = title
-                    except (json.JSONDecodeError, TypeError):
-                        pass
+                # Fetch titles
+                titles = {}
+                if title_ids:
+                    ph = ','.join('?' * len(title_ids))
+                    cursor.execute(f"""
+                        SELECT releaseKey, gamePieceTypeId, value
+                        FROM GamePieces
+                        WHERE gamePieceTypeId IN ({ph})
+                    """, title_ids)
+                    for rk, tid, val in cursor.fetchall():
+                        try:
+                            data = json.loads(val)
+                            title = data.get('title', '') if isinstance(data, dict) else str(data)
+                            if title and rk not in titles:
+                                titles[rk] = title
+                        except (json.JSONDecodeError, TypeError):
+                            pass
 
-            # Fetch images
-            images = {}
-            if image_ids:
-                ph = ','.join('?' * len(image_ids))
-                cursor.execute(f"""
-                    SELECT releaseKey, value
-                    FROM GamePieces
-                    WHERE gamePieceTypeId IN ({ph})
-                """, image_ids)
-                for rk, val in cursor.fetchall():
-                    if rk in images:
-                        continue
-                    try:
-                        data = json.loads(val)
-                        if isinstance(data, dict):
-                            # Try various image keys Galaxy uses
-                            url = (data.get('verticalCover', '') or
-                                   data.get('background', '') or
-                                   data.get('squareIcon', ''))
-                            if url:
-                                images[rk] = url
-                        elif isinstance(data, str) and data.startswith('http'):
-                            images[rk] = data
-                    except (json.JSONDecodeError, TypeError):
-                        pass
-
-            conn.close()
+                # Fetch images
+                images = {}
+                if image_ids:
+                    ph = ','.join('?' * len(image_ids))
+                    cursor.execute(f"""
+                        SELECT releaseKey, value
+                        FROM GamePieces
+                        WHERE gamePieceTypeId IN ({ph})
+                    """, image_ids)
+                    for rk, val in cursor.fetchall():
+                        if rk in images:
+                            continue
+                        try:
+                            data = json.loads(val)
+                            if isinstance(data, dict):
+                                # Try various image keys Galaxy uses
+                                url = (data.get('verticalCover', '') or
+                                       data.get('background', '') or
+                                       data.get('squareIcon', ''))
+                                if url:
+                                    images[rk] = url
+                            elif isinstance(data, str) and data.startswith('http'):
+                                images[rk] = data
+                        except (json.JSONDecodeError, TypeError):
+                            pass
 
             # Build game list
             seen = set()
@@ -328,7 +329,108 @@ class GogGalaxyDB:
         return games
 
 
-# ── Epic Games (via legendary) ──────────────────────────────────────────────
+# ── Epic Games (local catalog cache) ───────────────────────────────────────
+
+class EpicCatalogDB:
+    """Read owned games from Epic Games Launcher's local catalog cache.
+
+    Epic stores the user's owned library in a base64-encoded JSON file:
+      ProgramData/Epic/EpicGamesLauncher/Data/Catalog/catcache.bin
+
+    This works automatically when Epic Launcher is installed and the user
+    has logged in at least once — no third-party tools needed.
+    """
+
+    LAUNCHER_DIR = Path(os.environ.get('PROGRAMDATA', 'C:/ProgramData')) / \
+                   "Epic" / "EpicGamesLauncher"
+    CATALOG_PATH = LAUNCHER_DIR / "Data" / "Catalog" / "catcache.bin"
+
+    def __init__(self, catalog_path: Path | None = None):
+        self.catalog_path = Path(catalog_path) if catalog_path else self.CATALOG_PATH
+
+    def is_launcher_installed(self) -> bool:
+        """Check if Epic Games Launcher directory exists."""
+        return self.LAUNCHER_DIR.exists()
+
+    def is_available(self) -> bool:
+        """Check if the catalog cache exists (user has logged in)."""
+        return self.catalog_path.exists()
+
+    def get_all_games(self) -> list[dict]:
+        """Fetch all owned games from the Epic catalog cache."""
+        if not self.is_available():
+            logger.info("Epic catalog cache not found")
+            return []
+
+        try:
+            with open(self.catalog_path, 'rb') as f:
+                raw = f.read()
+
+            decoded = base64.b64decode(raw)
+            catalog = json.loads(decoded)
+        except (base64.binascii.Error, json.JSONDecodeError) as e:
+            logger.error(f"Epic catalog cache decode failed: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"Epic catalog cache read failed: {e}")
+            return []
+
+        games = []
+        seen = set()
+
+        for item in catalog:
+            # Filter to actual games (skip DLC, engines, tools, etc.)
+            categories = item.get('categories', [])
+            cat_paths = [c.get('path', '') for c in categories]
+            if 'games' not in cat_paths and 'games/edition' not in cat_paths:
+                continue
+
+            title = item.get('title', '')
+            namespace = item.get('namespace', '')
+            if not title:
+                continue
+
+            # Get app ID from releaseInfo
+            release_info = item.get('releaseInfo', [])
+            app_name = release_info[0].get('appId', '') if release_info else ''
+            if not app_name:
+                app_name = item.get('entitlementName', '')
+
+            # Deduplicate (e.g. beta/test versions of same game)
+            dedup_key = title.lower().strip()
+            if dedup_key in seen:
+                continue
+            seen.add(dedup_key)
+
+            # Extract artwork from keyImages
+            artwork = {}
+            for img in item.get('keyImages', []):
+                img_type = img.get('type', '')
+                img_url = img.get('url', '')
+                if img_type == 'DieselGameBoxTall' and img_url:
+                    artwork['cover'] = img_url
+                elif img_type == 'DieselGameBox' and img_url:
+                    artwork['header'] = img_url
+                elif img_type == 'DieselGameBoxLogo' and img_url:
+                    artwork['logo'] = img_url
+
+            games.append({
+                'id': f'epic_{app_name}',
+                'name': title,
+                'source': 'epic',
+                'app_name': app_name,
+                'namespace': namespace,
+                'installed': False,  # Will be merged with local scan
+                'size': 0,
+                'artwork': artwork,
+                'launch_cmd': f'com.epicgames.launcher://apps/{namespace}?action=launch&silent=true' if namespace else '',
+            })
+
+        logger.info(f"Epic catalog: {len(games)} owned games")
+        return games
+
+
+# ── Epic Games (via legendary — optional) ──────────────────────────────────
 
 class EpicAccount:
     """Fetch Epic Games library using the 'legendary' CLI tool.

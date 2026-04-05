@@ -5,12 +5,10 @@ User points to any folder with BIOS files. YancoHub scans and auto-matches
 files to systems by known filenames and MD5 hashes.
 """
 
-import os
-import hashlib
 import logging
 from pathlib import Path
 
-logger = logging.getLogger('yancohub.bios')
+logger = logging.getLogger('yancohub.biosmanager')
 
 # ── Known BIOS database ────────────────────────────────────────────────────
 # Each system lists known BIOS files with optional MD5 for verification.
