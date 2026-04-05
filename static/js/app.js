@@ -31,6 +31,54 @@ const $ = (id) => document.getElementById(id);
 const $$ = (sel) => document.querySelectorAll(sel);
 const qs = (sel) => document.querySelector(sel);
 
+// ── Global Toast Notifications ────────────────────────────────────────────
+
+const TOAST_ICONS = {
+    success: '\u2714',  // ✔
+    error:   '\u2716',  // ✖
+    info:    '\u24D8',  // ⓘ
+};
+
+/**
+ * Show a toast notification.
+ * @param {string} message - Main text (supports HTML)
+ * @param {'success'|'error'|'info'} type - Toast variant
+ * @param {number} duration - Auto-dismiss ms (0 = sticky)
+ * @returns {HTMLElement} The toast element (for manual dismiss)
+ */
+function showToast(message, type = 'info', duration = 3500) {
+    const stack = $('toastStack');
+    if (!stack) return null;
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.innerHTML = `
+        <span class="toast-icon">${TOAST_ICONS[type] || TOAST_ICONS.info}</span>
+        <div class="toast-body">${message}</div>
+        <button class="toast-dismiss" aria-label="Dismiss">\u2715</button>
+    `;
+
+    const dismiss = () => {
+        toast.classList.add('toast-exit');
+        setTimeout(() => toast.remove(), 260);
+    };
+
+    toast.querySelector('.toast-dismiss').addEventListener('click', dismiss);
+
+    stack.appendChild(toast);
+
+    // Cap at 5 visible toasts
+    while (stack.children.length > 5) {
+        stack.firstElementChild.remove();
+    }
+
+    if (duration > 0) {
+        setTimeout(dismiss, duration);
+    }
+
+    return toast;
+}
+
 // ── Per-system fallback color gradients ────────────────────────────────────
 
 const SYS_COLORS = {
@@ -118,6 +166,8 @@ async function init() {
         $('splash').classList.add('fade-out');
         $('app').classList.remove('hidden');
         setTimeout(() => $('splash').style.display = 'none', 800);
+        // Start polling for artwork batch progress after splash
+        startArtworkProgressPoll();
     }, 400);
 
     bindEvents();
@@ -183,6 +233,51 @@ async function loadHiddenSystems() {
     } catch {}
 }
 
+// ── Artwork Progress Polling ──────────────────────────────────────────────
+
+let _artworkPollTimer = null;
+
+function startArtworkProgressPoll() {
+    if (_artworkPollTimer) return;
+    _artworkPollTimer = setInterval(pollArtworkProgress, 1500);
+    // First check immediately
+    pollArtworkProgress();
+}
+
+async function pollArtworkProgress() {
+    try {
+        const r = await fetch('/api/artwork/progress');
+        const p = await r.json();
+        const pill = $('artworkProgressPill');
+        const stack = $('toastStack');
+
+        if (p.active && p.total > 0) {
+            $('artworkProgressCount').textContent = p.fetched;
+            $('artworkProgressTotal').textContent = p.total;
+            pill.classList.remove('hidden');
+            if (stack) stack.classList.add('has-pill');
+        } else {
+            if (!pill.classList.contains('hidden') && p.done) {
+                // Was visible, now done — show completion toast
+                pill.classList.add('hidden');
+                if (stack) stack.classList.remove('has-pill');
+                if (p.fetched > 0) {
+                    showToast(`Artwork sync complete \u2014 <strong>${p.fetched}</strong> new images`, 'success');
+                }
+            }
+            if (p.done || !p.active) {
+                pill.classList.add('hidden');
+                if (stack) stack.classList.remove('has-pill');
+                clearInterval(_artworkPollTimer);
+                _artworkPollTimer = null;
+            }
+        }
+    } catch {
+        clearInterval(_artworkPollTimer);
+        _artworkPollTimer = null;
+    }
+}
+
 async function loadPlaytimes() {
     try {
         const r = await fetch('/api/playtime');
@@ -204,7 +299,7 @@ async function checkCatbyteStatus() {
     $('catbyteStatus').textContent = on ? (d && d.model ? `Online (${d.model.toUpperCase()})` : 'Online') : 'Offline';
     $('catbyteStatus').classList.toggle('online', on);
     $('btnCatbyte').classList.toggle('dimmed', !on);
-    $('btnCatbyte').title = on ? 'CatByte AI (Ctrl+B)' : 'CatByte offline — check Settings (Ctrl+B)';
+    $('btnCatbyte').title = on ? 'CatByte AI (F10)' : 'CatByte offline — check Settings (F10)';
 }
 
 // ── Filtering & Carousel ───────────────────────────────────────────────────
@@ -539,6 +634,7 @@ function showSurpriseReveal(game, callback) {
     const card = $('surpriseCard');
     const title = $('surpriseTitle');
     const subtitle = $('surpriseSubtitle');
+    if (!overlay || !card) { if (callback) callback(); return; }
 
     // Reset state
     overlay.classList.remove('hidden', 'surprise-reveal--active', 'surprise-reveal--exit');
@@ -733,21 +829,57 @@ function createCarouselCard(game, index, offset) {
     const inner = document.createElement('div');
     inner.className = 'carousel-card-inner';
 
-    if (game.artwork && (game.artwork.cover || game.artwork.header)) {
-        const artType = game.artwork.cover ? 'cover' : 'header';
+    // Always attempt artwork for retro games (LaunchBox lookup is on-demand),
+    // and for any game with pre-populated artwork URLs
+    const hasArtwork = (game.artwork && (game.artwork.cover || game.artwork.header));
+    const isRetro = game.source === 'retro';
+    if (hasArtwork || isRetro) {
+        const artType = (game.artwork && game.artwork.cover) ? 'cover' : 'cover';
         const art = document.createElement('div');
-        art.className = 'carousel-card-art shimmer';
+        art.className = 'carousel-card-art skeleton';
 
-        const img = new Image();
-        img.src = `/api/artwork/${game.id}/${artType}`;
-        img.onload = () => {
-            art.style.backgroundImage = `url('${img.src}')`;
-            art.classList.remove('shimmer');
+        // Skeleton icon while loading
+        const skelIcon = document.createElement('div');
+        skelIcon.className = 'skeleton-icon';
+        skelIcon.textContent = SOURCE_ICONS[game.source] || '\uD83C\uDFAE';
+        art.appendChild(skelIcon);
+
+        const loadArt = () => {
+            const img = new Image();
+            img.src = `/api/artwork/${game.id}/${artType}`;
+            img.onload = () => {
+                art.style.backgroundImage = `url('${img.src}')`;
+                art.classList.remove('skeleton');
+                art.classList.add('materialize');
+                art.innerHTML = '';  // remove skeleton icon + retry
+                setTimeout(() => art.classList.remove('materialize'), 500);
+            };
+            img.onerror = () => {
+                art.classList.remove('skeleton');
+                art.innerHTML = '';
+                applyFallbackGradient(art, game);
+                // Add retry icon
+                const retry = document.createElement('button');
+                retry.className = 'art-retry';
+                retry.title = 'Retry artwork';
+                retry.textContent = '\u21BB';  // ↻
+                retry.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    art.style.backgroundImage = '';
+                    art.style.background = '';
+                    art.className = 'carousel-card-art skeleton';
+                    art.innerHTML = '';
+                    const si = document.createElement('div');
+                    si.className = 'skeleton-icon';
+                    si.textContent = SOURCE_ICONS[game.source] || '\uD83C\uDFAE';
+                    art.appendChild(si);
+                    loadArt();
+                });
+                art.style.position = 'relative';
+                art.appendChild(retry);
+            };
         };
-        img.onerror = () => {
-            art.classList.remove('shimmer');
-            applyFallbackGradient(art, game);
-        };
+        loadArt();
         inner.appendChild(art);
     } else {
         const fb = document.createElement('div');
@@ -914,6 +1046,8 @@ function updateHeroBackdrop(game) {
     for (const t of artTypes) {
         if (artwork[t]) { artType = t; break; }
     }
+    // Retro games: always try cover even if artwork dict is empty (LaunchBox on-demand)
+    if (!artType && game.source === 'retro') artType = 'cover';
 
     const applyBackdrop = (bgValue) => {
         // Small delay for fade-out to complete before swapping
@@ -1071,6 +1205,12 @@ function bindEvents() {
     $('browseLocalDir').addEventListener('click', () => browseFolder('localDirInput'));
     $('browseBiosDir').addEventListener('click', () => browseFolder('biosDirInput'));
     $('browseRetroarch').addEventListener('click', () => browseFolder('retroarchPathInput'));
+    $('browseLaunchbox').addEventListener('click', () => browseFolder('launchboxPathInput'));
+    $('saveLaunchboxPath').addEventListener('click', saveLaunchboxPath);
+    $('saveRetroarch').addEventListener('click', saveRetroarchPath);
+    $('testRetroarch').addEventListener('click', testRetroarch);
+    $('testLaunchbox').addEventListener('click', testLaunchbox);
+    $('emuAutoSetup').addEventListener('click', startEmuSetup);
 
     // Save original placeholders for browse fallback
     ['romDirInput', 'localDirInput', 'biosDirInput'].forEach(id => {
@@ -1096,6 +1236,7 @@ function bindEvents() {
         if (e.key === 'Enter')      { e.preventDefault(); launchSelected(); }
 
         if (e.ctrlKey && e.key === 'f') { e.preventDefault(); openSearch(); }
+        if (e.key === 'F10') { e.preventDefault(); toggleCatbyte(); }
         if (e.ctrlKey && e.key === 'b') { e.preventDefault(); toggleCatbyte(); }
         if (e.ctrlKey && e.key === ',') { e.preventDefault(); openSettings(); }
         if (e.ctrlKey && e.shiftKey && e.key === 'S') { e.preventDefault(); sendScreenshot(); }
@@ -1568,6 +1709,74 @@ async function renderSettings() {
     ]);
 }
 
+// ── Settings Status Summaries ──────────────────────────────────────────────
+
+function renderAccountsSummary(accounts) {
+    const el = $('summaryAccounts');
+    if (!el) return;
+    const stores = ['steam', 'gog', 'epic'];
+    const items = stores.map(s => {
+        const connected = accounts[s]?.connected || accounts[s]?.enabled || false;
+        const dot = connected ? 'ok' : 'off';
+        const label = s.charAt(0).toUpperCase() + s.slice(1);
+        return `<span class="summary-item"><span class="summary-dot ${dot}"></span>${label}</span>`;
+    });
+    const gameCount = state.games.length;
+    items.push(`<span class="summary-sep">\u00B7</span><span class="summary-item"><span class="summary-value">${gameCount}</span> games total</span>`);
+    el.innerHTML = items.join('');
+}
+
+function renderDirectoriesSummary(romDirs, localDirs) {
+    const el = $('summaryDirectories');
+    if (!el) return;
+    const retroCount = state.games.filter(g => g.source === 'retro').length;
+    const localCount = state.games.filter(g => g.source === 'local').length;
+    const parts = [];
+    parts.push(`<span class="summary-item"><span class="summary-value">${romDirs.length}</span> ROM dirs</span>`);
+    parts.push(`<span class="summary-sep">\u00B7</span><span class="summary-item"><span class="summary-value">${retroCount}</span> ROMs</span>`);
+    parts.push(`<span class="summary-sep">\u00B7</span><span class="summary-item"><span class="summary-value">${localDirs.length}</span> local dirs</span>`);
+    if (localCount > 0) {
+        parts.push(`<span class="summary-sep">\u00B7</span><span class="summary-item"><span class="summary-value">${localCount}</span> local games</span>`);
+    }
+    el.innerHTML = parts.join('');
+}
+
+function renderEmulationSummary(biosStatus, lbPath) {
+    const el = $('summaryEmulation');
+    if (!el) return;
+    const ready = Object.values(biosStatus || {}).filter(s => s.ready).length;
+    const total = Object.keys(biosStatus || {}).length;
+    const allReady = ready === total;
+    const parts = [];
+    parts.push(`<span class="summary-item"><span class="summary-dot ${allReady ? 'ok' : 'warn'}"></span>BIOS: <span class="summary-value">${ready}</span>/${total} ready</span>`);
+    if (lbPath) {
+        const lbCount = state.games.filter(g => g.source === 'retro').length;
+        parts.push(`<span class="summary-sep">\u00B7</span><span class="summary-item"><span class="summary-dot ok"></span>LaunchBox linked</span>`);
+    } else {
+        parts.push(`<span class="summary-sep">\u00B7</span><span class="summary-item"><span class="summary-dot off"></span>LaunchBox not set</span>`);
+    }
+    const hiddenCount = state.hiddenSystems.size;
+    if (hiddenCount > 0) {
+        parts.push(`<span class="summary-sep">\u00B7</span><span class="summary-item">${hiddenCount} systems hidden</span>`);
+    }
+    el.innerHTML = parts.join('');
+}
+
+function renderCatbyteSummary(config, status) {
+    const el = $('summaryCatbyte');
+    if (!el) return;
+    const backendName = (config?.backend || 'none').charAt(0).toUpperCase() + (config?.backend || 'none').slice(1);
+    const online = status?.status === 'online';
+    const dot = online ? 'ok' : 'off';
+    const parts = [];
+    parts.push(`<span class="summary-item"><span class="summary-dot ${dot}"></span>${backendName}</span>`);
+    if (config?.model) {
+        parts.push(`<span class="summary-sep">\u00B7</span><span class="summary-item">${config.model}</span>`);
+    }
+    parts.push(`<span class="summary-sep">\u00B7</span><span class="summary-item">${online ? 'Online' : 'Offline'}</span>`);
+    el.innerHTML = parts.join('');
+}
+
 // ── Accounts Tab ──────────────────────────────────────────────────────────
 
 async function renderAccountsTab() {
@@ -1723,6 +1932,8 @@ async function renderAccountsTab() {
         if (steam.connected) {
             $('steamConnectSection').classList.add('hidden');
         }
+
+        renderAccountsSummary(accounts);
     } catch {}
 
     // ── Show/Hide Uninstalled toggle ──
@@ -1749,11 +1960,13 @@ async function renderAccountsTab() {
 // ── Directories Tab ───────────────────────────────────────────────────────
 
 async function renderDirectoriesTab() {
+    let romDirs = [], localDirs = [];
+
     // ROM dirs
     try {
         const r = await fetch('/api/rom-dirs');
-        const dirs = await r.json();
-        $('settingsRomDirs').innerHTML = dirs.map(d => `
+        romDirs = await r.json();
+        $('settingsRomDirs').innerHTML = romDirs.map(d => `
             <div class="dir-entry">
                 <span class="dir-icon">\uD83D\uDCC2</span>
                 <span>${escapeHtml(d)}</span>
@@ -1765,8 +1978,8 @@ async function renderDirectoriesTab() {
     // Local dirs
     try {
         const r = await fetch('/api/local-dirs');
-        const dirs = await r.json();
-        $('settingsLocalDirs').innerHTML = dirs.map(d => `
+        localDirs = await r.json();
+        $('settingsLocalDirs').innerHTML = localDirs.map(d => `
             <div class="dir-entry">
                 <span class="dir-icon">\uD83C\uDFAE</span>
                 <span>${escapeHtml(d)}</span>
@@ -1775,16 +1988,22 @@ async function renderDirectoriesTab() {
         `).join('') || '<div style="color:var(--text-dim);font-size:12px;padding:4px 0">No local game directories configured</div>';
     } catch {}
 
+    renderDirectoriesSummary(romDirs, localDirs);
+
     // Bind remove buttons
     $$('.dir-remove').forEach(btn => {
         btn.addEventListener('click', async () => {
+            const dirPath = btn.dataset.dir;
+            const typeLabel = { rom: 'ROM', local: 'local game', bios: 'BIOS' }[btn.dataset.type] || '';
+            if (!confirm(`Remove ${typeLabel} directory?\n${dirPath}`)) return;
             const typeMap = { rom: '/api/rom-dirs', local: '/api/local-dirs', bios: '/api/bios/dirs' };
             const endpoint = typeMap[btn.dataset.type] || '/api/local-dirs';
             await fetch(endpoint, {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ path: btn.dataset.dir }),
+                body: JSON.stringify({ path: dirPath }),
             });
+            showToast(`${typeLabel.charAt(0).toUpperCase() + typeLabel.slice(1)} directory removed`, 'info');
             renderSettings();
         });
     });
@@ -1800,9 +2019,19 @@ const SYSTEM_ICONS = {
     dreamcast: '\uD83C\uDF00', saturn: '\uD83E\uDE90', gamecube: '\uD83D\uDFEA', wii: '\u2B1C',
     neogeo: '\uD83C\uDFB0', fbneo: '\uD83D\uDD25', cps1: '\uD83E\uDD4A', cps2: '\uD83E\uDD4A',
     cps3: '\uD83E\uDD4A', mame: '\uD83D\uDC7E', ngp: '\uD83D\uDCDF',
+    atari5200: '\uD83D\uDD78\uFE0F', atari7800: '\uD83D\uDD78\uFE0F', atarilynx: '\uD83D\uDD78\uFE0F',
+    atarist: '\uD83D\uDDA5\uFE0F', atarijaguar: '\uD83D\uDC06',
+    colecovision: '\uD83C\uDFAE', c64: '\uD83D\uDDA5\uFE0F', amiga: '\uD83D\uDDA5\uFE0F',
+    dos: '\uD83D\uDDA5\uFE0F', pcengine: '\uD83C\uDFAE', famicom: '\uD83D\uDD79\uFE0F',
+    fds: '\uD83D\uDCBE', channelf: '\uD83D\uDCFA', arcade: '\uD83D\uDC7E',
+    atomiswave: '\uD83C\uDFB0', daphne: '\uD83C\uDFAC', gameandwatch: '\u231A',
+    odyssey2: '\uD83D\uDCFA', vectrex: '\uD83D\uDDA5\uFE0F', wonderswan: '\uD83C\uDFAE',
+    wonderswanc: '\uD83C\uDF08', intellivision: '\uD83C\uDFAE', '3do': '\uD83D\uDCBF',
 };
 
 async function renderEmulationTab() {
+    let _biosStatus = {};
+
     // BIOS dirs + status
     try {
         const [bdResp, bsResp] = await Promise.all([
@@ -1811,6 +2040,7 @@ async function renderEmulationTab() {
         ]);
         const biosDirs = await bdResp.json();
         const biosStatus = await bsResp.json();
+        _biosStatus = biosStatus;
 
         $('settingsBiosDirs').innerHTML = biosDirs.map(d => `
             <div class="dir-entry">
@@ -1841,11 +2071,13 @@ async function renderEmulationTab() {
         // Re-bind BIOS dir remove buttons
         $('settingsBiosDirs').querySelectorAll('.dir-remove').forEach(btn => {
             btn.addEventListener('click', async () => {
+                if (!confirm(`Remove BIOS directory?\n${btn.dataset.dir}`)) return;
                 await fetch('/api/bios/dirs', {
                     method: 'DELETE',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ path: btn.dataset.dir }),
                 });
+                showToast('BIOS directory removed', 'info');
                 renderEmulationTab();
             });
         });
@@ -1858,7 +2090,14 @@ async function renderEmulationTab() {
         gamegear: 'Game Gear', atari2600: 'Atari 2600', psx: 'PS1', ps2: 'PS2',
         ps3: 'PS3', psp: 'PSP', dreamcast: 'Dreamcast', saturn: 'Saturn',
         gamecube: 'GameCube', wii: 'Wii', neogeo: 'Neo Geo', fbneo: 'FBNeo',
-        cps1: 'CPS-1', cps2: 'CPS-2', cps3: 'CPS-3', mame: 'MAME', ngp: 'NGP'
+        cps1: 'CPS-1', cps2: 'CPS-2', cps3: 'CPS-3', mame: 'MAME', ngp: 'NGP',
+        atari5200: 'Atari 5200', atari7800: 'Atari 7800', atarilynx: 'Lynx',
+        atarist: 'Atari ST', atarijaguar: 'Jaguar', colecovision: 'ColecoVision',
+        c64: 'C64', amiga: 'Amiga', dos: 'DOS', pcengine: 'PC Engine',
+        famicom: 'Famicom', fds: 'FDS', channelf: 'Channel F', arcade: 'Arcade',
+        atomiswave: 'Atomiswave', daphne: 'Daphne', gameandwatch: 'Game & Watch',
+        odyssey2: 'Odyssey 2', vectrex: 'Vectrex', wonderswan: 'WonderSwan',
+        wonderswanc: 'WS Color', intellivision: 'Intellivision', '3do': '3DO',
     };
     $('settingsVisibleSystems').innerHTML = Object.entries(systems)
         .map(([id, name]) => {
@@ -1885,6 +2124,273 @@ async function renderEmulationTab() {
             btn.classList.toggle('active', !d.is_hidden);
         });
     });
+
+    // RetroArch path
+    try {
+        const raResp = await fetch('/api/settings/retroarch-path');
+        const raData = await raResp.json();
+        if (raData.retroarch_path) $('retroarchPathInput').value = raData.retroarch_path;
+    } catch {}
+
+    // LaunchBox path
+    let lbPath = '';
+    try {
+        const lbResp = await fetch('/api/settings/launchbox-path');
+        const lbData = await lbResp.json();
+        lbPath = lbData.launchbox_path || '';
+        $('launchboxPathInput').value = lbPath;
+        $('launchboxStatus').textContent = lbPath
+            ? 'Artwork will be loaded directly from LaunchBox — no files copied.'
+            : '';
+    } catch {}
+
+    renderEmulationSummary(_biosStatus, lbPath);
+
+    // Emulator auto-setup
+    renderEmuSetupStatus();
+}
+
+async function saveLaunchboxPath() {
+    const input = $('launchboxPathInput');
+    const path = input.value.trim();
+    const btn = $('saveLaunchboxPath');
+    btn.textContent = 'Saving...';
+    btn.disabled = true;
+    try {
+        const r = await fetch('/api/settings/launchbox-path', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path }),
+        });
+        const d = await r.json();
+        if (d.error) {
+            $('launchboxStatus').textContent = d.error;
+            $('launchboxStatus').style.color = 'var(--danger, #ff4444)';
+            showToast(d.error, 'error');
+        } else {
+            const msg = path
+                ? `Saved. ${d.matched_count != null ? d.matched_count + ' games matched.' : 'Artwork will load from LaunchBox.'}`
+                : 'Cleared.';
+            $('launchboxStatus').textContent = msg;
+            $('launchboxStatus').style.color = 'var(--accent)';
+            showToast(path ? `LaunchBox linked \u2014 <strong>${d.matched_count ?? '?'}</strong> games indexed` : 'LaunchBox path cleared', 'success');
+        }
+    } catch {
+        $('launchboxStatus').textContent = 'Failed to save.';
+        $('launchboxStatus').style.color = 'var(--danger, #ff4444)';
+        showToast('Failed to save LaunchBox path', 'error');
+    }
+    btn.textContent = 'Save';
+    btn.disabled = false;
+}
+
+async function saveRetroarchPath() {
+    const input = $('retroarchPathInput');
+    const path = input.value.trim();
+    const btn = $('saveRetroarch');
+    btn.textContent = 'Saving...';
+    btn.disabled = true;
+    try {
+        const r = await fetch('/api/settings/retroarch-path', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path }),
+        });
+        const d = await r.json();
+        if (d.error) {
+            $('retroarchStatus').textContent = d.error;
+            $('retroarchStatus').style.color = 'var(--danger, #ff4444)';
+            showToast(d.error, 'error');
+        } else {
+            const msg = path ? 'RetroArch path saved.' : 'Cleared.';
+            $('retroarchStatus').textContent = msg;
+            $('retroarchStatus').style.color = 'var(--accent)';
+            showToast(path ? 'RetroArch path saved' : 'RetroArch path cleared', 'success');
+        }
+    } catch {
+        $('retroarchStatus').textContent = 'Failed to save.';
+        $('retroarchStatus').style.color = 'var(--danger, #ff4444)';
+        showToast('Failed to save RetroArch path', 'error');
+    }
+    btn.textContent = 'Save';
+    btn.disabled = false;
+}
+
+async function testRetroarch() {
+    const path = $('retroarchPathInput').value.trim();
+    const btn = $('testRetroarch');
+    const status = $('retroarchStatus');
+    if (!path) { showToast('Enter a RetroArch path first', 'info'); return; }
+    btn.textContent = 'Testing...';
+    btn.disabled = true;
+    try {
+        const r = await fetch('/api/test/retroarch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path }),
+        });
+        const d = await r.json();
+        status.textContent = d.message;
+        status.style.color = d.ok ? 'var(--accent)' : 'var(--danger)';
+        showToast(d.ok ? `RetroArch OK \u2014 ${d.message}` : d.message, d.ok ? 'success' : 'error');
+    } catch {
+        status.textContent = 'Test failed';
+        status.style.color = 'var(--danger)';
+        showToast('RetroArch test failed', 'error');
+    }
+    btn.textContent = 'Test';
+    btn.disabled = false;
+}
+
+async function testLaunchbox() {
+    const path = $('launchboxPathInput').value.trim();
+    const btn = $('testLaunchbox');
+    const status = $('launchboxStatus');
+    if (!path) { showToast('Enter a LaunchBox path first', 'info'); return; }
+    btn.textContent = 'Testing...';
+    btn.disabled = true;
+    try {
+        const r = await fetch('/api/test/launchbox', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path }),
+        });
+        const d = await r.json();
+        status.textContent = d.message;
+        status.style.color = d.ok ? 'var(--accent)' : 'var(--danger)';
+        showToast(d.ok ? `LaunchBox OK \u2014 ${d.message}` : d.message, d.ok ? 'success' : 'error');
+    } catch {
+        status.textContent = 'Test failed';
+        status.style.color = 'var(--danger)';
+        showToast('LaunchBox test failed', 'error');
+    }
+    btn.textContent = 'Test';
+    btn.disabled = false;
+}
+
+// ── Emulator Auto-Setup ──────────────────────────────────────────────────
+
+async function renderEmuSetupStatus() {
+    const container = $('emuSetupStatus');
+    if (!container) return;
+    try {
+        const resp = await fetch('/api/emulators/status');
+        const data = await resp.json();
+
+        const ra = data.retroarch;
+        const cores = data.cores || {};
+        const coreList = Object.entries(cores);
+        const needed = data.needed_count || 0;
+        const installed = data.installed_count || 0;
+
+        if (needed === 0) {
+            container.innerHTML = '<div class="emu-status-summary">No external emulator cores needed for your current library.</div>';
+            $('emuAutoSetup').style.display = 'none';
+            return;
+        }
+
+        let html = '<div class="emu-status-summary">';
+        html += `RetroArch: <strong style="color:${ra.installed ? 'var(--accent)' : 'var(--danger)'}">`;
+        html += ra.installed ? 'Installed' : 'Not installed';
+        html += '</strong>';
+        html += ` &nbsp;|&nbsp; Cores: <strong>${installed}/${needed}</strong>`;
+        if (data.ready) html += ' &nbsp;<span style="color:var(--accent)">All ready</span>';
+        html += '</div>';
+
+        html += '<div class="emu-core-grid">';
+        for (const [coreName, info] of coreList) {
+            const ready = info.installed;
+            html += `<div class="emu-core-card ${ready ? 'installed' : ''}">`;
+            html += `<span class="emu-core-dot ${ready ? 'ready' : ''}"></span>`;
+            html += `<span class="emu-core-name" title="${coreName}">${info.system_names.join(', ')}</span>`;
+            html += '</div>';
+        }
+        html += '</div>';
+        container.innerHTML = html;
+
+        const btn = $('emuAutoSetup');
+        if (data.ready) {
+            btn.textContent = 'All Set';
+            btn.disabled = true;
+        } else {
+            btn.textContent = 'Auto-Setup Emulators';
+            btn.disabled = false;
+        }
+    } catch {
+        container.innerHTML = '<div class="emu-status-summary" style="color:var(--text-dim)">Could not load emulator status.</div>';
+    }
+}
+
+let _emuPollTimer = null;
+
+async function startEmuSetup() {
+    const btn = $('emuAutoSetup');
+    btn.textContent = 'Starting...';
+    btn.disabled = true;
+    try {
+        const resp = await fetch('/api/emulators/setup', { method: 'POST' });
+        const data = await resp.json();
+        if (data.error) {
+            showToast(data.error, 'error');
+            btn.textContent = 'Auto-Setup Emulators';
+            btn.disabled = false;
+            return;
+        }
+        showToast('Emulator setup started \u2014 downloading RetroArch + cores...', 'info', 5000);
+        $('emuSetupProgress').classList.remove('hidden');
+        _emuPollTimer = setInterval(pollEmuProgress, 800);
+    } catch {
+        showToast('Failed to start emulator setup', 'error');
+        btn.textContent = 'Auto-Setup Emulators';
+        btn.disabled = false;
+    }
+}
+
+async function pollEmuProgress() {
+    try {
+        const resp = await fetch('/api/emulators/progress');
+        const p = await resp.json();
+        const bar = $('emuProgressBar');
+        const text = $('emuProgressText');
+
+        if (p.total > 0) {
+            const pct = Math.round((p.downloaded / p.total) * 100);
+            bar.style.width = pct + '%';
+        }
+
+        // Build status text
+        let msg = '';
+        if (p.phase === 'retroarch') {
+            const mb = (p.bytes_downloaded / 1048576).toFixed(1);
+            const totalMb = p.bytes_total > 0 ? (p.bytes_total / 1048576).toFixed(0) : '?';
+            msg = `Downloading RetroArch... ${mb}MB / ${totalMb}MB`;
+            if (p.current_item === 'Extracting RetroArch...') msg = 'Extracting RetroArch...';
+        } else if (p.phase === 'cores') {
+            msg = `Downloading core ${p.downloaded + 1}/${p.total}: ${p.current_item}`;
+        } else if (p.phase === 'config') {
+            msg = 'Writing configuration...';
+        } else if (p.phase === 'done') {
+            msg = 'Setup complete!';
+        }
+        text.textContent = msg;
+
+        if (!p.active && p.done) {
+            clearInterval(_emuPollTimer);
+            _emuPollTimer = null;
+            bar.style.width = '100%';
+
+            if (p.error) {
+                showToast('Setup finished with errors: ' + p.error, 'error', 8000);
+            } else {
+                showToast('Emulator setup complete \u2014 all cores ready!', 'success', 5000);
+            }
+
+            setTimeout(() => {
+                $('emuSetupProgress').classList.add('hidden');
+                renderEmuSetupStatus();
+            }, 2000);
+        }
+    } catch {}
 }
 
 // ── CatByte Settings Tab ──────────────────────────────────────────────────
@@ -2076,6 +2582,8 @@ async function renderCatbyteTab() {
             dot.className = 'catbyte-conn-dot';
             text.textContent = status.message || 'Offline';
         }
+
+        renderCatbyteSummary(config, status);
     } catch (e) {
         console.error('CatByte settings error:', e);
     }
@@ -2144,10 +2652,14 @@ async function addRomDir() {
                 <div class="dir-preview-title">Found ${scanData.total} ROM files</div>
                 <div class="dir-preview-systems">${tagsHtml}</div>`;
             preview.classList.remove('hidden');
-            // Auto-hide after 8 seconds
             setTimeout(() => preview.classList.add('hidden'), 8000);
+            showToast(`ROM directory added \u2014 <strong>${scanData.total}</strong> files found`, 'success');
+        } else {
+            showToast('ROM directory added', 'success');
         }
-    } catch {}
+    } catch {
+        showToast('ROM directory added', 'success');
+    }
 
     input.value = '';
     $('romDirValidation').textContent = '';
@@ -2175,6 +2687,7 @@ async function addLocalDir() {
     $('localDirValidation').textContent = '';
     addBtn.textContent = 'Add';
     addBtn.disabled = false;
+    showToast('Local game directory added', 'success');
     renderSettings();
     await fetch('/api/rescan', { method: 'POST' });
     setTimeout(async () => { await loadGames(); applyFilter(); }, 3000);
@@ -2197,6 +2710,7 @@ async function addBiosDir() {
     input.value = '';
     addBtn.textContent = 'Add';
     addBtn.disabled = false;
+    showToast('BIOS directory added', 'success');
     renderEmulationTab();
 }
 
@@ -2204,13 +2718,17 @@ async function rescanLibrary() {
     const btn = $('btnRescan');
     btn.textContent = 'Scanning...';
     btn.disabled = true;
+    showToast('Rescanning all libraries\u2026', 'info', 4000);
     await fetch('/api/rescan', { method: 'POST' });
+    // Start polling for artwork progress (batch fetch starts after rescan)
+    setTimeout(() => startArtworkProgressPoll(), 3000);
     setTimeout(async () => {
         await loadGames();
         await loadStores();
         applyFilter();
         btn.textContent = 'Rescan All Libraries';
         btn.disabled = false;
+        showToast(`Scan complete \u2014 <strong>${state.games.length}</strong> games found`, 'success');
     }, 5000);
 }
 

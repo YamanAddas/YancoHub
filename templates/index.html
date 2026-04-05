@@ -69,7 +69,9 @@
             <button class="tab" data-tab="ubisoft">Ubisoft</button>
             <button class="tab" data-tab="battlenet">Battle.net</button>
             <button class="tab" data-tab="local">Local</button>
-            <button class="tab" data-tab="retro">Retro</button>
+            <span class="tab-divider" id="retroDivider"></span>
+            <button class="tab tab-retro" data-tab="retro">All Retro</button>
+            <!-- Dynamic per-system retro tabs injected here by JS -->
         </nav>
 
         <!-- Hero Backdrop (blurred art behind carousel) -->
@@ -77,9 +79,15 @@
 
         <!-- Mood Label -->
         <div class="mood-label hidden" id="moodLabel">
-            <span class="mood-label-icon" id="moodLabelIcon"></span>
-            <span class="mood-label-text" id="moodLabelText"></span>
-            <button class="mood-label-clear" id="moodLabelClear">&times;</button>
+            <div class="mood-label-row">
+                <span class="mood-label-icon" id="moodLabelIcon"></span>
+                <span class="mood-label-text" id="moodLabelText"></span>
+                <button class="mood-label-clear" id="moodLabelClear">&times;</button>
+            </div>
+            <div class="mood-catbyte-bubble hidden" id="moodCatbyteBubble">
+                <span class="mood-catbyte-face">&#128570;</span>
+                <span class="mood-catbyte-text" id="moodCatbyteText"></span>
+            </div>
         </div>
 
         <!-- Game Info (above carousel) -->
@@ -173,25 +181,31 @@
                 <div class="chat-bubble">Hey there! I'm CatByte, your gaming companion. Ask me anything about your games! 😺</div>
             </div>
         </div>
+        <div class="catbyte-hint">Ctrl+Shift+S to send screenshot</div>
         <div class="catbyte-input-row">
             <input type="text" class="catbyte-input" id="catbyteInput" placeholder="Ask CatByte...">
+            <button class="catbyte-screenshot" id="catbyteScreenshot" title="Send screenshot to CatByte">📸</button>
             <button class="catbyte-send" id="catbyteSend">→</button>
         </div>
     </div>
 
-    <!-- CatByte Info Overlay (shown when OpenClaw is offline) -->
+    <!-- CatByte Info Overlay (shown when no AI backend is connected) -->
     <div class="catbyte-info-overlay hidden" id="catbyteInfoOverlay">
         <div class="catbyte-info-card">
             <div class="catbyte-info-icon">🐱</div>
-            <h3>CatByte requires OpenClaw</h3>
-            <p>CatByte is your AI gaming companion, powered by the <strong>OpenClaw</strong> server. To enable it:</p>
-            <ol>
-                <li>Download or clone <strong>OpenClaw</strong></li>
-                <li>Start the OpenClaw server on port <code>18789</code></li>
-                <li>Restart YancoHub &mdash; CatByte will connect automatically</li>
-            </ol>
-            <p class="catbyte-info-hint">Once running, press <kbd>Ctrl+B</kbd> to chat with CatByte about your games.</p>
-            <button class="catbyte-info-dismiss" id="dismissCatbyteInfo">Got it</button>
+            <h3>CatByte needs an AI backend</h3>
+            <p>CatByte is your gaming AI companion. Connect it to any of these backends:</p>
+            <ul style="text-align:left;margin:12px 0;padding-left:20px;line-height:2">
+                <li><strong>Ollama</strong> &mdash; free, private, runs on your GPU</li>
+                <li><strong>OpenClaw</strong> &mdash; uses your ChatGPT subscription</li>
+                <li><strong>LM Studio</strong> &mdash; local models with visual UI</li>
+                <li><strong>OpenAI API</strong> &mdash; GPT-4o with API key</li>
+            </ul>
+            <p class="catbyte-info-hint">Open <strong>Settings &rarr; CatByte</strong> to choose and configure your backend.</p>
+            <div style="display:flex;gap:8px;justify-content:center;margin-top:14px">
+                <button class="catbyte-info-dismiss" id="btnOpenCatbyteSettings">Open Settings</button>
+                <button class="catbyte-info-dismiss" id="dismissCatbyteInfo" style="background:transparent;border:1px solid var(--border);color:var(--text)">Later</button>
+            </div>
         </div>
     </div>
 
@@ -204,27 +218,57 @@
             </div>
             <div class="mood-grid">
                 <button class="mood-card" data-mood="quick" style="animation-delay: 0s">
-                    <div class="mood-icon">⚡</div>
+                    <div class="mood-icon">&#9889;</div>
                     <div class="mood-name">Quick Session</div>
                     <div class="mood-desc">Got 30 minutes? Jump into something fast.</div>
                 </button>
-                <button class="mood-card" data-mood="deep" style="animation-delay: 0.1s">
-                    <div class="mood-icon">🌊</div>
+                <button class="mood-card" data-mood="deep" style="animation-delay: 0.05s">
+                    <div class="mood-icon">&#127754;</div>
                     <div class="mood-name">Deep Dive</div>
                     <div class="mood-desc">Sink into something you've started.</div>
                 </button>
-                <button class="mood-card" data-mood="nostalgia" style="animation-delay: 0.2s">
-                    <div class="mood-icon">🕹️</div>
+                <button class="mood-card" data-mood="nostalgia" style="animation-delay: 0.1s">
+                    <div class="mood-icon">&#128377;&#65039;</div>
                     <div class="mood-name">Nostalgia Trip</div>
                     <div class="mood-desc">Revisit an old favorite.</div>
                 </button>
-                <button class="mood-card" data-mood="new" style="animation-delay: 0.3s">
-                    <div class="mood-icon">✨</div>
+                <button class="mood-card" data-mood="new" style="animation-delay: 0.15s">
+                    <div class="mood-icon">&#10024;</div>
                     <div class="mood-name">Something New</div>
                     <div class="mood-desc">Try something you've never launched.</div>
                 </button>
+                <button class="mood-card" data-mood="unfinished" style="animation-delay: 0.2s">
+                    <div class="mood-icon">&#128204;</div>
+                    <div class="mood-name">Unfinished Business</div>
+                    <div class="mood-desc">Pick up where you left off.</div>
+                </button>
+                <button class="mood-card" data-mood="comfort" style="animation-delay: 0.25s">
+                    <div class="mood-icon">&#9749;</div>
+                    <div class="mood-name">Comfort Pick</div>
+                    <div class="mood-desc">Something cozy and familiar.</div>
+                </button>
+                <button class="mood-card mood-card--surprise" data-mood="surprise" style="animation-delay: 0.3s">
+                    <div class="mood-icon">&#127920;</div>
+                    <div class="mood-name">Surprise Me</div>
+                    <div class="mood-desc">One game. Fate decides.</div>
+                </button>
+                <button class="mood-card" data-mood="chill" style="animation-delay: 0.35s">
+                    <div class="mood-icon">&#127769;</div>
+                    <div class="mood-name">Chill Vibes</div>
+                    <div class="mood-desc">Low-stakes, relaxing games.</div>
+                </button>
             </div>
         </div>
+    </div>
+
+    <!-- Surprise Reveal Overlay -->
+    <div class="surprise-reveal hidden" id="surpriseReveal">
+        <div class="surprise-glow" id="surpriseGlow"></div>
+        <div class="surprise-card" id="surpriseCard">
+            <img class="surprise-card-art" id="surpriseCardArt" alt="">
+        </div>
+        <div class="surprise-title" id="surpriseTitle"></div>
+        <div class="surprise-subtitle" id="surpriseSubtitle"></div>
     </div>
 
     <!-- Settings Panel -->
@@ -238,12 +282,14 @@
                 <button class="settings-tab active" data-stab="accounts">Accounts</button>
                 <button class="settings-tab" data-stab="directories">Directories</button>
                 <button class="settings-tab" data-stab="emulation">Emulation</button>
+                <button class="settings-tab" data-stab="catbyte">CatByte</button>
                 <button class="settings-tab" data-stab="about">About</button>
             </nav>
             <div class="settings-body">
 
                 <!-- ═══ Accounts Tab ═══ -->
                 <div class="settings-pane active" id="settingsPane-accounts">
+                    <div class="settings-summary" id="summaryAccounts"></div>
                     <section class="settings-card">
                         <div class="settings-card-header">
                             <h4>Connected Accounts</h4>
@@ -289,28 +335,38 @@
 
                 <!-- ═══ Directories Tab ═══ -->
                 <div class="settings-pane" id="settingsPane-directories">
+                    <div class="settings-summary" id="summaryDirectories"></div>
                     <section class="settings-card">
                         <div class="settings-card-header">
                             <h4>ROM Directories</h4>
-                            <p class="settings-card-hint">Folders containing ROM files, organized by system subdirectories.</p>
+                            <p class="settings-card-hint">Folders containing ROM files. Organize ROMs into system subdirectories (e.g., SNES/, GBA/, PS1/) for automatic detection.</p>
                         </div>
                         <div id="settingsRomDirs" class="settings-dirs"></div>
+                        <div id="romDirPreview" class="dir-preview hidden"></div>
                         <div class="settings-input-row">
                             <input type="text" class="settings-input" id="romDirInput" placeholder="Path to ROMs folder...">
+                            <button class="btn-small btn-browse" id="browseRomDir" title="Browse...">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                            </button>
                             <button class="btn-small" id="addRomDir">Add</button>
                         </div>
+                        <div id="romDirValidation" class="dir-validation"></div>
                     </section>
 
                     <section class="settings-card">
                         <div class="settings-card-header">
                             <h4>Local Game Directories</h4>
-                            <p class="settings-card-hint">Folders containing standalone executables or portable games.</p>
+                            <p class="settings-card-hint">Folders containing standalone .exe games or portable installs. Each subfolder becomes a game entry.</p>
                         </div>
                         <div id="settingsLocalDirs" class="settings-dirs"></div>
                         <div class="settings-input-row">
                             <input type="text" class="settings-input" id="localDirInput" placeholder="Path to games folder...">
+                            <button class="btn-small btn-browse" id="browseLocalDir" title="Browse...">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                            </button>
                             <button class="btn-small" id="addLocalDir">Add</button>
                         </div>
+                        <div id="localDirValidation" class="dir-validation"></div>
                     </section>
 
                     <section class="settings-card">
@@ -324,15 +380,23 @@
 
                 <!-- ═══ Emulation Tab ═══ -->
                 <div class="settings-pane" id="settingsPane-emulation">
+                    <div class="settings-summary" id="summaryEmulation"></div>
                     <section class="settings-card">
                         <div class="settings-card-header">
                             <h4>BIOS Files</h4>
-                            <p class="settings-card-hint">Required for PS1, GBA, and other systems. Add folders containing BIOS files.</p>
+                            <p class="settings-card-hint">Some systems need BIOS files to run. Add folders containing your BIOS files — YancoHub auto-detects them by filename and checksum.</p>
                         </div>
                         <div id="settingsBiosDirs" class="settings-dirs"></div>
                         <div class="settings-input-row">
                             <input type="text" class="settings-input" id="biosDirInput" placeholder="Path to BIOS folder...">
+                            <button class="btn-small btn-browse" id="browseBiosDir" title="Browse...">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                            </button>
                             <button class="btn-small" id="addBiosDir">Add</button>
+                        </div>
+                        <div class="bios-info-note">
+                            <span class="bios-info-icon">&#9432;</span>
+                            <span>GBA and PS1 have free open-source BIOS alternatives bundled with YancoHub. Other systems need original BIOS files.</span>
                         </div>
                         <div id="settingsBiosStatus" class="settings-bios-grid"></div>
                     </section>
@@ -340,9 +404,122 @@
                     <section class="settings-card">
                         <div class="settings-card-header">
                             <h4>Visible Systems</h4>
-                            <p class="settings-card-hint">Toggle which retro systems appear in your library.</p>
+                            <p class="settings-card-hint">Choose which retro systems appear in your library. Hidden systems are still scanned — just not shown.</p>
                         </div>
                         <div id="settingsVisibleSystems" class="settings-systems"></div>
+                    </section>
+
+                    <section class="settings-card" id="emuSetupCard">
+                        <div class="settings-card-header">
+                            <h4>Emulator Auto-Setup</h4>
+                            <p class="settings-card-hint">YancoHub auto-downloads RetroArch + cores for your ROM library. No install needed.</p>
+                        </div>
+                        <div id="emuSetupStatus"></div>
+                        <div id="emuSetupProgress" class="hidden">
+                            <div class="emu-progress-bar-bg">
+                                <div class="emu-progress-bar" id="emuProgressBar"></div>
+                            </div>
+                            <div class="emu-progress-text" id="emuProgressText"></div>
+                        </div>
+                        <div style="margin-top:8px">
+                            <button class="btn-small btn-accent" id="emuAutoSetup">Auto-Setup Emulators</button>
+                        </div>
+                    </section>
+
+                    <section class="settings-card">
+                        <div class="settings-card-header">
+                            <h4>External Emulators</h4>
+                            <p class="settings-card-hint">For PS2, PS3, GameCube, Wii, Dreamcast, and Saturn — YancoHub can launch RetroArch or standalone emulators.</p>
+                        </div>
+                        <div class="settings-field">
+                            <label class="settings-label">RetroArch Path (optional)</label>
+                            <div class="settings-input-row">
+                                <input type="text" class="settings-input" id="retroarchPathInput" placeholder="Auto-detect or browse...">
+                                <button class="btn-small btn-browse" id="browseRetroarch" title="Browse...">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                                </button>
+                                <button class="btn-small btn-accent" id="saveRetroarch">Save</button>
+                                <button class="btn-small" id="testRetroarch">Test</button>
+                            </div>
+                        </div>
+                        <div id="retroarchStatus" class="settings-status"></div>
+                    </section>
+
+                    <section class="settings-card">
+                        <div class="settings-card-header">
+                            <h4>LaunchBox Artwork</h4>
+                            <p class="settings-card-hint">Point to your LaunchBox install folder to use its artwork for game covers — no files are copied.</p>
+                        </div>
+                        <div class="settings-field">
+                            <label class="settings-label">LaunchBox Path</label>
+                            <div class="settings-input-row">
+                                <input type="text" class="settings-input" id="launchboxPathInput" placeholder="e.g. D:\Entertainment\Gaming\LaunchBox">
+                                <button class="btn-small btn-browse" id="browseLaunchbox" title="Browse...">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                                </button>
+                                <button class="btn-small btn-accent" id="saveLaunchboxPath">Save</button>
+                                <button class="btn-small" id="testLaunchbox">Test</button>
+                            </div>
+                        </div>
+                        <div id="launchboxStatus" class="settings-status"></div>
+                    </section>
+                </div>
+
+                <!-- ═══ CatByte Tab ═══ -->
+                <div class="settings-pane" id="settingsPane-catbyte">
+                    <div class="settings-summary" id="summaryCatbyte"></div>
+                    <section class="settings-card">
+                        <div class="settings-card-header">
+                            <h4>AI Backend</h4>
+                            <p class="settings-card-hint">Choose how CatByte connects to an AI model. All options use the same chat interface.</p>
+                        </div>
+                        <div id="catbyteBackendSelector" class="backend-selector"></div>
+                    </section>
+
+                    <section class="settings-card" id="catbyteConnectionCard">
+                        <div class="settings-card-header">
+                            <h4>Connection</h4>
+                        </div>
+                        <div id="catbyteCustomFields" class="catbyte-custom-fields"></div>
+                        <div class="catbyte-connection-row">
+                            <div id="catbyteConnectionStatus" class="catbyte-conn-status">
+                                <span class="catbyte-conn-dot" id="catbyteConnDot"></span>
+                                <span id="catbyteConnText">Not checked</span>
+                            </div>
+                            <button class="btn-small" id="btnTestCatbyte">Test Connection</button>
+                        </div>
+                    </section>
+
+                    <section class="settings-card">
+                        <div class="settings-card-header">
+                            <h4>Personality</h4>
+                            <p class="settings-card-hint">Customize how CatByte talks to you.</p>
+                        </div>
+                        <div class="catbyte-toggle-row">
+                            <label class="catbyte-toggle-label">
+                                <span>Cat puns &amp; personality</span>
+                                <span class="catbyte-toggle-hint">When off, CatByte uses a professional tone</span>
+                            </label>
+                            <button class="toggle-switch" id="toggleCatPuns" role="switch" aria-checked="true">
+                                <span class="toggle-knob"></span>
+                            </button>
+                        </div>
+                        <div class="catbyte-toggle-row">
+                            <label class="catbyte-toggle-label">
+                                <span>Game awareness</span>
+                                <span class="catbyte-toggle-hint">Send current game context for better answers</span>
+                            </label>
+                            <button class="toggle-switch" id="toggleGameAwareness" role="switch" aria-checked="true">
+                                <span class="toggle-knob"></span>
+                            </button>
+                        </div>
+                    </section>
+
+                    <section class="settings-card">
+                        <div class="settings-card-header">
+                            <h4>Setup Guide</h4>
+                        </div>
+                        <div id="catbyteSetupHint" class="catbyte-setup-hint"></div>
                     </section>
                 </div>
 
@@ -452,6 +629,7 @@
                 <div class="emu-hud-key"><span>ESC</span> Pause</div>
                 <div class="emu-hud-key"><span>F5</span> Save</div>
                 <div class="emu-hud-key"><span>F8</span> Load</div>
+                <div class="emu-hud-key"><span>F10</span> CatByte</div>
             </div>
         </div>
 
@@ -496,6 +674,15 @@
         <!-- Toast -->
         <div class="emu-toast hidden" id="emuToast">Saved</div>
     </div>
+
+    <!-- Artwork Progress Pill -->
+    <div id="artworkProgressPill" class="artwork-progress-pill hidden">
+        <div class="artwork-progress-ring"></div>
+        <div class="artwork-progress-text">Artwork <strong id="artworkProgressCount">0</strong> / <span id="artworkProgressTotal">0</span></div>
+    </div>
+
+    <!-- Global Toast Stack -->
+    <div id="toastStack" class="toast-stack"></div>
 
     <link rel="stylesheet" href="/static/css/emulator.css">
     <script src="/static/js/emulator.js"></script>

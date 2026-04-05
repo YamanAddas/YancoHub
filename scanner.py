@@ -7,7 +7,6 @@ local directories, and retro ROMs.
 import os
 import re
 import json
-import glob
 import hashlib
 import logging
 import sqlite3
@@ -31,13 +30,13 @@ ROM_SYSTEMS = {
     'gamegear':     {'name': 'Sega Game Gear',     'extensions': ['.gg', '.zip', '.7z'], 'core': 'genesis_plus_gx_libretro.dll'},
     'atari2600':    {'name': 'Atari 2600',         'extensions': ['.a26', '.bin', '.zip', '.7z'], 'core': 'stella_libretro.dll'},
     'psx':          {'name': 'PlayStation',         'extensions': ['.chd', '.bin', '.cue', '.iso', '.pbp', '.zip', '.7z'], 'core': 'swanstation_libretro.dll'},
-    'ps2':          {'name': 'PlayStation 2',       'extensions': ['.chd', '.iso', '.bin', '.cue', '.7z'], 'emulator': 'pcsx2'},
+    'ps2':          {'name': 'PlayStation 2',       'extensions': ['.chd', '.iso', '.bin', '.cue', '.7z'], 'emulator': 'pcsx2', 'core': 'pcsx2_libretro.dll'},
     'ps3':          {'name': 'PlayStation 3',       'extensions': ['.bin'], 'emulator': 'rpcs3'},  # EBOOT.BIN
-    'psp':          {'name': 'PlayStation Portable','extensions': ['.iso', '.cso', '.pbp', '.7z'], 'emulator': 'ppsspp'},
-    'dreamcast':    {'name': 'Sega Dreamcast',     'extensions': ['.chd', '.cdi', '.gdi', '.zip', '.7z'], 'core': 'flycast_libretro.dll'},
+    'psp':          {'name': 'PlayStation Portable','extensions': ['.iso', '.cso', '.pbp', '.7z'], 'emulator': 'ppsspp', 'core': 'ppsspp_libretro.dll'},
+    'dreamcast':    {'name': 'Sega Dreamcast',     'extensions': ['.chd', '.cdi', '.gdi', '.bin', '.zip', '.7z'], 'core': 'flycast_libretro.dll'},
     'saturn':       {'name': 'Sega Saturn',        'extensions': ['.chd', '.bin', '.cue', '.iso', '.7z'], 'core': 'mednafen_saturn_libretro.dll'},
-    'gamecube':     {'name': 'GameCube',           'extensions': ['.iso', '.gcm', '.rvz', '.nkit.iso', '.7z'], 'emulator': 'dolphin'},
-    'wii':          {'name': 'Nintendo Wii',       'extensions': ['.iso', '.wbfs', '.rvz', '.wad', '.nkit.iso', '.7z'], 'emulator': 'dolphin'},
+    'gamecube':     {'name': 'GameCube',           'extensions': ['.iso', '.gcm', '.rvz', '.nkit.iso', '.7z'], 'emulator': 'dolphin', 'core': 'dolphin_libretro.dll'},
+    'wii':          {'name': 'Nintendo Wii',       'extensions': ['.iso', '.wbfs', '.rvz', '.wad', '.nkit.iso', '.7z'], 'emulator': 'dolphin', 'core': 'dolphin_libretro.dll'},
     'neogeo':       {'name': 'Neo Geo',            'extensions': ['.zip', '.7z'], 'core': 'fbneo_libretro.dll'},
     'fbneo':        {'name': 'FinalBurn Neo',      'extensions': ['.zip', '.7z'], 'core': 'fbneo_libretro.dll'},
     'cps1':         {'name': 'CPS-1',              'extensions': ['.zip', '.7z'], 'core': 'fbneo_libretro.dll'},
@@ -45,9 +44,81 @@ ROM_SYSTEMS = {
     'cps3':         {'name': 'CPS-3',              'extensions': ['.zip', '.7z'], 'core': 'fbneo_libretro.dll'},
     'mame':         {'name': 'MAME',               'extensions': ['.zip', '.7z'], 'core': 'mame_libretro.dll'},
     'ngp':          {'name': 'Neo Geo Pocket',     'extensions': ['.ngp', '.ngc', '.zip', '.7z'], 'core': 'mednafen_ngp_libretro.dll'},
+    # ── Additional platforms ──
+    'atari5200':    {'name': 'Atari 5200',         'extensions': ['.a52', '.bin', '.zip', '.7z'], 'core': 'atari800_libretro.dll'},
+    'atari7800':    {'name': 'Atari 7800',         'extensions': ['.a78', '.bin', '.zip', '.7z'], 'core': 'prosystem_libretro.dll'},
+    'atarilynx':    {'name': 'Atari Lynx',         'extensions': ['.lnx', '.zip', '.7z'], 'core': 'handy_libretro.dll'},
+    'atarist':      {'name': 'Atari ST',           'extensions': ['.st', '.stx', '.msa', '.zip', '.7z'], 'core': 'hatari_libretro.dll'},
+    'atarijaguar':  {'name': 'Atari Jaguar',       'extensions': ['.j64', '.jag', '.zip', '.7z'], 'core': 'virtualjaguar_libretro.dll'},
+    'colecovision': {'name': 'ColecoVision',       'extensions': ['.col', '.rom', '.bin', '.zip', '.7z'], 'core': 'bluemsx_libretro.dll'},
+    'c64':          {'name': 'Commodore 64',       'extensions': ['.d64', '.t64', '.prg', '.crt', '.tap', '.zip', '.7z'], 'core': 'vice_x64_libretro.dll'},
+    'amiga':        {'name': 'Amiga',              'extensions': ['.adf', '.adz', '.ipf', '.hdf', '.lha', '.zip', '.7z'], 'core': 'puae_libretro.dll'},
+    'dos':          {'name': 'MS-DOS',             'extensions': ['.exe', '.com', '.bat', '.conf', '.zip', '.7z'], 'core': 'dosbox_pure_libretro.dll'},
+    'pcengine':     {'name': 'PC Engine',          'extensions': ['.pce', '.cue', '.ccd', '.chd', '.zip', '.7z'], 'core': 'mednafen_pce_libretro.dll'},
+    'famicom':      {'name': 'Famicom',            'extensions': ['.nes', '.fds', '.zip', '.7z'], 'core': 'fceumm_libretro.dll'},
+    'fds':          {'name': 'Famicom Disk System', 'extensions': ['.fds', '.zip', '.7z'], 'core': 'fceumm_libretro.dll'},
+    'channelf':     {'name': 'Fairchild Channel F', 'extensions': ['.bin', '.chf', '.zip', '.7z'], 'core': 'freechaf_libretro.dll'},
+    'arcade':       {'name': 'Arcade',             'extensions': ['.zip', '.7z'], 'core': 'fbneo_libretro.dll'},
+    'atomiswave':   {'name': 'Atomiswave',         'extensions': ['.zip', '.7z', '.bin', '.lst'], 'core': 'flycast_libretro.dll'},
+    'daphne':       {'name': 'Daphne',             'extensions': ['.daphne', '.zip', '.7z'], 'core': 'daphne_libretro.dll'},
+    'gameandwatch': {'name': 'Game & Watch',       'extensions': ['.mgw', '.zip', '.7z'], 'core': 'gw_libretro.dll'},
+    'odyssey2':     {'name': 'Odyssey 2',          'extensions': ['.bin', '.zip', '.7z'], 'core': 'o2em_libretro.dll'},
+    'vectrex':      {'name': 'Vectrex',            'extensions': ['.vec', '.bin', '.zip', '.7z'], 'core': 'vecx_libretro.dll'},
+    'wonderswan':   {'name': 'WonderSwan',         'extensions': ['.ws', '.zip', '.7z'], 'core': 'mednafen_wswan_libretro.dll'},
+    'wonderswanc':  {'name': 'WonderSwan Color',   'extensions': ['.wsc', '.zip', '.7z'], 'core': 'mednafen_wswan_libretro.dll'},
+    'intellivision':{'name': 'Intellivision',      'extensions': ['.int', '.bin', '.rom', '.zip', '.7z'], 'core': 'freeintv_libretro.dll'},
+    '3do':          {'name': '3DO',                'extensions': ['.iso', '.chd', '.cue', '.bin', '.zip', '.7z'], 'core': 'opera_libretro.dll'},
 }
 
-IGNORE_EXTENSIONS = {'.txt', '.md', '.cfg', '.srm', '.sav', '.state', '.xml',
+# LaunchBox full folder name → YancoHub system ID
+# Allows scanning ROMs stored in LaunchBox's "Games" directory structure
+_LB_FOLDER_TO_SYSTEM = {
+    'Super Nintendo Entertainment System': 'snes',
+    'Nintendo Entertainment System': 'nes',
+    'Nintendo Game Boy Advance': 'gba',
+    'Nintendo Game Boy': 'gb',
+    'Nintendo Game Boy Color': 'gbc',
+    'Nintendo 64': 'n64',
+    'Nintendo DS': 'nds',
+    'Sega Genesis': 'megadrive',
+    'Sega Master System': 'mastersystem',
+    'Sega Game Gear': 'gamegear',
+    'Atari 2600': 'atari2600',
+    'Sony PlayStation': 'psx',
+    'Sony Playstation 2': 'ps2',
+    'Sony Playstation 3': 'ps3',
+    'Sony PSP': 'psp',
+    'Sega Dreamcast': 'dreamcast',
+    'Sega Saturn': 'saturn',
+    'Nintendo GameCube': 'gamecube',
+    'Nintendo Wii': 'wii',
+    'SNK Neo Geo CD': 'neogeo',
+    'SNK Neo Geo Pocket': 'ngp',
+    'SNK Neo Geo Pocket Color': 'ngp',
+    'Atari 5200': 'atari5200',
+    'Atari 7800': 'atari7800',
+    'Atari Lynx': 'atarilynx',
+    'Atari ST': 'atarist',
+    'Atari Jaguar': 'atarijaguar',
+    'ColecoVision': 'colecovision',
+    'Commodore 64': 'c64',
+    'Commodore Amiga': 'amiga',
+    'MS-DOS': 'dos',
+    'NEC TurboGrafx-16': 'pcengine',
+    'NEC TurboGrafx-CD': 'pcengine',
+    'PC Engine SuperGrafx': 'pcengine',
+    'Nintendo Famicom Disk System': 'fds',
+    'Fairchild Channel F': 'channelf',
+    'Nintendo Game & Watch': 'gameandwatch',
+    'Magnavox Odyssey 2': 'odyssey2',
+    'GCE Vectrex': 'vectrex',
+    'WonderSwan': 'wonderswan',
+    'WonderSwan Color': 'wonderswanc',
+    'Mattel Intellivision': 'intellivision',
+    '3DO Interactive Multiplayer': '3do',
+}
+
+IGNORE_EXTENSIONS = {'.txt', '.md', '.cfg', '.srm', '.sav', '.state', '.sta', '.xml',
                      '.log', '.ini', '.json', '.dat', '.bup', '.gitkeep',
                      '.html', '.url', '.sh', '.dll', '.lua', '.pat', '.input'}
 
@@ -61,10 +132,44 @@ def make_game_id(source, name):
     return hashlib.md5(raw.encode()).hexdigest()[:12]
 
 
+def discover_launchbox_emulators(lb_path: str) -> dict[str, Path]:
+    """Parse LaunchBox's Emulators.xml to discover installed emulators.
+
+    Returns a dict mapping emulator name (lowercase) → exe Path.
+    E.g. {'retroarch': Path('D:/.../retroarch.exe'), 'pcsx2': Path('D:/.../pcsx2-qt.exe')}
+    """
+    import xml.etree.ElementTree as ET
+
+    result = {}
+    lb = Path(lb_path)
+    xml_file = lb / 'Data' / 'Emulators.xml'
+    if not xml_file.exists():
+        return result
+
+    try:
+        tree = ET.parse(xml_file)
+        root = tree.getroot()
+        for emu_el in root.findall('Emulator'):
+            title = emu_el.findtext('Title', '').strip()
+            app_path = emu_el.findtext('ApplicationPath', '').strip()
+            if not title or not app_path:
+                continue
+            # Resolve relative paths against LaunchBox root
+            exe_path = lb / app_path if not Path(app_path).is_absolute() else Path(app_path)
+            if exe_path.exists():
+                result[title.lower()] = exe_path
+                logger.info(f"LaunchBox emulator: {title} → {exe_path}")
+    except Exception as e:
+        logger.warning(f"Failed to parse LaunchBox Emulators.xml: {e}")
+
+    return result
+
+
 class GameScanner:
     def __init__(self):
         self.games = []
         self._retroarch_path = None
+        self._lb_emulators: dict[str, Path] = {}  # name → exe path
 
     def scan_all(self, rom_dirs=None, local_dirs=None):
         """Scan all game sources and return unified game list."""
@@ -100,7 +205,8 @@ class GameScanner:
             steam_path, _ = winreg.QueryValueEx(key, "SteamPath")
             winreg.CloseKey(key)
             return Path(steam_path)
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Steam registry lookup failed: {e}")
             # Fallback common paths
             for p in [Path("C:/Program Files (x86)/Steam"), Path("C:/Program Files/Steam")]:
                 if p.exists():
@@ -157,20 +263,14 @@ class GameScanner:
         logger.info(f"Steam: found {count} games")
 
     def _parse_acf(self, acf_path, steam_path):
-        """Parse a Steam ACF manifest file."""
-        data = {}
+        """Parse a Steam ACF manifest file using the vdf library."""
+        import vdf as vdf_lib
         with open(acf_path, 'r', encoding='utf-8', errors='replace') as f:
-            for line in f:
-                line = line.strip()
-                if line.startswith('"') and '\t' in line:
-                    parts = line.split('\t')
-                    if len(parts) >= 2:
-                        key = parts[0].strip('"')
-                        val = parts[-1].strip('"')
-                        data[key] = val
+            data = vdf_lib.load(f)
+        app_state = data.get('AppState', {})
 
-        appid = data.get('appid', '')
-        name = data.get('name', '')
+        appid = app_state.get('appid', '')
+        name = app_state.get('name', '')
 
         if not appid or not name:
             return None
@@ -196,8 +296,8 @@ class GameScanner:
                     artwork[art_type] = str(art_path)
                     break
 
-        install_dir = acf_path.parent / "common" / data.get('installdir', '')
-        size = int(data.get('SizeOnDisk', 0))
+        install_dir = acf_path.parent / "common" / app_state.get('installdir', '')
+        size = int(app_state.get('SizeOnDisk', 0))
 
         return {
             'id': f"steam_{appid}",
@@ -337,8 +437,8 @@ class GameScanner:
                         if row:
                             data = json.loads(row[0])
                             title = data if isinstance(data, str) else data.get('title', '')
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"GOG GamePieces parse failed for {release_key}: {e}")
                     if not title:
                         title = game_id_raw.replace('_', ' ').title()
                     self.games.append({
@@ -682,8 +782,25 @@ class GameScanner:
     # ── Retro ROMs ──────────────────────────────────────────────────────────
 
     def _find_retroarch(self):
-        """Find RetroArch installation on Windows."""
+        """Find RetroArch installation on Windows.
+
+        Checks: manually set path → LaunchBox emulators → standard locations → PATH.
+        """
         if self._retroarch_path:
+            return self._retroarch_path
+
+        # Check YancoHub's managed emulators directory
+        managed = Path(__file__).parent / 'emulators' / 'retroarch'
+        if (managed / 'retroarch.exe').exists():
+            self._retroarch_path = managed
+            logger.info(f"Using YancoHub managed RetroArch: {managed}")
+            return managed
+
+        # Check LaunchBox-discovered emulators
+        if 'retroarch' in self._lb_emulators:
+            ra_exe = self._lb_emulators['retroarch']
+            self._retroarch_path = ra_exe.parent
+            logger.info(f"Using LaunchBox RetroArch: {self._retroarch_path}")
             return self._retroarch_path
 
         candidates = [
@@ -710,7 +827,11 @@ class GameScanner:
         return None
 
     def _scan_roms(self, rom_base_dir):
-        """Scan a ROM directory for retro games."""
+        """Scan a ROM directory for retro games.
+
+        Supports both short system ID folders (e.g. 'snes') and
+        LaunchBox-style full-name folders (e.g. 'Super Nintendo Entertainment System').
+        """
         rom_base = Path(rom_base_dir)
         if not rom_base.exists():
             logger.warning(f"ROM directory not found: {rom_base_dir}")
@@ -719,94 +840,134 @@ class GameScanner:
         retroarch_path = self._find_retroarch()
         total = 0
 
+        # Build reverse map: system_id → list of folder names to try
+        system_folders: dict[str, list[Path]] = {}
+        for system_id in ROM_SYSTEMS:
+            folders = []
+            short_dir = rom_base / system_id
+            if short_dir.exists():
+                folders.append(short_dir)
+            system_folders[system_id] = folders
+
+        # Add LaunchBox full-name folders
+        for lb_name, system_id in _LB_FOLDER_TO_SYSTEM.items():
+            if system_id in ROM_SYSTEMS:
+                lb_dir = rom_base / lb_name
+                if lb_dir.exists() and lb_dir not in system_folders.get(system_id, []):
+                    system_folders.setdefault(system_id, []).append(lb_dir)
+
         for system_id, system_info in ROM_SYSTEMS.items():
-            system_dir = rom_base / system_id
-            if not system_dir.exists():
+            dirs_to_scan = system_folders.get(system_id, [])
+            if not dirs_to_scan:
                 continue
 
             valid_exts = set(system_info['extensions'])
             seen_games = {}  # name → (path, priority) for dedup
 
-            for rom_file in system_dir.iterdir():
-                if not rom_file.is_file():
-                    continue
-
-                ext = rom_file.suffix.lower()
-                if ext in IGNORE_EXTENSIONS:
-                    continue
-                if ext not in valid_exts:
-                    continue
-
-                # Clean name for dedup
-                clean_name = rom_file.stem
-                # Remove region tags, disc numbers for dedup
-                base_name = re.sub(r'\s*[\(\[].*?[\)\]]', '', clean_name).strip()
-
-                priority = FORMAT_PRIORITY.get(ext, 0)
-
-                if base_name in seen_games:
-                    existing_priority = seen_games[base_name][1]
-                    if priority <= existing_priority:
+            for system_dir in dirs_to_scan:
+                for rom_file in system_dir.iterdir():
+                    if not rom_file.is_file():
                         continue
-                    # Remove old entry
-                    old_id = f"rom_{make_game_id(system_id, seen_games[base_name][0].name)}"
-                    self.games = [g for g in self.games if g['id'] != old_id]
 
-                seen_games[base_name] = (rom_file, priority)
+                    ext = rom_file.suffix.lower()
+                    if ext in IGNORE_EXTENSIONS:
+                        continue
+                    if ext not in valid_exts:
+                        continue
 
-                # Build launch command
-                launch_cmd = self._build_rom_launch_cmd(system_id, system_info,
-                                                         str(rom_file), retroarch_path)
+                    # Clean name for dedup
+                    clean_name = rom_file.stem
+                    # Remove region tags, disc numbers for dedup
+                    base_name = re.sub(r'\s*[\(\[].*?[\)\]]', '', clean_name).strip()
 
-                self.games.append({
-                    'id': f"rom_{make_game_id(system_id, rom_file.name)}",
-                    'name': clean_name,
-                    'source': 'retro',
-                    'system': system_id,
-                    'system_name': system_info['name'],
-                    'file_path': str(rom_file),
-                    'size': rom_file.stat().st_size,
-                    'artwork': {},
-                    'launch_cmd': launch_cmd,
-                })
-                total += 1
+                    priority = FORMAT_PRIORITY.get(ext, 0)
+
+                    if base_name in seen_games:
+                        existing_priority = seen_games[base_name][1]
+                        if priority <= existing_priority:
+                            continue
+                        # Remove old entry
+                        old_id = f"rom_{make_game_id(system_id, seen_games[base_name][0].name)}"
+                        self.games = [g for g in self.games if g['id'] != old_id]
+
+                    seen_games[base_name] = (rom_file, priority)
+
+                    # Build launch command
+                    launch_cmd = self._build_rom_launch_cmd(system_id, system_info,
+                                                             str(rom_file), retroarch_path)
+
+                    self.games.append({
+                        'id': f"rom_{make_game_id(system_id, rom_file.name)}",
+                        'name': clean_name,
+                        'source': 'retro',
+                        'system': system_id,
+                        'system_name': system_info['name'],
+                        'file_path': str(rom_file),
+                        'size': rom_file.stat().st_size,
+                        'artwork': {},
+                        'launch_cmd': launch_cmd,
+                    })
+                    total += 1
 
         logger.info(f"ROMs ({rom_base_dir}): found {total} games")
 
-    def _build_rom_launch_cmd(self, system_id, system_info, rom_path, retroarch_path):
-        """Build the launch command for a ROM."""
-        emulator = system_info.get('emulator', '')
+    def _find_standalone_emulator(self, emulator: str, rom_path: str) -> str | None:
+        """Try to find a standalone emulator (LaunchBox → system install).
+
+        Returns a launch command string, or None to fall through to RetroArch.
+        """
+        if not emulator:
+            return None
 
         if emulator == 'pcsx2':
-            # Look for PCSX2 on Windows
+            if 'pcsx2' in self._lb_emulators:
+                return f'"{self._lb_emulators["pcsx2"]}" -fullscreen -nogui "{rom_path}"'
             for p in [Path("C:/Program Files/PCSX2"), Path("C:/Program Files (x86)/PCSX2")]:
                 exe = p / "pcsx2-qt.exe"
                 if exe.exists():
                     return f'"{exe}" -fullscreen -batch "{rom_path}"'
-            return f'pcsx2-qt.exe -fullscreen -batch "{rom_path}"'
 
         elif emulator == 'dolphin':
+            if 'dolphin' in self._lb_emulators:
+                return f'"{self._lb_emulators["dolphin"]}" -b -e "{rom_path}"'
             for p in [Path("C:/Program Files/Dolphin"), Path("C:/Program Files (x86)/Dolphin")]:
                 exe = p / "Dolphin.exe"
                 if exe.exists():
                     return f'"{exe}" -b -e "{rom_path}"'
-            return f'Dolphin.exe -b -e "{rom_path}"'
 
         elif emulator == 'ppsspp':
+            if 'ppsspp' in self._lb_emulators:
+                return f'"{self._lb_emulators["ppsspp"]}" "{rom_path}"'
             for p in [Path("C:/Program Files/PPSSPP"), Path("C:/Program Files (x86)/PPSSPP")]:
                 exe = p / "PPSSPPWindows64.exe"
                 if exe.exists():
                     return f'"{exe}" "{rom_path}"'
-            return f'PPSSPPWindows64.exe "{rom_path}"'
 
         elif emulator == 'rpcs3':
+            if 'rpcs3' in self._lb_emulators:
+                return f'"{self._lb_emulators["rpcs3"]}" --no-gui "{rom_path}"'
             for p in [Path("C:/Program Files/RPCS3"), Path("C:/RPCS3")]:
                 exe = p / "rpcs3.exe"
                 if exe.exists():
                     return f'"{exe}" --no-gui "{rom_path}"'
-            return f'rpcs3.exe --no-gui "{rom_path}"'
 
-        elif 'core' in system_info and retroarch_path:
+        return None  # Fall through to RetroArch
+
+    def _build_rom_launch_cmd(self, system_id, system_info, rom_path, retroarch_path):
+        """Build the launch command for a ROM.
+
+        Priority: LaunchBox standalone emulator → system install → RetroArch core.
+        Users don't need to install anything if LaunchBox has RetroArch with cores.
+        """
+        emulator = system_info.get('emulator', '')
+
+        # ── Standalone emulator lookup (preferred for PS2, GC, Wii) ──
+        standalone_cmd = self._find_standalone_emulator(emulator, rom_path)
+        if standalone_cmd:
+            return standalone_cmd
+
+        # ── Fall through to RetroArch core (works for everything) ──
+        if 'core' in system_info and retroarch_path:
             core = system_info['core']
             core_path = retroarch_path / "cores" / core
             retroarch_exe = retroarch_path / "retroarch.exe"
@@ -828,8 +989,9 @@ class GameScanner:
 
         try:
             import winreg
-            winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
-                          r"SOFTWARE\WOW6432Node\GOG.com\Games")
+            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                                r"SOFTWARE\WOW6432Node\GOG.com\Games")
+            winreg.CloseKey(key)
             stores['gog'] = True
         except Exception:
             gog_db = Path(os.environ.get('PROGRAMDATA', 'C:/ProgramData')) / \
@@ -844,8 +1006,9 @@ class GameScanner:
 
         try:
             import winreg
-            winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
-                          r"SOFTWARE\WOW6432Node\Ubisoft\Launcher")
+            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                                r"SOFTWARE\WOW6432Node\Ubisoft\Launcher")
+            winreg.CloseKey(key)
             stores['ubisoft'] = True
         except Exception:
             stores['ubisoft'] = False
