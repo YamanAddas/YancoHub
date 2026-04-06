@@ -195,39 +195,6 @@ body::before {
     justify-content: center;
 }
 
-.store-indicators {
-    display: flex;
-    gap: 8px;
-}
-
-.store-dot {
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    background: var(--text-dim);
-    transition: background 0.3s;
-    position: relative;
-}
-
-.store-dot.active {
-    background: var(--accent);
-    box-shadow: 0 0 8px var(--accent-dim);
-}
-
-.store-dot::after {
-    content: attr(data-label);
-    position: absolute;
-    bottom: -20px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 9px;
-    color: var(--text-dim);
-    white-space: nowrap;
-    opacity: 0;
-    transition: opacity 0.2s;
-    pointer-events: none;
-}
-
-.store-dot:hover::after { opacity: 1; }
 
 .top-bar-right {
     display: flex;
@@ -248,7 +215,8 @@ body::before {
     position: relative;
 }
 
-.icon-btn:hover {
+.icon-btn:hover,
+.icon-btn.active {
     border-color: var(--accent);
     color: var(--accent);
     background: var(--bg-glass);
@@ -3834,35 +3802,15 @@ body::before {
     white-space: nowrap;
 }
 
-/* ── Console Panel Toggle Button ──────────────────────────────────────────── */
+/* ── CatByte Button (top bar) ─────────────────────────────────────────────── */
 
-.console-panel-toggle {
-    position: fixed;
-    right: 16px;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 16;
-    width: 40px;
-    height: 46px;
-    background: rgba(8, 15, 28, 0.9);
-    border: 1px solid rgba(0, 229, 193, 0.15);
-    color: var(--text-dim);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
-    transition: all 0.3s ease;
+.catbyte-btn {
+    position: relative;
 }
 
-.console-panel-toggle:hover {
-    color: var(--accent);
-    background: rgba(0, 229, 193, 0.08);
-    border-color: rgba(0, 229, 193, 0.3);
-}
-
-.console-panel-toggle.panel-open {
-    right: 352px;
+.catbyte-btn-icon {
+    font-size: 18px;
+    line-height: 1;
 }
 
 /* When panel is open, push main content left */
@@ -4388,7 +4336,6 @@ body::before {
 
 @media (max-width: 1200px) {
     .console-panel { width: 300px; }
-    .console-panel-toggle.panel-open { right: 312px; }
     .app.console-panel-open { padding-right: 300px; }
 }
 
@@ -4396,6 +4343,5 @@ body::before {
     .catbyte-panel { width: 100%; }
     :root { --card-width: 150px; --card-height: 270px; }
     .console-panel { width: 280px; }
-    .console-panel-toggle.panel-open { right: 292px; }
     .app.console-panel-open { padding-right: 280px; }
 }

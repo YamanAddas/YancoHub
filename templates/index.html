@@ -37,15 +37,16 @@
             <div class="logo">
                 <img class="logo-icon" src="/static/img/logo-360.png" alt="YancoHub" draggable="false">
             </div>
-            <div class="top-bar-center">
-                <div class="store-indicators" id="storeIndicators"></div>
-            </div>
+            <div class="top-bar-center"></div>
             <div class="top-bar-right">
+                <button class="icon-btn" id="consolePanelToggle" title="Toggle library panel">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                </button>
                 <button class="icon-btn" id="btnSearch" title="Search (Ctrl+F)">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                 </button>
-                <button class="icon-btn" id="btnCatbyte" title="CatByte AI (Ctrl+B)">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+                <button class="icon-btn catbyte-btn" id="btnCatbyte" title="CatByte AI (Ctrl+B)">
+                    <span class="catbyte-btn-icon">🐱</span>
                     <span class="catbyte-status-dot" id="catbyteStatusDot"></span>
                 </button>
                 <div class="gamepad-indicator hidden" id="gamepadIndicator" title="Gamepad connected">
@@ -156,11 +157,7 @@
                 <!-- Dynamic hex console tabs injected by JS -->
             </div>
         </aside>
-        <button class="console-panel-toggle" id="consolePanelToggle" title="Toggle library panel">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polygon points="12 2, 22 8.5, 22 15.5, 12 22, 2 15.5, 2 8.5"/>
-            </svg>
-        </button>
+        <!-- Library panel toggle moved to top-bar -->
     </div>
 
     <!-- Search Overlay -->

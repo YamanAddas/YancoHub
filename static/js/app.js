@@ -227,7 +227,6 @@ async function loadStores() {
     try {
         const r = await fetch('/api/stores');
         state.stores = await r.json();
-        renderStoreIndicators();
     } catch {}
 }
 
@@ -806,11 +805,11 @@ function toggleConsolePanel() {
 
     if (isHidden) {
         panel.classList.remove('hidden');
-        toggle.classList.add('panel-open');
+        toggle.classList.add('active');
         app.classList.add('console-panel-open');
     } else {
         panel.classList.add('hidden');
-        toggle.classList.remove('panel-open');
+        toggle.classList.remove('active');
         app.classList.remove('console-panel-open');
     }
 }
@@ -834,11 +833,10 @@ function autoShowConsolePanel() {
         // Auto-open on wide screens
         if (window.innerWidth > 1200) {
             panel.classList.remove('hidden');
-            toggle.classList.add('panel-open');
+            toggle.classList.add('active');
             $('app').classList.add('console-panel-open');
         }
     }
-    toggle.style.display = state.games.length > 0 ? '' : 'none';
 }
 
 // ── Gaming Mode ──────────────────────────────────────────────────────────
@@ -1930,18 +1928,7 @@ function launchSelected() {
     if (game) launchGame(game.id);
 }
 
-// ── Store Indicators ───────────────────────────────────────────────────────
-
-function renderStoreIndicators() {
-    const names = {
-        steam: 'Steam', epic: 'Epic', gog: 'GOG', xbox: 'Xbox',
-        ea: 'EA', ubisoft: 'Ubisoft', battlenet: 'Battle.net',
-        amazon: 'Amazon', retroarch: 'RetroArch'
-    };
-    $('storeIndicators').innerHTML = Object.entries(state.stores)
-        .map(([k, v]) => `<div class="store-dot ${v ? 'active' : ''}" data-label="${names[k] || k}" title="${names[k]}: ${v ? 'Detected' : 'Not found'}"></div>`)
-        .join('');
-}
+// ── Store Indicators (removed from top bar — info lives in Settings) ──────
 
 // ── Events ─────────────────────────────────────────────────────────────────
 
