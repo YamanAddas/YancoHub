@@ -35,6 +35,7 @@ DEFAULT_DATA = {
         'retroarch_path': '',
         'launchbox_path': '',      # Path to LaunchBox install dir (artwork source)
         'show_uninstalled': True,  # Show games from accounts even if not installed
+        'direct_launch': True,     # Launch games directly without store client when possible
     },
     'catbyte': {
         'backend': 'openclaw',     # openclaw, ollama, lmstudio, openai, custom

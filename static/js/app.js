@@ -3015,6 +3015,25 @@ async function renderAccountsTab() {
         $('btnToggleUninstalled').textContent = 'Toggle Show Uninstalled Games';
     }
 
+    // ── Direct Launch toggle ──
+    const dlToggle = $('toggleDirectLaunch');
+    if (dlToggle) {
+        try {
+            const dlResp = await fetch('/api/settings/direct-launch');
+            const dlData = await dlResp.json();
+            dlToggle.setAttribute('aria-checked', dlData.direct_launch ? 'true' : 'false');
+        } catch {
+            dlToggle.setAttribute('aria-checked', 'true');
+        }
+        dlToggle.onclick = async () => {
+            try {
+                const r = await fetch('/api/settings/direct-launch', { method: 'POST' });
+                const d = await r.json();
+                dlToggle.setAttribute('aria-checked', d.direct_launch ? 'true' : 'false');
+            } catch {}
+        };
+    }
+
     // ── Detected Stores ──
     const storeNames = {
         steam: 'Steam', epic: 'Epic Games', gog: 'GOG Galaxy', xbox: 'Xbox/Game Pass',

@@ -195,6 +195,112 @@ class GameScanner:
         logger.info(f"Scan complete: {len(self.games)} games found")
         return self.games
 
+    # ── Direct exe detection helpers ───────────────────────────────────────
+
+    # Executables that are never the main game
+    _SKIP_EXE_NAMES = frozenset({
+        'unins000', 'unins001', 'uninstall', 'setup', 'installer', 'install',
+        'crash', 'crashhandler', 'crashreporter', 'crashpad_handler',
+        'ue4prereqsetup', 'ueprereqsetup', 'ue4prereqsetup_x64',
+        'unitycrashandler32', 'unitycrashandler64',
+        'dxsetup', 'dxwebsetup', 'dotnetfx35setup', 'dotnetfx40setup',
+        'vcredist_x86', 'vcredist_x64', 'vc_redist.x86', 'vc_redist.x64',
+        'launch_game', 'launcher', 'easyanticheat_setup', 'easyanticheat',
+        'battleye_installer', 'beclient_x64',
+        'steamservice', 'steam_api', 'steam_api64',
+        'python', 'pythonw', 'node', 'java', 'javaw',
+    })
+
+    # Subdirectories that contain redistributables, not game binaries
+    _SKIP_EXE_DIRS = frozenset({
+        '_commonredist', '__support', 'redist', 'redistributables',
+        '_redist', 'directx', 'dotnet', 'vcredist', '__installer',
+        'easyanticheat', 'battleye', 'support', 'installers',
+    })
+
+    def _find_game_exe(self, install_dir: str, game_name: str = '') -> str:
+        """Find the most likely main game executable in an install directory.
+
+        Returns the full path as a string, or '' if nothing convincing is found.
+        Searches root + one level of subdirectories, skipping known tool/redist folders.
+        """
+        d = Path(install_dir)
+        if not d.exists():
+            return ''
+
+        candidates = []
+        game_lower = game_name.lower().replace(' ', '').replace('-', '').replace('_', '').replace(':', '')
+
+        for exe in d.rglob('*.exe'):
+            # Skip exes deeper than 2 levels (root + 1 subdir)
+            try:
+                rel = exe.relative_to(d)
+            except ValueError:
+                continue
+            if len(rel.parts) > 2:
+                continue
+
+            # Skip exes inside known non-game directories
+            if len(rel.parts) > 1 and rel.parts[0].lower() in self._SKIP_EXE_DIRS:
+                continue
+
+            stem = exe.stem.lower()
+            if stem in self._SKIP_EXE_NAMES:
+                continue
+            # Skip common prefixes/patterns
+            if stem.startswith(('unins', 'vc_redist', 'vcredist', 'dotnet')):
+                continue
+
+            try:
+                size = exe.stat().st_size
+            except OSError:
+                continue
+
+            # Score: name match is best, then file size, prefer root-level
+            name_clean = stem.replace(' ', '').replace('-', '').replace('_', '').replace(':', '')
+            name_match = (name_clean == game_lower) if game_lower else False
+            depth = len(rel.parts) - 1  # 0 = root, 1 = subdir
+
+            candidates.append((exe, name_match, depth, size))
+
+        if not candidates:
+            return ''
+
+        # Sort: name match first, then shallowest, then largest
+        candidates.sort(key=lambda c: (-c[1], c[2], -c[3]))
+        return str(candidates[0][0])
+
+    def _parse_gog_gameinfo(self, install_dir: str) -> tuple[str, str]:
+        """Parse goggame-*.info files in a GOG game's install directory.
+
+        Returns (exe_path, arguments) from the primary play task,
+        or ('', '') if not found.
+        """
+        d = Path(install_dir)
+        if not d.exists():
+            return ('', '')
+
+        for info_file in d.glob('goggame-*.info'):
+            try:
+                with open(info_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                tasks = data.get('playTasks', [])
+                for task in tasks:
+                    if task.get('isPrimary') and task.get('type') == 'FileTask':
+                        rel_path = task.get('path', '')
+                        if not rel_path:
+                            continue
+                        working_dir = task.get('workingDir', '')
+                        base = d / working_dir if working_dir else d
+                        exe_path = base / rel_path
+                        if exe_path.exists():
+                            args = task.get('arguments', '') or ''
+                            return (str(exe_path), args)
+            except Exception as e:
+                logger.debug(f"Failed to parse {info_file.name}: {e}")
+
+        return ('', '')
+
     # ── Steam ───────────────────────────────────────────────────────────────
 
     def _get_steam_path(self):
@@ -298,16 +404,21 @@ class GameScanner:
 
         install_dir = acf_path.parent / "common" / app_state.get('installdir', '')
         size = int(app_state.get('SizeOnDisk', 0))
+        install_str = str(install_dir) if install_dir.exists() else ''
+
+        # Detect direct exe for native launch
+        direct_exe = self._find_game_exe(install_str, name) if install_str else ''
 
         return {
             'id': f"steam_{appid}",
             'name': name,
             'source': 'steam',
             'appid': appid,
-            'install_dir': str(install_dir) if install_dir.exists() else '',
+            'install_dir': install_str,
             'size': size,
             'artwork': artwork,
             'launch_cmd': f'steam://run/{appid}',
+            'direct_exe': direct_exe,
         }
 
     # ── Epic Games Store ────────────────────────────────────────────────────
@@ -343,6 +454,16 @@ class GameScanner:
                     except (ValueError, TypeError):
                         pass
 
+                # Detect direct exe from Epic manifest
+                direct_exe = ''
+                direct_args = ''
+                launch_exe = data.get('LaunchExecutable', '')
+                if launch_exe and install_loc:
+                    exe_path = Path(install_loc) / launch_exe
+                    if exe_path.exists():
+                        direct_exe = str(exe_path)
+                        direct_args = data.get('LaunchCommand', '') or ''
+
                 self.games.append({
                     'id': f"epic_{app_name or name}",
                     'name': name,
@@ -353,6 +474,8 @@ class GameScanner:
                     'size': size,
                     'artwork': {},
                     'launch_cmd': f'com.epicgames.launcher://apps/{namespace}?action=launch&silent=true',
+                    'direct_exe': direct_exe,
+                    'direct_args': direct_args,
                 })
                 count += 1
             except Exception as e:
@@ -386,6 +509,13 @@ class GameScanner:
                         except FileNotFoundError:
                             pass
 
+                        # GOG games are DRM-free — always detect direct exe
+                        direct_exe = exe  # Registry exe is already direct
+                        direct_args = ''
+                        if not direct_exe and path:
+                            # Try goggame-*.info for the exe path
+                            direct_exe, direct_args = self._parse_gog_gameinfo(path)
+
                         self.games.append({
                             'id': f"gog_{game_id}",
                             'name': name,
@@ -393,7 +523,9 @@ class GameScanner:
                             'install_dir': path,
                             'size': 0,
                             'artwork': {},
-                            'launch_cmd': exe if exe else f'goggalaxy://openGameView/{game_id}',
+                            'launch_cmd': f'goggalaxy://openGameView/{game_id}',
+                            'direct_exe': direct_exe,
+                            'direct_args': direct_args,
                         })
                         count += 1
                     finally:
@@ -441,14 +573,32 @@ class GameScanner:
                         logger.debug(f"GOG GamePieces parse failed for {release_key}: {e}")
                     if not title:
                         title = game_id_raw.replace('_', ' ').title()
+
+                    # Try to find install path from InstalledBaseProducts
+                    install_dir = ''
+                    direct_exe = ''
+                    direct_args = ''
+                    try:
+                        cursor.execute(
+                            "SELECT installationPath FROM InstalledBaseProducts WHERE productId = ?",
+                            (game_id_raw,))
+                        irow = cursor.fetchone()
+                        if irow and irow[0]:
+                            install_dir = irow[0]
+                            direct_exe, direct_args = self._parse_gog_gameinfo(install_dir)
+                    except Exception:
+                        pass  # Table may not exist in all Galaxy DB versions
+
                     self.games.append({
                         'id': gid,
                         'name': title,
                         'source': 'gog',
-                        'install_dir': '',
+                        'install_dir': install_dir,
                         'size': 0,
                         'artwork': {},
                         'launch_cmd': f'goggalaxy://openGameView/{game_id_raw}',
+                        'direct_exe': direct_exe,
+                        'direct_args': direct_args,
                     })
                     count += 1
             except sqlite3.OperationalError as e:

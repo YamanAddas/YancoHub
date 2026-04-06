@@ -422,6 +422,29 @@ def api_launch(game_id):
     userdata.session_start(game_id)
 
     try:
+        # Check if direct launch is enabled and game has a direct exe
+        settings = userdata.get_settings()
+        direct_launch = settings.get('direct_launch', True)
+        direct_exe = game.get('direct_exe', '')
+        use_direct = direct_launch and direct_exe and Path(direct_exe).exists()
+
+        if use_direct:
+            # Direct executable launch — bypasses store client
+            # Use exe path as-is (not shlex.split) to preserve Windows paths with spaces
+            args = [direct_exe]
+            direct_args = game.get('direct_args', '')
+            if direct_args:
+                args.extend(shlex.split(direct_args, posix=False))
+            proc = subprocess.Popen(
+                args,
+                shell=False,
+                cwd=game.get('install_dir', None) or None,
+            )
+            _set_active(proc, game_id)
+            _start_process_monitor(game_id, proc)
+            logger.info(f"Direct launch: {game['name']}")
+            return jsonify({'status': 'launched', 'game': game['name'], 'mode': 'direct'})
+
         if launch_cmd.startswith(('steam://', 'com.epicgames.launcher://',
                                    'goggalaxy://', 'uplay://', 'battlenet://',
                                    'link2ea://', 'origin://', 'shell:')):
@@ -431,7 +454,7 @@ def api_launch(game_id):
             # Monitor via polling (URL launches are fire-and-forget)
             _start_url_monitor(game_id)
         else:
-            # Direct executable launch
+            # Direct executable launch (local games, ROMs, GOG with registry exe)
             args = shlex.split(launch_cmd)
             proc = subprocess.Popen(
                 args,
@@ -442,7 +465,7 @@ def api_launch(game_id):
             # Monitor process in background
             _start_process_monitor(game_id, proc)
 
-        return jsonify({'status': 'launched', 'game': game['name']})
+        return jsonify({'status': 'launched', 'game': game['name'], 'mode': 'store'})
     except Exception as e:
         logger.error(f"Launch failed: {e}")
         userdata.session_end(game_id)
@@ -867,6 +890,22 @@ def api_toggle_show_uninstalled():
     userdata.update_settings({'show_uninstalled': new_val})
     threading.Thread(target=_build_library, daemon=True).start()
     return jsonify({'show_uninstalled': new_val})
+
+
+@app.route('/api/settings/direct-launch', methods=['GET'])
+def api_get_direct_launch():
+    """Get current direct_launch setting."""
+    settings = userdata.get_settings()
+    return jsonify({'direct_launch': settings.get('direct_launch', True)})
+
+
+@app.route('/api/settings/direct-launch', methods=['POST'])
+def api_toggle_direct_launch():
+    """Toggle direct game launching (bypass store clients when possible)."""
+    settings = userdata.get_settings()
+    new_val = not settings.get('direct_launch', True)
+    userdata.update_settings({'direct_launch': new_val})
+    return jsonify({'direct_launch': new_val})
 
 
 # ── RetroArch Path ─────────────────────────────────────────────────────────
