@@ -14,6 +14,7 @@ const state = {
     filteredGames: [],
     selectedIndex: 0,
     currentTab: 'all',
+    sortBy: 'az',
     collections: {},
     favorites: new Set(),
     hiddenSystems: new Set(),
@@ -23,6 +24,8 @@ const state = {
     scanning: false,
     catbyteOnline: false,
     activeMood: null,
+    gamingMode: false,
+    gamingFocusIndex: 0,
 };
 
 // ── DOM ────────────────────────────────────────────────────────────────────
@@ -306,10 +309,65 @@ async function checkCatbyteStatus() {
 
 // ── Filtering & Carousel ───────────────────────────────────────────────────
 
+// ── Sort Options ─────────────────────────────────────────────────────────
+
+const SORT_OPTIONS = {
+    az:       { label: 'A \u2192 Z',       icon: '\u2195' },
+    za:       { label: 'Z \u2192 A',       icon: '\u2195' },
+    recent:   { label: 'Recent',            icon: '\u23F0' },
+    playtime: { label: 'Most Played',       icon: '\u23F1' },
+    rating:   { label: 'Top Rated',         icon: '\u2B50' },
+    year:     { label: 'Release Year',      icon: '\uD83D\uDCC5' },
+    random:   { label: 'Random',            icon: '\uD83C\uDFB2' },
+};
+
+function applySortOrder(games) {
+    const sort = state.sortBy;
+    switch (sort) {
+        case 'az':
+            games.sort((a, b) => {
+                const af = state.favorites.has(a.id) ? 0 : 1;
+                const bf = state.favorites.has(b.id) ? 0 : 1;
+                if (af !== bf) return af - bf;
+                return a.name.localeCompare(b.name);
+            });
+            break;
+        case 'za':
+            games.sort((a, b) => {
+                const af = state.favorites.has(a.id) ? 0 : 1;
+                const bf = state.favorites.has(b.id) ? 0 : 1;
+                if (af !== bf) return af - bf;
+                return b.name.localeCompare(a.name);
+            });
+            break;
+        case 'recent':
+            games.sort((a, b) => (b.last_played || 0) - (a.last_played || 0));
+            break;
+        case 'playtime':
+            games.sort((a, b) => totalPlaytime(b) - totalPlaytime(a));
+            break;
+        case 'rating':
+            games.sort((a, b) => (b.community_rating || 0) - (a.community_rating || 0));
+            break;
+        case 'year':
+            games.sort((a, b) => (b.release_year || 0) - (a.release_year || 0));
+            break;
+        case 'random':
+            for (let i = games.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [games[i], games[j]] = [games[j], games[i]];
+            }
+            break;
+    }
+    return games;
+}
+
 function applyFilter() {
     const tab = state.currentTab;
     let games = [...state.games];
+    const now = Date.now() / 1000;
 
+    // ── Filter by tab ──
     switch (tab) {
         case 'all': break;
         case 'favorites':
@@ -317,30 +375,48 @@ function applyFilter() {
             break;
         case 'recent':
             games = games.filter(g => g.last_played);
-            games.sort((a, b) => (b.last_played || 0) - (a.last_played || 0));
             break;
         case 'retro':
             games = games.filter(g => g.source === 'retro');
             break;
+        // Smart collections
+        case 'smart_unplayed':
+            games = games.filter(g => !g.last_played && totalPlaytime(g) === 0);
+            break;
+        case 'smart_continue':
+            games = games.filter(g => g.last_played && (now - g.last_played) < 30 * 86400 && totalPlaytime(g) > 0);
+            break;
+        case 'smart_backlog':
+            games = games.filter(g => totalPlaytime(g) > 0 && totalPlaytime(g) < 0.5);
+            break;
+        case 'smart_completed':
+            games = games.filter(g => {
+                const pt = totalPlaytime(g);
+                return g.source === 'retro' ? pt >= 5 : pt >= 10;
+            });
+            break;
         default:
-            // Check if it's a retro system tab (e.g. "retro_snes")
-            if (tab.startsWith('retro_')) {
+            // Genre tab: "genre_Action"
+            if (tab.startsWith('genre_')) {
+                const genre = tab.slice(6);
+                games = games.filter(g => g.genre && g.genre.split(/;\s*/).some(
+                    t => t.toLowerCase() === genre.toLowerCase()
+                ));
+            }
+            // Retro system tab: "retro_snes"
+            else if (tab.startsWith('retro_')) {
                 const sys = tab.slice(6);
                 games = games.filter(g => g.source === 'retro' && g.system === sys);
-            } else {
+            }
+            // Store tab
+            else {
                 games = games.filter(g => g.source === tab);
             }
             break;
     }
 
-    if (tab !== 'recent') {
-        games.sort((a, b) => {
-            const af = state.favorites.has(a.id) ? 0 : 1;
-            const bf = state.favorites.has(b.id) ? 0 : 1;
-            if (af !== bf) return af - bf;
-            return a.name.localeCompare(b.name);
-        });
-    }
+    // ── Sort ──
+    games = applySortOrder(games);
 
     state.filteredGames = games;
     state.selectedIndex = 0;
@@ -435,11 +511,30 @@ const TAB_META = {
 // Ordered list of store sources to show in the panel
 const STORE_SOURCES = ['steam', 'epic', 'gog', 'xbox', 'ea', 'ubisoft', 'battlenet', 'local'];
 
-function buildRetroTabs() {
-    // Legacy cleanup
-    document.querySelectorAll('.tab-retro-system').forEach(t => t.remove());
+// Smart collection metadata
+const SMART_META = {
+    smart_unplayed:  { name: 'Unplayed',          colors: ['#1a2a1a', '#0a150a'], icon: '\u2728' },
+    smart_continue:  { name: 'Continue Playing',   colors: ['#2a1a3a', '#150d1f'], icon: '\u25B6' },
+    smart_backlog:   { name: 'Backlog',            colors: ['#3a2a1a', '#1f150d'], icon: '\uD83D\uDCDA' },
+    smart_completed: { name: 'Completed',          colors: ['#0a3a2a', '#051f15'], icon: '\u2714' },
+};
 
-    // Build the full hex panel with all tabs
+const SMART_SVG = {
+    smart_unplayed:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>`,
+    smart_continue:  `<svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>`,
+    smart_backlog:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`,
+    smart_completed: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
+};
+
+// Genre color palette (rotating)
+const GENRE_COLORS = [
+    ['#3a1a2a', '#1f0d15'], ['#1a2a3a', '#0d1520'], ['#2a3a1a', '#151f0d'],
+    ['#3a2a1a', '#1f150d'], ['#1a3a2a', '#0d1f15'], ['#2a1a3a', '#150d1f'],
+    ['#3a1a1a', '#1f0d0d'], ['#1a1a3a', '#0d0d1f'], ['#2a2a1a', '#15150d'],
+];
+
+function buildRetroTabs() {
+    document.querySelectorAll('.tab-retro-system').forEach(t => t.remove());
     buildConsolePanel();
 }
 
@@ -448,37 +543,79 @@ function buildConsolePanel() {
     if (!scroll) return;
     scroll.innerHTML = '';
 
-    // ── Count games per source & retro system ──
+    // Build sort bar
+    buildSortBar();
+
+    // ── Count games per source, system, genre, smart ──
     const sourceCounts = {};
     const systemCounts = {};
+    const genreCounts = {};
+    const now = Date.now() / 1000;
+    let smartUnplayed = 0, smartContinue = 0, smartBacklog = 0, smartCompleted = 0;
+
     for (const g of state.games) {
         const src = g.source || 'local';
         sourceCounts[src] = (sourceCounts[src] || 0) + 1;
         if (src === 'retro' && g.system && !state.hiddenSystems.has(g.system)) {
             systemCounts[g.system] = (systemCounts[g.system] || 0) + 1;
         }
+        // Genres
+        if (g.genre) {
+            for (const genre of g.genre.split(/;\s*/)) {
+                const trimmed = genre.trim();
+                if (trimmed) genreCounts[trimmed] = (genreCounts[trimmed] || 0) + 1;
+            }
+        }
+        // Smart collections
+        const pt = totalPlaytime(g);
+        if (!g.last_played && pt === 0) smartUnplayed++;
+        if (g.last_played && (now - g.last_played) < 30 * 86400 && pt > 0) smartContinue++;
+        if (pt > 0 && pt < 0.5) smartBacklog++;
+        if (src === 'retro' ? pt >= 5 : pt >= 10) smartCompleted++;
     }
+
     const totalGames = state.games.length;
     const totalFavorites = state.favorites ? state.favorites.size : 0;
     const totalRecent = state.games.filter(g => g.last_played).length;
     const totalRetro = sourceCounts['retro'] || 0;
 
-    // ── Utility section: All, Favorites, Recent ──
+    // ── Utility section ──
     _addHexTab(scroll, 'all', totalGames);
     if (totalFavorites > 0) _addHexTab(scroll, 'favorites', totalFavorites);
     if (totalRecent > 0) _addHexTab(scroll, 'recent', totalRecent);
 
-    // ── Divider ──
-    _addHexDivider(scroll, 'Stores');
-
-    // ── Store tabs (only those with games) ──
-    for (const src of STORE_SOURCES) {
-        const count = sourceCounts[src] || 0;
-        if (count === 0) continue;
-        _addHexTab(scroll, src, count);
+    // ── Smart Collections ──
+    const smartCounts = { smart_unplayed: smartUnplayed, smart_continue: smartContinue, smart_backlog: smartBacklog, smart_completed: smartCompleted };
+    const hasAnySmart = Object.values(smartCounts).some(c => c > 0);
+    if (hasAnySmart) {
+        _addHexDivider(scroll, 'Smart');
+        for (const [key, count] of Object.entries(smartCounts)) {
+            if (count === 0) continue;
+            _addSmartHexTab(scroll, key, count);
+        }
     }
 
-    // ── Retro section ──
+    // ── Stores ──
+    const hasStores = STORE_SOURCES.some(s => (sourceCounts[s] || 0) > 0);
+    if (hasStores) {
+        _addHexDivider(scroll, 'Stores');
+        for (const src of STORE_SOURCES) {
+            const count = sourceCounts[src] || 0;
+            if (count === 0) continue;
+            _addHexTab(scroll, src, count);
+        }
+    }
+
+    // ── Genres ──
+    const genreKeys = Object.keys(genreCounts).sort((a, b) => genreCounts[b] - genreCounts[a]);
+    if (genreKeys.length > 0) {
+        _addHexDivider(scroll, 'Genres');
+        genreKeys.forEach((genre, i) => {
+            _addGenreHexTab(scroll, genre, genreCounts[genre], i);
+        });
+    }
+
+    // ── Retro ──
     const retroSystems = Object.keys(systemCounts).sort((a, b) => systemCounts[b] - systemCounts[a]);
     if (totalRetro > 0) {
         _addHexDivider(scroll, 'Retro');
@@ -549,11 +686,87 @@ function _addRetroHexTab(container, sys, count) {
     _loadPlatformArt(wrap, sys);
 }
 
+function _addSmartHexTab(container, key, count) {
+    const meta = SMART_META[key];
+    if (!meta) return;
+    const svg = SMART_SVG[key] || '';
+
+    const wrap = document.createElement('div');
+    wrap.className = 'console-hex-wrap';
+    wrap.dataset.tab = key;
+    wrap.title = `${meta.name} \u2014 ${count} game${count !== 1 ? 's' : ''}`;
+
+    wrap.innerHTML = `
+        <div class="console-hex-border"></div>
+        <div class="console-hex">
+            <div class="console-hex-art" style="background: linear-gradient(135deg, ${meta.colors[0]}, ${meta.colors[1]});"></div>
+            <div class="console-hex-overlay"></div>
+            <div class="console-hex-brand-icon">${svg}</div>
+            <div class="console-hex-glass"></div>
+            <div class="console-hex-label">
+                <span class="console-hex-name">${meta.name}</span>
+                <span class="console-hex-count">${count} game${count !== 1 ? 's' : ''}</span>
+            </div>
+        </div>
+    `;
+    container.appendChild(wrap);
+}
+
+function _addGenreHexTab(container, genre, count, index) {
+    const colors = GENRE_COLORS[index % GENRE_COLORS.length];
+
+    const wrap = document.createElement('div');
+    wrap.className = 'console-hex-wrap';
+    wrap.dataset.tab = `genre_${genre}`;
+    wrap.title = `${genre} \u2014 ${count} game${count !== 1 ? 's' : ''}`;
+
+    wrap.innerHTML = `
+        <div class="console-hex-border"></div>
+        <div class="console-hex">
+            <div class="console-hex-art" style="background: linear-gradient(135deg, ${colors[0]}, ${colors[1]});"></div>
+            <div class="console-hex-overlay"></div>
+            <div class="console-hex-brand-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+                    <line x1="7" y1="7" x2="7.01" y2="7"/>
+                </svg>
+            </div>
+            <div class="console-hex-glass"></div>
+            <div class="console-hex-label">
+                <span class="console-hex-name">${genre}</span>
+                <span class="console-hex-count">${count} game${count !== 1 ? 's' : ''}</span>
+            </div>
+        </div>
+    `;
+    container.appendChild(wrap);
+}
+
 function _addHexDivider(container, label) {
     const div = document.createElement('div');
     div.className = 'console-hex-divider';
     div.innerHTML = `<span>${label}</span>`;
     container.appendChild(div);
+}
+
+function buildSortBar() {
+    const bar = $('sortBar');
+    if (!bar) return;
+    bar.innerHTML = '';
+    for (const [key, opt] of Object.entries(SORT_OPTIONS)) {
+        const btn = document.createElement('button');
+        btn.className = `sort-btn${state.sortBy === key ? ' active' : ''}`;
+        btn.dataset.sort = key;
+        btn.title = opt.label;
+        btn.textContent = opt.icon;
+        bar.appendChild(btn);
+    }
+}
+
+function setSort(sortKey) {
+    if (!SORT_OPTIONS[sortKey]) return;
+    state.sortBy = sortKey;
+    buildSortBar();
+    applyFilter();
 }
 
 function _loadPlatformArt(wrap, sys) {
@@ -613,6 +826,128 @@ function autoShowConsolePanel() {
         }
     }
     toggle.style.display = state.games.length > 0 ? '' : 'none';
+}
+
+// ── Gaming Mode ──────────────────────────────────────────────────────────
+
+function enterGamingMode() {
+    state.gamingMode = true;
+    state.gamingFocusIndex = 0;
+    const overlay = $('gamingMode');
+    overlay.classList.remove('hidden');
+
+    // Try fullscreen
+    try { document.documentElement.requestFullscreen().catch(() => {}); } catch {}
+
+    renderGamingGrid();
+    updateGamingInfo();
+    updateGamingCategory();
+}
+
+function exitGamingMode() {
+    state.gamingMode = false;
+    $('gamingMode').classList.add('hidden');
+    try { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); } catch {}
+}
+
+function renderGamingGrid() {
+    const grid = $('gamingGrid');
+    if (!grid) return;
+    grid.innerHTML = '';
+
+    const games = state.filteredGames;
+    games.forEach((game, i) => {
+        const card = document.createElement('div');
+        card.className = `gaming-card${i === state.gamingFocusIndex ? ' focused' : ''}`;
+        card.dataset.index = i;
+        card.tabIndex = 0;
+
+        const colors = SYS_COLORS[game.system || game.source] || ['#1a2a3a', '#0a1520'];
+        card.innerHTML = `
+            <div class="gaming-card-hex" style="background: linear-gradient(135deg, ${colors[0]}, ${colors[1]});">
+                <div class="gaming-card-art"></div>
+                <div class="gaming-card-overlay"></div>
+                <div class="gaming-card-name">${game.name}</div>
+            </div>
+        `;
+        grid.appendChild(card);
+
+        // Load artwork
+        const artEl = card.querySelector('.gaming-card-art');
+        if (game.source === 'retro' || (game.artwork && game.artwork.cover)) {
+            const img = new Image();
+            img.onload = () => {
+                artEl.style.backgroundImage = `url(/api/artwork/${encodeURIComponent(game.id)}/cover)`;
+            };
+            img.onerror = () => {};
+            img.src = `/api/artwork/${encodeURIComponent(game.id)}/cover`;
+        }
+    });
+}
+
+function updateGamingInfo() {
+    const game = state.filteredGames[state.gamingFocusIndex];
+    const title = $('gamingInfoTitle');
+    const meta = $('gamingInfoMeta');
+    const hero = $('gamingHero');
+    if (!game) {
+        title.textContent = '';
+        meta.textContent = '';
+        hero.style.backgroundImage = '';
+        hero.classList.remove('active');
+        return;
+    }
+    title.textContent = game.name;
+    const parts = [];
+    if (game.genre) parts.push(game.genre.split(';')[0].trim());
+    if (game.developer) parts.push(game.developer.split(';')[0].trim());
+    if (game.release_year) parts.push(game.release_year);
+    const pt = totalPlaytime(game);
+    if (pt > 0) parts.push(`${pt < 1 ? Math.round(pt * 60) + 'm' : Math.round(pt) + 'h'} played`);
+    meta.textContent = parts.join('  \u00B7  ');
+
+    // Hero backdrop
+    hero.style.backgroundImage = `url(/api/artwork/${encodeURIComponent(game.id)}/hero)`;
+    hero.classList.add('active');
+}
+
+function updateGamingCategory() {
+    const el = $('gamingCategory');
+    const sortEl = $('gamingSort');
+    if (!el) return;
+    const hexName = document.querySelector('.console-hex-wrap.active .console-hex-name');
+    el.textContent = hexName ? hexName.textContent : 'All Games';
+    if (sortEl) sortEl.textContent = SORT_OPTIONS[state.sortBy] ? SORT_OPTIONS[state.sortBy].label : '';
+}
+
+function gamingNavigate(dir) {
+    const total = state.filteredGames.length;
+    if (total === 0) return;
+
+    const grid = $('gamingGrid');
+    const cols = Math.max(1, Math.floor(grid.offsetWidth / 200));
+    let idx = state.gamingFocusIndex;
+
+    switch (dir) {
+        case 'left':  idx = Math.max(0, idx - 1); break;
+        case 'right': idx = Math.min(total - 1, idx + 1); break;
+        case 'up':    idx = Math.max(0, idx - cols); break;
+        case 'down':  idx = Math.min(total - 1, idx + cols); break;
+    }
+
+    if (idx !== state.gamingFocusIndex) {
+        state.gamingFocusIndex = idx;
+        $$('.gaming-card').forEach((c, i) => c.classList.toggle('focused', i === idx));
+        const focused = grid.children[idx];
+        if (focused) focused.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        updateGamingInfo();
+    }
+}
+
+function gamingLaunch() {
+    const game = state.filteredGames[state.gamingFocusIndex];
+    if (!game) return;
+    fetch(`/api/launch/${encodeURIComponent(game.id)}`, { method: 'POST' }).catch(() => {});
 }
 
 // ── Mood Helpers ──────────────────────────────────────────────────────────
@@ -1323,6 +1658,68 @@ function bindEvents() {
         const hex = e.target.closest('.console-hex-wrap');
         if (!hex) return;
         selectConsoleHex(hex.dataset.tab);
+    });
+
+    // Sort bar clicks
+    $('sortBar').addEventListener('click', (e) => {
+        const btn = e.target.closest('.sort-btn');
+        if (!btn) return;
+        setSort(btn.dataset.sort);
+    });
+
+    // Gaming mode
+    $('btnGamingMode').addEventListener('click', enterGamingMode);
+    $('gamingGrid').addEventListener('click', (e) => {
+        const card = e.target.closest('.gaming-card');
+        if (!card) return;
+        const idx = parseInt(card.dataset.index, 10);
+        if (idx === state.gamingFocusIndex) {
+            gamingLaunch();
+        } else {
+            state.gamingFocusIndex = idx;
+            $$('.gaming-card').forEach((c, i) => c.classList.toggle('focused', i === idx));
+            updateGamingInfo();
+        }
+    });
+
+    // Gaming mode keyboard
+    document.addEventListener('keydown', (e) => {
+        if (!state.gamingMode) return;
+        switch (e.key) {
+            case 'Escape': exitGamingMode(); e.preventDefault(); break;
+            case 'ArrowLeft':  gamingNavigate('left');  e.preventDefault(); break;
+            case 'ArrowRight': gamingNavigate('right'); e.preventDefault(); break;
+            case 'ArrowUp':    gamingNavigate('up');    e.preventDefault(); break;
+            case 'ArrowDown':  gamingNavigate('down');  e.preventDefault(); break;
+            case 'Enter':      gamingLaunch();          e.preventDefault(); break;
+            case 'Tab': {
+                e.preventDefault();
+                // Cycle to next hex category
+                const hexes = Array.from(document.querySelectorAll('.console-hex-wrap'));
+                const activeIdx = hexes.findIndex(h => h.classList.contains('active'));
+                const next = (activeIdx + 1) % hexes.length;
+                selectConsoleHex(hexes[next].dataset.tab);
+                renderGamingGrid();
+                updateGamingInfo();
+                updateGamingCategory();
+                break;
+            }
+        }
+    });
+
+    // F11 shortcut for gaming mode
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'F11' && !state.gamingMode) {
+            e.preventDefault();
+            enterGamingMode();
+        }
+    });
+
+    // Exit gaming mode when fullscreen exits
+    document.addEventListener('fullscreenchange', () => {
+        if (!document.fullscreenElement && state.gamingMode) {
+            exitGamingMode();
+        }
     });
 
     // Search
