@@ -16,13 +16,15 @@ python -m venv venv && venv\Scripts\activate && pip install -r requirements.txt 
 python build.py                     # Build installer + portable zip (needs PyInstaller)
 python build.py --portable          # Portable zip only
 python build.py --installer         # NSIS installer only (needs makensis on PATH)
+python -m pytest tests/ -v          # Run all tests (211 tests)
+python -m pytest tests/test_app.py  # Run Flask route tests only
+python -m pytest tests/ -k fuzzy    # Run tests matching keyword
 ```
 
 ## Architecture
 
 ```
 launch.py → starts Flask (app.py:8745) → waits for /health → opens pywebview window
-                                        → optionally starts OpenClaw (CatByte AI:18789)
 
 Frontend: single-page app served by Flask (templates/index.html + static/)
 Backend:  REST API (app.py) orchestrating scanner, accounts, metadata, artwork, BIOS, catbyte
@@ -51,6 +53,18 @@ Storage:  userdata.json (settings/favorites/playtime) + cache/metadata.db (SQLit
 | `static/js/app.js` | 3D hexagonal carousel, starfield, tabs, search, settings UI |
 | `static/js/emulator.js` | EmulatorJS integration (19 retro systems in-browser via WASM) |
 
+**Tests:**
+| File | Covers |
+|------|--------|
+| `tests/conftest.py` | Shared fixtures: temp dirs, UserData, ChatHistory, MetadataDB, synthetic ROM builders |
+| `tests/test_constants.py` | Version format, ports, LIBRETRO_SYSTEMS integrity, BUILTIN_SYSTEMS subset |
+| `tests/test_romident.py` | SNES/GB/GBC/GBA/Genesis/N64 header parsing, byte-swap, fuzzy matching |
+| `tests/test_userdata.py` | Sessions, collections, favorites, hidden systems, dirs, accounts, persistence |
+| `tests/test_biosmanager.py` | BIOS scanning, subfolders, case-insensitive matching, aliases, status |
+| `tests/test_chathistory.py` | Session CRUD, pinning, messages, LLM formatting, pruning |
+| `tests/test_metadata.py` | SQLite cache CRUD, Steam/Wikipedia fetching (mocked HTTP), enrichment |
+| `tests/test_app.py` | Flask routes: health, games, search, collections, favorites, CSRF, artwork |
+
 ## Code Conventions
 
 - Python: snake_case, type hints on public functions, `pathlib.Path` over `os.path`
@@ -61,13 +75,13 @@ Storage:  userdata.json (settings/favorites/playtime) + cache/metadata.db (SQLit
 - Windows paths: backslashes in registry/filesystem, forward slashes in URLs
 - Game IDs: composite strings like `steam_12345`, `epic_fortnite`, `rom_snes_abc123` — always `source_` prefixed
 
-## Visual Identity — YancoVerse Theme
+## Visual Identity
 
 These values are **sacred**. Preserve them in all UI changes:
 
 ```
 --bg:          #060b14     deep navy-black background
---accent:      #00e5c1     YancoVerse teal — glow, highlights, active states
+--accent:      #00e5c1     teal — glow, highlights, active states
 --text:        #8a9bb0     muted blue-gray body text
 --text-bright: #c8d6e5     headings, important text
 --card-width:  180px
@@ -90,7 +104,9 @@ Every change must meet ALL of these:
 4. **Thread safety** — mutations to `game_library`, `game_index`, `active_process`, `active_game_id` must use atomic swap or lock
 5. **No `shell=True`** — all subprocess calls use argument lists
 6. **Visual consistency** — all UI uses CSS variables from `:root`, never hardcoded colors
-7. **Verify visual changes** — describe what changed and confirm it matches YancoVerse aesthetic
+7. **Verify visual changes** — describe what changed and confirm it matches the YancoHub aesthetic
+8. **Tests pass** — run `python -m pytest tests/ -v` before considering a change complete; all 211 tests must pass
+9. **New logic gets tests** — any new module, function, or route should have corresponding tests in `tests/`; use existing fixtures from `conftest.py` (temp dirs, synthetic ROMs, mocked HTTP)
 
 ## Gotchas
 
@@ -105,6 +121,23 @@ Every change must meet ALL of these:
 - **Direct launch** — `direct_exe` paths are Windows paths; never `shlex.split()` them (spaces break). Use `[exe_path]` as a list. `direct_args` can be split with `shlex.split(args, posix=False)`
 - **GOG `goggame-*.info`** — JSON files in install dir with `playTasks` array; `isPrimary` + `type: "FileTask"` gives the main exe. All GOG games are DRM-free
 
+## Testing
+
+Tests use `pytest` with temp files and mocks — no network or filesystem side effects.
+
+```bash
+python -m pytest tests/ -v          # Full suite (211 tests, ~4s)
+python -m pytest tests/ -k "rom"    # Run only ROM-related tests
+python -m pytest tests/test_app.py  # Flask routes only
+```
+
+**Writing new tests:**
+- Use fixtures from `conftest.py`: `userdata_instance`, `chat_history_instance`, `metadata_db`, `bios_manager`, `rom_dir`
+- Synthetic ROM helpers: `make_snes_rom()`, `make_gb_rom()`, `make_gba_rom()`, `make_genesis_rom()`, `make_n64_rom()`
+- For Flask routes: use the `client` fixture in `test_app.py` — it mocks all backend services and restores originals after each test
+- Mock HTTP calls with `unittest.mock.patch` — never hit real APIs in tests
+- Use `tmp_path` (pytest built-in) for any file I/O — never write to real project paths
+
 ## What Not To Do
 
 - Introduce npm, webpack, or any JS build system — this is vanilla JS served by Flask
@@ -117,11 +150,13 @@ Every change must meet ALL of these:
 - Use `shell=True` in any subprocess call
 - Swallow exceptions with bare `except: pass`
 - Hardcode colors instead of using CSS variables
+- Skip running tests before marking a change complete
+- Write tests that hit real APIs, real filesystems, or depend on installed games
 
 ## Legal Distribution Rules
 
 - Ship only open-source BIOS (GBA: Cult-of-GBA MIT, PS1: OpenBIOS MIT)
-- `.gitignore` excludes: `userdata.json`, `config/openclaw/USER.md`, `cache/`, `logs/`, proprietary BIOS
+- `.gitignore` excludes: `userdata.json`, `cache/`, `logs/`, proprietary BIOS
 - Artwork fetched at runtime from public APIs, never bundled
 - ROMs never referenced by path or included — only scanning logic ships
 - No API keys, tokens, or personal paths in committed code

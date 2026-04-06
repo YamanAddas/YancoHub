@@ -19,7 +19,7 @@ YancoHub should feel like a **AAA game main menu**, not a utility app. Every scr
     --bg-surface:   #0c1628;    /* Card/panel backgrounds */
     --bg-elevated:  #111e36;    /* Elevated surfaces (modals, dropdowns) */
 
-    --accent:       #00e5c1;    /* YancoVerse teal — THE brand color */
+    --accent:       #00e5c1;    /* YancoHub teal — THE brand color */
     --accent-dim:   #00b89a;    /* Subtler teal for secondary elements */
     --accent-glow:  rgba(0, 229, 193, 0.15);  /* Glow halos */
 

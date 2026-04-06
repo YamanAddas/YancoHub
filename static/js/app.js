@@ -1,6 +1,6 @@
 /**
  * YancoHub — Frontend Application
- * 3D hexagonal crystal carousel, adapted from YancoDeck.
+ * 3D hexagonal crystal carousel, starfield, cinematic UI.
  */
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -2583,9 +2583,6 @@ function updateModelPill() {
     const nameEl = $('catbyteModelName');
     if (!nameEl) return;
     let display = state.catbyteCurrentModel || 'model';
-    // For OpenClaw aliases, show a cleaner name
-    if (display === 'openclaw' || display === 'openclaw/default') display = 'OpenClaw';
-    else if (display.startsWith('openclaw/')) display = display.replace('openclaw/', 'OC/');
     nameEl.textContent = display.length > 16 ? display.slice(0, 14) + '\u2026' : display;
     nameEl.title = state.catbyteCurrentModel;
 }
@@ -2604,15 +2601,6 @@ async function toggleModelDropdown(e) {
             ]);
             state.catbyteModels = await modelsResp.json();
             const config = await configResp.json();
-            // For OpenClaw, also fetch the real model info
-            if (config.backend === 'openclaw') {
-                try {
-                    const infoResp = await fetch('/api/catbyte/openclaw-info');
-                    state._openclawInfo = await infoResp.json();
-                } catch { state._openclawInfo = null; }
-            } else {
-                state._openclawInfo = null;
-            }
         } catch { state.catbyteModels = []; }
         renderModelDropdown();
     }
@@ -2625,34 +2613,10 @@ function renderModelDropdown() {
         return;
     }
 
-    const info = state._openclawInfo;
-
-    if (info && info.primary) {
-        // OpenClaw: show what model each alias routes to
-        let html = '';
-        // Show primary model info header
-        html += `<div style="padding:6px 12px 4px;font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px">Routes to: ${escapeHtml(info.primary)}</div>`;
-
-        state.catbyteModels.forEach(m => {
-            const active = m === state.catbyteCurrentModel ? ' active' : '';
-            html += `<div class="catbyte-model-option${active}" data-model="${escapeAttr(m)}">${escapeHtml(m)}</div>`;
-        });
-
-        // Show available models from OpenClaw config
-        if (info.available && info.available.length > 0) {
-            html += `<div style="padding:8px 12px 4px;font-size:10px;color:var(--text-dim);border-top:1px solid var(--border);margin-top:4px;text-transform:uppercase;letter-spacing:0.5px">Available in OpenClaw</div>`;
-            info.available.forEach(m => {
-                html += `<div class="catbyte-model-option" style="cursor:default;opacity:0.6" title="Managed by OpenClaw">${escapeHtml(m.alias || m.id)}</div>`;
-            });
-        }
-        dd.innerHTML = html;
-    } else {
-        // Other backends: show models directly
-        dd.innerHTML = state.catbyteModels.slice(0, 20).map(m => {
-            const active = m === state.catbyteCurrentModel ? ' active' : '';
-            return `<div class="catbyte-model-option${active}" data-model="${escapeAttr(m)}">${escapeHtml(m)}</div>`;
-        }).join('');
-    }
+    dd.innerHTML = state.catbyteModels.slice(0, 20).map(m => {
+        const active = m === state.catbyteCurrentModel ? ' active' : '';
+        return `<div class="catbyte-model-option${active}" data-model="${escapeAttr(m)}">${escapeHtml(m)}</div>`;
+    }).join('');
 
     dd.querySelectorAll('.catbyte-model-option[data-model]').forEach(opt => {
         opt.addEventListener('click', async (e) => {
@@ -3862,22 +3826,32 @@ async function pollEmuProgress() {
 
 async function renderCatbyteTab() {
     try {
-        const [configResp, presetsResp] = await Promise.all([
+        const [configResp, presetsResp, detectResp] = await Promise.all([
             fetch('/api/catbyte/config'),
             fetch('/api/catbyte/presets'),
+            fetch('/api/catbyte/detect'),
         ]);
         const config = await configResp.json();
         const presets = await presetsResp.json();
+        const detected = await detectResp.json();
 
-        // Backend selector cards
-        const backendOrder = ['openclaw', 'ollama', 'lmstudio', 'openai', 'custom'];
+        // Backend selector cards — show detection status
+        const backendOrder = ['ollama', 'openclaw', 'lmstudio', 'openai', 'custom'];
         let backendHtml = '';
         for (const key of backendOrder) {
             const p = presets[key];
             if (!p) continue;
             const selected = config.backend === key;
+            const det = detected[key];
+            const isRunning = det && det.reachable;
             const badgeClass = p.local ? 'local' : 'cloud';
             const badgeText = p.local ? 'Local' : 'Cloud';
+            let statusHtml = '';
+            if (p.local && det) {
+                statusHtml = isRunning
+                    ? `<span class="backend-card-status running">Running${det.models ? ` · ${det.models} model${det.models !== 1 ? 's' : ''}` : ''}</span>`
+                    : `<span class="backend-card-status not-running">Not detected</span>`;
+            }
             backendHtml += `
                 <div class="backend-card ${selected ? 'selected' : ''}" data-backend="${key}">
                     <div class="backend-card-header">
@@ -3886,6 +3860,7 @@ async function renderCatbyteTab() {
                         <span class="backend-card-badge ${badgeClass}">${badgeText}</span>
                     </div>
                     <div class="backend-card-desc">${escapeHtml(p.description)}</div>
+                    ${statusHtml}
                 </div>`;
         }
         $('catbyteBackendSelector').innerHTML = backendHtml;
@@ -3907,14 +3882,14 @@ async function renderCatbyteTab() {
         const preset = presets[config.backend] || {};
         let fieldsHtml = '';
 
-        if (config.backend === 'custom' || config.backend === 'openai') {
-            if (config.backend === 'custom') {
+        if (['custom', 'openai', 'openclaw'].includes(config.backend)) {
+            if (config.backend === 'custom' || config.backend === 'openclaw') {
                 fieldsHtml += `
                     <div class="settings-field">
                         <label class="settings-label">Base URL</label>
                         <input type="text" class="settings-input" id="catbyteBaseUrl"
                                value="${escapeAttr(config.base_url || '')}"
-                               placeholder="http://localhost:8080">
+                               placeholder="${escapeAttr(preset.base_url || 'http://localhost:8080')}">
                     </div>`;
             }
             fieldsHtml += `
@@ -3926,18 +3901,17 @@ async function renderCatbyteTab() {
                 </div>`;
         }
 
-        // Model field for backends that support multiple models
-        if (['openclaw', 'ollama', 'lmstudio', 'openai', 'custom'].includes(config.backend)) {
+        // Model dropdown for backends that support multiple models
+        if (['ollama', 'openclaw', 'lmstudio', 'openai', 'custom'].includes(config.backend)) {
             fieldsHtml += `
                 <div class="settings-field">
                     <label class="settings-label">Model</label>
                     <div class="settings-input-row">
-                        <input type="text" class="settings-input" id="catbyteModel"
-                               value="${escapeAttr(config.model || '')}"
-                               placeholder="${escapeAttr(preset.default_model || 'default')}">
+                        <select class="settings-input" id="catbyteModel">
+                            <option value="">Loading models...</option>
+                        </select>
                         <button class="btn-small" id="btnRefreshModels" title="Refresh available models">&#8635;</button>
                     </div>
-                    <div id="catbyteModelList" class="catbyte-model-list"></div>
                 </div>`;
         }
 
@@ -3973,33 +3947,51 @@ async function renderCatbyteTab() {
             });
         }
 
-        // Bind refresh models button
+        // Populate model dropdown
+        const modelSelect = document.getElementById('catbyteModel');
         const btnRefresh = document.getElementById('btnRefreshModels');
-        if (btnRefresh) {
-            btnRefresh.addEventListener('click', async () => {
-                btnRefresh.textContent = '...';
-                btnRefresh.disabled = true;
-                try {
-                    const r = await fetch('/api/catbyte/models');
-                    const models = await r.json();
-                    const listEl = $('catbyteModelList');
-                    if (listEl && models.length > 0) {
-                        listEl.innerHTML = models.slice(0, 15).map(m =>
-                            `<span class="about-tech-tag" style="cursor:pointer;margin-top:4px" data-model="${escapeAttr(m)}">${escapeHtml(m)}</span>`
-                        ).join(' ');
-                        listEl.querySelectorAll('[data-model]').forEach(tag => {
-                            tag.addEventListener('click', () => {
-                                const modelInput = document.getElementById('catbyteModel');
-                                if (modelInput) modelInput.value = tag.dataset.model;
-                            });
-                        });
-                    } else if (listEl) {
-                        listEl.innerHTML = '<span style="font-size:11px;color:var(--text-dim)">No models found \u2014 is the backend running?</span>';
+
+        async function populateModelDropdown() {
+            if (!modelSelect) return;
+            if (btnRefresh) { btnRefresh.textContent = '...'; btnRefresh.disabled = true; }
+            try {
+                const r = await fetch('/api/catbyte/models');
+                const models = await r.json();
+                const currentModel = config.model || preset.default_model || '';
+                modelSelect.innerHTML = '';
+
+                if (models.length > 0) {
+                    for (const m of models) {
+                        const opt = document.createElement('option');
+                        opt.value = m;
+                        opt.textContent = m;
+                        if (m === currentModel) opt.selected = true;
+                        modelSelect.appendChild(opt);
                     }
-                } catch {}
-                btnRefresh.textContent = '\u21BB';
-                btnRefresh.disabled = false;
-            });
+                    // If current model isn't in the list, add it at the top
+                    if (currentModel && !models.includes(currentModel)) {
+                        const opt = document.createElement('option');
+                        opt.value = currentModel;
+                        opt.textContent = currentModel + ' (custom)';
+                        opt.selected = true;
+                        modelSelect.prepend(opt);
+                    }
+                } else {
+                    const opt = document.createElement('option');
+                    opt.value = currentModel;
+                    opt.textContent = currentModel || 'No models found';
+                    opt.selected = true;
+                    modelSelect.appendChild(opt);
+                }
+            } catch {
+                modelSelect.innerHTML = `<option value="${escapeAttr(config.model || '')}">Failed to load models</option>`;
+            }
+            if (btnRefresh) { btnRefresh.textContent = '\u21BB'; btnRefresh.disabled = false; }
+        }
+
+        if (modelSelect) populateModelDropdown();
+        if (btnRefresh) {
+            btnRefresh.addEventListener('click', populateModelDropdown);
         }
 
         // Toggle switches

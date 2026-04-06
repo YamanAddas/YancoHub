@@ -7,10 +7,9 @@ import sys
 import time
 import subprocess
 import requests
-import threading
 from pathlib import Path
 
-from constants import FLASK_PORT, OPENCLAW_PORT
+from constants import FLASK_PORT
 
 PROJECT_DIR = Path(__file__).parent
 
@@ -25,45 +24,6 @@ def start_flask():
     )
     processes.append(proc)
     return proc
-
-
-def start_openclaw():
-    """Start OpenClaw gateway (optional, non-critical)."""
-    try:
-        openclaw_path = Path.home() / '.openclaw'
-        if not openclaw_path.exists():
-            print("[YancoHub] OpenClaw not found — CatByte will be offline")
-            return None
-
-        # Try to find openclaw executable
-        import shutil
-        import os
-        openclaw_exe = shutil.which('openclaw')
-        if not openclaw_exe:
-            # Try common locations
-            for p in [
-                Path(os.environ.get('LOCALAPPDATA', '')) / 'openclaw' / 'openclaw.exe',
-                Path(os.environ.get('PROGRAMFILES', '')) / 'OpenClaw' / 'openclaw.exe',
-            ]:
-                if p.exists():
-                    openclaw_exe = str(p)
-                    break
-
-        if not openclaw_exe:
-            print("[YancoHub] OpenClaw executable not found — CatByte will be offline")
-            return None
-
-        proc = subprocess.Popen(
-            [openclaw_exe, 'gateway', '--port', str(OPENCLAW_PORT)],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        processes.append(proc)
-        print(f"[YancoHub] OpenClaw started on port {OPENCLAW_PORT}")
-        return proc
-    except Exception as e:
-        print(f"[YancoHub] OpenClaw failed to start: {e}")
-        return None
 
 
 def wait_for_flask(timeout=15):
@@ -93,26 +53,8 @@ def cleanup():
                 pass
 
 
-def _should_start_openclaw() -> bool:
-    """Check if the user has OpenClaw selected as their CatByte backend."""
-    try:
-        import json
-        data_file = PROJECT_DIR / 'userdata.json'
-        if data_file.exists():
-            with open(data_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            return data.get('catbyte', {}).get('backend', 'ollama') == 'openclaw'
-    except Exception:
-        pass
-    return False
-
-
 def main():
     print("[YancoHub] Starting...")
-
-    # Start OpenClaw only if user has it selected as their CatByte backend
-    if _should_start_openclaw():
-        threading.Thread(target=start_openclaw, daemon=True).start()
 
     # Start Flask
     flask_proc = start_flask()

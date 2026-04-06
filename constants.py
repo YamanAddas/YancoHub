@@ -9,9 +9,6 @@ VERSION = '1.0.0'
 # Flask backend port
 FLASK_PORT = 8745
 
-# OpenClaw (CatByte AI) port
-OPENCLAW_PORT = 18789
-
 # LibRetro system directory names — used by metadata.py and artwork.py
 LIBRETRO_SYSTEMS = {
     'nes':          'Nintendo - Nintendo Entertainment System',

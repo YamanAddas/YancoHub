@@ -1,7 +1,7 @@
 /**
  * YancoHub — Built-in Emulator Engine
  * Wraps EmulatorJS with cinematic transitions, per-system boot sequences,
- * a YancoVerse-themed pause menu, and CatByte integration.
+ * a themed pause menu, and CatByte integration.
  */
 
 // ── System → EmulatorJS core mapping ───────────────────────────────────────

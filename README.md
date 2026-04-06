@@ -4,7 +4,7 @@
 
 YancoHub is a unified PC game launcher that aggregates Steam, Epic, GOG, Xbox, EA, Ubisoft, Battle.net, local games, and retro ROMs into one dark cinematic interface — with a built-in retro emulator and CatByte AI gaming companion.
 
-![YancoVerse](https://img.shields.io/badge/YancoVerse-00e5c1?style=flat-square) ![Platform](https://img.shields.io/badge/Windows-0078D6?style=flat-square&logo=windows) ![Python](https://img.shields.io/badge/Python_3.10+-3776AB?style=flat-square&logo=python&logoColor=white) ![License](https://img.shields.io/badge/MIT-green?style=flat-square)
+![Platform](https://img.shields.io/badge/Windows-0078D6?style=flat-square&logo=windows) ![Python](https://img.shields.io/badge/Python_3.10+-3776AB?style=flat-square&logo=python&logoColor=white) ![License](https://img.shields.io/badge/MIT-green?style=flat-square)
 
 ## Why YancoHub
 
@@ -33,7 +33,7 @@ YancoHub is a unified PC game launcher that aggregates Steam, Epic, GOG, Xbox, E
 - Cinematic per-system boot sequences, save states, screenshots, glassmorphism pause menu
 
 ### CatByte AI
-- Gaming companion with multiple AI backend options (Ollama, LM Studio, OpenAI, OpenClaw, or any OpenAI-compatible endpoint)
+- Gaming companion with multiple AI backend options (Ollama, OpenClaw, LM Studio, OpenAI, or any OpenAI-compatible endpoint)
 - Ask for tips, walkthroughs, recommendations
 - Aware of your current game and library
 - Screenshot analysis for stuck moments
@@ -79,6 +79,15 @@ venv\Scripts\python launch.py
 
 **Requirements (from source):** Python 3.10+, Windows 10/11
 
+## Testing
+
+```bash
+pip install pytest
+python -m pytest tests/ -v
+```
+
+183 tests covering constants, ROM header parsing, user data persistence, BIOS scanning, chat history, metadata caching, and Flask API routes. All tests use temp files and mocks — no network access, no side effects.
+
 ## Building from Source
 
 ```bash
@@ -93,10 +102,6 @@ Output goes to `dist/`. The NSIS installer requires [NSIS 3.x](https://nsis.sour
 ## Security Note
 
 `userdata.json` stores your settings, including your Steam API key. This file is gitignored and local-only — **do not share it** or commit it to version control.
-
-## Part of YancoVerse
-
-YancoHub is the Windows PC counterpart to [YancoDeck](https://github.com/YamanAddas/YancoDeck) (Steam Deck launcher). Same aesthetic, same CatByte AI.
 
 ## License
 

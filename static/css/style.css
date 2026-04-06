@@ -1,6 +1,6 @@
-/* ── YancoHub — YancoVerse Cosmic Theme ───────────────────────────────────
+/* ── YancoHub — Cosmic Theme ──────────────────────────────────────────────
    Cyan-teal accent, 3D hexagonal crystal carousel, starfield, portal glow.
-   Adapted from YancoDeck for Windows desktop. ──────────────────────────── */
+   ──────────────────────────────────────────────────────────────────────── */
 
 :root {
     --bg: #060b14;
@@ -2042,6 +2042,21 @@ body::before {
     color: var(--text-dim);
 }
 
+select.settings-input {
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238a9bb0' d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 32px;
+}
+
+select.settings-input option {
+    background: #0c1322;
+    color: var(--text-bright);
+    padding: 6px 12px;
+}
+
 .settings-input-row {
     display: flex;
     gap: 8px;
@@ -3123,6 +3138,20 @@ body::before {
     background: rgba(255, 193, 7, 0.08);
     color: var(--warning);
     border: 1px solid rgba(255, 193, 7, 0.12);
+}
+
+.backend-card-status {
+    font-size: 10px;
+    margin-top: 2px;
+    letter-spacing: 0.3px;
+}
+
+.backend-card-status.running {
+    color: var(--success, #00d97e);
+}
+
+.backend-card-status.not-running {
+    color: var(--text-dim);
 }
 
 /* ── CatByte Connection ─── */

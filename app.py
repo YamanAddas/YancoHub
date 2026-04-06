@@ -1171,6 +1171,14 @@ def api_catbyte_config_update():
                     'cat_puns', 'game_awareness'}
     updates = {k: v for k, v in data.items() if k in allowed_keys}
     if updates:
+        # When switching backends, clear per-backend fields to prevent
+        # stale API keys / URLs from one backend leaking to another
+        if 'backend' in updates:
+            current = userdata.get_catbyte_config()
+            if updates['backend'] != current.get('backend'):
+                updates.setdefault('api_key', '')
+                updates.setdefault('base_url', '')
+                updates.setdefault('model', '')
         userdata.update_catbyte_config(updates)
         catbyte.configure(userdata.get_catbyte_config())
     return jsonify(catbyte.get_config())
@@ -1180,6 +1188,12 @@ def api_catbyte_config_update():
 def api_catbyte_presets():
     """Get available backend presets for settings UI."""
     return jsonify(catbyte.get_presets())
+
+
+@app.route('/api/catbyte/detect')
+def api_catbyte_detect():
+    """Probe all local backends to see which are running."""
+    return jsonify(catbyte.detect_backends())
 
 
 @app.route('/api/catbyte/models')
@@ -1193,11 +1207,6 @@ def api_catbyte_test():
     """Test the current backend connection end-to-end."""
     return jsonify(catbyte.test_connection())
 
-
-@app.route('/api/catbyte/openclaw-info')
-def api_catbyte_openclaw_info():
-    """Get OpenClaw routing info: primary model and available models."""
-    return jsonify(catbyte.get_openclaw_info())
 
 
 @app.route('/api/catbyte/sessions', methods=['GET'])
@@ -1507,15 +1516,13 @@ def api_validate_path():
     if not path:
         return jsonify({'valid': False, 'message': 'No path provided'})
 
-    p = Path(path)
-    if not p.exists():
-        return jsonify({'valid': False, 'message': 'Path does not exist'})
-    if not p.is_dir():
-        return jsonify({'valid': False, 'message': 'Path is not a directory'})
+    err = _validate_dir_path(path)
+    if err:
+        return jsonify({'valid': False, 'message': err})
 
     # Count contents for preview
     try:
-        files = list(p.iterdir())
+        files = list(Path(path).iterdir())
         dirs = [f for f in files if f.is_dir()]
         regular_files = [f for f in files if f.is_file()]
         return jsonify({
@@ -1533,8 +1540,11 @@ def api_scan_rom_dir():
     """Preview what ROMs would be found in a directory."""
     data = request.get_json() or {}
     path = data.get('path', '').strip()
-    if not path or not Path(path).is_dir():
+    if not path:
         return jsonify({'error': 'Invalid directory'}), 400
+    err = _validate_dir_path(path)
+    if err:
+        return jsonify({'error': err}), 400
 
     # Quick scan for ROM-like files by extension
     rom_exts = {

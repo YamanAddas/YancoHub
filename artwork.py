@@ -35,6 +35,7 @@ CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 # Negative cache: don't re-attempt failed artwork lookups within this window
 MISS_TTL = 86400  # 24 hours
+MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024  # 20 MB — reject anything larger
 
 
 # YancoHub system ID → LaunchBox platform folder name
@@ -1069,6 +1070,13 @@ class ArtworkScraper:
             if resp.status_code != 200:
                 return None
 
+            # Reject oversized responses early via Content-Length header
+            content_length = resp.headers.get('content-length')
+            if content_length and int(content_length) > MAX_DOWNLOAD_BYTES:
+                logger.debug(f"Artwork too large for {game_id}: {content_length} bytes")
+                resp.close()
+                return None
+
             # Determine extension from content type or URL
             content_type = resp.headers.get('content-type', '')
             if 'png' in content_type or url.endswith('.png'):
@@ -1080,13 +1088,24 @@ class ArtworkScraper:
 
             cache_path = CACHE_DIR / f"{game_id}_{art_type}{ext}"
 
+            total_bytes = 0
+            aborted = False
             with open(cache_path, 'wb') as f:
                 for chunk in resp.iter_content(8192):
+                    total_bytes += len(chunk)
+                    if total_bytes > MAX_DOWNLOAD_BYTES:
+                        logger.debug(f"Artwork download exceeded size limit for {game_id}")
+                        aborted = True
+                        break
                     f.write(chunk)
 
-            # Verify file isn't empty or too small (probably an error page)
-            if cache_path.stat().st_size < 1000:
-                cache_path.unlink()
+            # Remove if aborted, empty, or too small (probably an error page)
+            if aborted:
+                cache_path.unlink(missing_ok=True)
+                return None
+            file_size = cache_path.stat().st_size
+            if file_size < 1000:
+                cache_path.unlink(missing_ok=True)
                 return None
 
             return str(cache_path)

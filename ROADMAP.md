@@ -65,7 +65,7 @@ Make the app actually bootable and pleasant on first launch.
 
 ### 1.5 — CatByte offline handling
 - If CatByte is offline at startup, dim/hide the CatByte button instead of showing a dead panel
-- Show a tooltip: "CatByte requires OpenClaw — see Settings"
+- Show a tooltip: "CatByte requires an AI backend — see Settings"
 
 ### 1.6 — Cleanup unused dependencies
 - Remove `winshell` from requirements.txt (never imported)
@@ -197,19 +197,24 @@ Features that make YancoHub unique — things no competitor does.
 
 ---
 
-## Phase 6 — Distribution
+## Phase 6 — Distribution & Quality
 
-### 6.1 — PyInstaller packaging
-- Create a standalone .exe that bundles Python + deps
-- No Python install required for end users
-- MSI/NSIS installer with YancoHub branding
+### 6.1 — PyInstaller packaging (COMPLETE)
+- ~~Create a standalone .exe that bundles Python + deps~~
+- ~~MSI/NSIS installer with YancoHub branding~~
 
-### 6.2 — Auto-update mechanism
+### 6.2 — Test suite (COMPLETE)
+- ~~183 pytest tests covering constants, ROM parsing, user data, BIOS scanning, chat history, metadata, and Flask routes~~
+- ~~Synthetic ROM fixtures, mocked HTTP, temp file isolation — no side effects~~
+- ~~Run: `python -m pytest tests/ -v`~~
+
+### 6.3 — Auto-update mechanism
 - Check GitHub releases for new versions
 - Download and apply updates (or prompt user)
 
-### 6.3 — GitHub release pipeline
+### 6.4 — GitHub release pipeline
 - GitHub Actions: lint → test → build → release
+- Run `pytest` in CI on every push/PR
 - Auto-generate changelog from commit messages
 
 ---
@@ -219,6 +224,6 @@ Features that make YancoHub unique — things no competitor does.
 - **Social features** — this is a personal cockpit, not a social network
 - **Store purchasing** — we aggregate, we don't sell
 - **Cloud sync** — userdata.json is local-only by design
-- **Mobile app** — YancoHub is Windows-only; YancoDeck covers handheld
+- **Mobile app** — YancoHub is Windows-only by design
 - **Plugin system** — keep it simple; built-in integrations only
 - **Achievements** — would require per-store API auth that's fragile

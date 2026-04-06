@@ -224,8 +224,30 @@ C:\YancoHub\                    Project root (example)
   logs\yancohub.log             App log (gitignored)
   bios\                         Open-source BIOS files
   bios\user\                    User-provided BIOS (gitignored)
-  config\openclaw\              CatByte AI config (gitignored)
 ```
+
+## Test Architecture
+
+Tests live in `tests/` and run via `pytest` (config in `pyproject.toml`). No network access, no real filesystem writes.
+
+```
+tests/
+  conftest.py          — Shared fixtures + synthetic ROM builders
+  test_constants.py    — Validates constant definitions and cross-references
+  test_romident.py     — ROM header parsing for 5 systems + fuzzy matching
+  test_userdata.py     — Full CRUD coverage for UserData (sessions, collections, etc.)
+  test_biosmanager.py  — BIOS scanning with temp directories
+  test_chathistory.py  — CatByte session management + pruning
+  test_metadata.py     — SQLite cache + mocked Steam/Wikipedia fetchers
+  test_app.py          — Flask test client with mocked backend singletons
+```
+
+**Key patterns:**
+- `conftest.py` provides fixtures: `userdata_instance`, `chat_history_instance`, `metadata_db`, `bios_manager` — all backed by `tmp_path`
+- Synthetic ROM files: `make_snes_rom(path, title)` etc. build minimal valid binaries with embedded titles at correct header offsets
+- `test_app.py` replaces module-level singletons (`userdata`, `scanner`, `metadata_fetcher`, etc.) with `MagicMock` objects, then restores originals after each test
+- HTTP calls in metadata tests are mocked via `unittest.mock.patch` on the `requests.Session`
+- CSRF protection is tested with valid/invalid Origin and Referer headers
 
 ## API Endpoint Reference
 
