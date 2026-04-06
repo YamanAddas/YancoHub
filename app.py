@@ -24,7 +24,7 @@ from accounts import SteamAccount, GogGalaxyDB, EpicCatalogDB, EpicAccount, reso
 from metadata import MetadataFetcher
 from artwork import ArtworkScraper
 from biosmanager import BIOSManager
-from constants import VALID_ART_TYPES, FLASK_PORT
+from constants import VALID_ART_TYPES, FLASK_PORT, HTTP_TIMEOUT_SHORT
 
 # ── Logging ─────────────────────────────────────────────────────────────────
 
@@ -94,6 +94,7 @@ _active_lock = threading.Lock()
 
 # Scan completion flag
 scan_complete = False
+_scan_lock = threading.Lock()
 
 # Allowed origins for POST requests (CSRF protection)
 _ALLOWED_ORIGINS = {
@@ -267,7 +268,8 @@ def _build_library():
         # Prioritize: installed games first, then favorites, then alphabetical
         try:
             favorites = set(userdata.get_favorites())
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Failed to load favorites for sorting: {e}")
             favorites = set()
         prioritized = sorted(new_library, key=lambda g: (
             not g.get('installed', True),   # installed first
@@ -300,7 +302,8 @@ def _initial_scan():
     except Exception as e:
         logger.error(f"Initial scan failed: {e}")
     finally:
-        scan_complete = True
+        with _scan_lock:
+            scan_complete = True
         logger.info("Initial scan complete")
 
 scan_thread = threading.Thread(target=_initial_scan, daemon=True)
@@ -325,8 +328,9 @@ def health():
 
 @app.route('/api/games')
 def api_games():
-    if not scan_complete:
-        return jsonify({'status': 'scanning', 'games': []})
+    with _scan_lock:
+        if not scan_complete:
+            return jsonify({'status': 'scanning', 'games': []})
 
     source = request.args.get('source', '')
     system = request.args.get('system', '')
@@ -993,6 +997,39 @@ def api_toggle_direct_launch():
     return jsonify({'direct_launch': new_val})
 
 
+@app.route('/api/gamepad/status')
+def api_gamepad_status():
+    """Diagnostic endpoint — reports gamepad detection state."""
+    try:
+        from gamepad import gamepad_diagnostics
+        return jsonify(gamepad_diagnostics())
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+
+@app.route('/api/settings/gamepad-mapping', methods=['GET'])
+def api_get_gamepad_mapping():
+    """Get custom gamepad button mapping."""
+    settings = userdata.get_settings()
+    return jsonify({'mapping': settings.get('gamepad_mapping', None)})
+
+
+@app.route('/api/settings/gamepad-mapping', methods=['POST'])
+def api_set_gamepad_mapping():
+    """Save custom gamepad button mapping."""
+    data = request.get_json(silent=True) or {}
+    mapping = data.get('mapping')
+    if not isinstance(mapping, dict):
+        return jsonify({'error': 'mapping must be a dict'}), 400
+    # Validate: all values must be non-negative integers
+    clean = {}
+    for key, val in mapping.items():
+        if isinstance(val, int) and val >= 0:
+            clean[key] = val
+    userdata.update_settings({'gamepad_mapping': clean})
+    return jsonify({'mapping': clean})
+
+
 @app.route('/api/settings/start-in-game-mode', methods=['GET'])
 def api_get_start_in_game_mode():
     """Get start_in_game_mode setting."""
@@ -1079,7 +1116,7 @@ def api_test_retroarch():
     try:
         result = subprocess.run(
             [ra_path, '--version'],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, text=True, timeout=HTTP_TIMEOUT_SHORT,
         )
         version = (result.stdout + result.stderr).strip()
         if version:

@@ -361,3 +361,43 @@ class TestArtworkAPI:
     def test_missing_game_404(self, client):
         resp = client.get('/api/artwork/nonexistent/cover')
         assert resp.status_code == 404
+
+
+class TestGamepadAPI:
+    def test_get_mapping_default_is_none(self, client):
+        resp = client.get('/api/settings/gamepad-mapping')
+        assert resp.status_code == 200
+        assert resp.get_json()['mapping'] is None
+
+    def test_set_mapping_returns_cleaned(self, client):
+        mapping = {'a': 1, 'b': 0, 'start': 9}
+        resp = client.post('/api/settings/gamepad-mapping',
+                           json={'mapping': mapping})
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data['mapping']['a'] == 1
+        assert data['mapping']['b'] == 0
+        assert data['mapping']['start'] == 9
+        # Verify update_settings was called with the mapping
+        client._mock_ud.update_settings.assert_called()
+
+    def test_set_mapping_rejects_non_dict(self, client):
+        resp = client.post('/api/settings/gamepad-mapping',
+                           json={'mapping': 'bad'})
+        assert resp.status_code == 400
+
+    def test_set_mapping_filters_invalid_values(self, client):
+        mapping = {'a': 2, 'bad_key': -1, 'b': 'string'}
+        resp = client.post('/api/settings/gamepad-mapping',
+                           json={'mapping': mapping})
+        data = resp.get_json()
+        assert data['mapping']['a'] == 2
+        assert 'bad_key' not in data['mapping']
+        assert 'b' not in data['mapping']
+
+    def test_gamepad_status_endpoint(self, client):
+        resp = client.get('/api/gamepad/status')
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert 'xinput_available' in data
+        assert 'detected' in data

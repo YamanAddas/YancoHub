@@ -304,7 +304,19 @@ def main():
         js_api=api,
     )
     api.set_window(window)
-    webview.start(menu=menu, debug='--debug' in sys.argv)
+
+    def _on_start():
+        """Start the native gamepad bridge after the window is ready."""
+        try:
+            from gamepad import GamepadBridge
+            bridge = GamepadBridge(window)
+            bridge.start()
+        except Exception as e:
+            import logging
+            logging.getLogger('yancohub.window').debug(
+                "Gamepad bridge failed to start: %s", e)
+
+    webview.start(func=_on_start, menu=menu, debug='--debug' in sys.argv)
 
 
 if __name__ == '__main__':

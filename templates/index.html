@@ -310,6 +310,7 @@
                 <button class="settings-tab" data-stab="emulation">Emulation</button>
                 <button class="settings-tab" data-stab="catbyte">CatByte</button>
                 <button class="settings-tab" data-stab="display">Display</button>
+                <button class="settings-tab" data-stab="controller">Controller</button>
                 <button class="settings-tab" data-stab="about">About</button>
             </nav>
             <div class="settings-body">
@@ -586,6 +587,134 @@
                     </section>
                 </div>
 
+                <!-- ═══ Controller Tab ═══ -->
+                <div class="settings-pane" id="settingsPane-controller">
+                    <section class="settings-card">
+                        <div class="settings-card-header">
+                            <h4>Controller Status</h4>
+                            <p class="settings-card-hint">Live input from your connected controller.</p>
+                        </div>
+                        <div class="gp-status-bar" id="gpStatusBar">
+                            <span class="gp-status-dot disconnected" id="gpStatusDot"></span>
+                            <span class="gp-status-text" id="gpStatusText">No controller detected</span>
+                        </div>
+                        <div class="gp-tester" id="gpTester">
+                            <div class="gp-tester-disconnected" id="gpTesterDisconnected">
+                                Connect a controller via USB or Bluetooth and press any button.
+                            </div>
+                            <div class="gp-tester-connected hidden" id="gpTesterConnected">
+                                <div class="gp-tester-name" id="gpTesterName"></div>
+                                <div class="gp-tester-layout">
+                                    <div class="gp-tester-col">
+                                        <div class="gp-tester-section-label">Buttons</div>
+                                        <div class="gp-tester-buttons" id="gpTesterButtons"></div>
+                                    </div>
+                                    <div class="gp-tester-col">
+                                        <div class="gp-tester-section-label">Sticks &amp; Triggers</div>
+                                        <div class="gp-tester-axes">
+                                            <div class="gp-axis-row"><span class="gp-axis-label">L Stick X</span><div class="gp-axis-bar"><div class="gp-axis-fill" id="gpAxis0"></div><div class="gp-axis-center"></div></div><span class="gp-axis-val" id="gpAxisVal0">0.00</span></div>
+                                            <div class="gp-axis-row"><span class="gp-axis-label">L Stick Y</span><div class="gp-axis-bar"><div class="gp-axis-fill" id="gpAxis1"></div><div class="gp-axis-center"></div></div><span class="gp-axis-val" id="gpAxisVal1">0.00</span></div>
+                                            <div class="gp-axis-row"><span class="gp-axis-label">R Stick X</span><div class="gp-axis-bar"><div class="gp-axis-fill" id="gpAxis2"></div><div class="gp-axis-center"></div></div><span class="gp-axis-val" id="gpAxisVal2">0.00</span></div>
+                                            <div class="gp-axis-row"><span class="gp-axis-label">R Stick Y</span><div class="gp-axis-bar"><div class="gp-axis-fill" id="gpAxis3"></div><div class="gp-axis-center"></div></div><span class="gp-axis-val" id="gpAxisVal3">0.00</span></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="settings-card">
+                        <div class="settings-card-header">
+                            <h4>Button Mapping</h4>
+                            <p class="settings-card-hint">Click an action then press the controller button you want to assign. Mapping is saved automatically.</p>
+                        </div>
+                        <div class="gp-remap" id="gpRemap">
+                            <div class="gp-remap-row" data-action="a">
+                                <span class="gp-remap-action">A (Confirm / Launch)</span>
+                                <button class="gp-remap-btn" data-action="a">Button <span class="gp-remap-current">0</span></button>
+                            </div>
+                            <div class="gp-remap-row" data-action="b">
+                                <span class="gp-remap-action">B (Back / Cancel)</span>
+                                <button class="gp-remap-btn" data-action="b">Button <span class="gp-remap-current">1</span></button>
+                            </div>
+                            <div class="gp-remap-row" data-action="x">
+                                <span class="gp-remap-action">X</span>
+                                <button class="gp-remap-btn" data-action="x">Button <span class="gp-remap-current">2</span></button>
+                            </div>
+                            <div class="gp-remap-row" data-action="y">
+                                <span class="gp-remap-action">Y (Favorite)</span>
+                                <button class="gp-remap-btn" data-action="y">Button <span class="gp-remap-current">3</span></button>
+                            </div>
+                            <div class="gp-remap-row" data-action="lb">
+                                <span class="gp-remap-action">LB (Prev Tab)</span>
+                                <button class="gp-remap-btn" data-action="lb">Button <span class="gp-remap-current">4</span></button>
+                            </div>
+                            <div class="gp-remap-row" data-action="rb">
+                                <span class="gp-remap-action">RB (Next Tab)</span>
+                                <button class="gp-remap-btn" data-action="rb">Button <span class="gp-remap-current">5</span></button>
+                            </div>
+                            <div class="gp-remap-row" data-action="select">
+                                <span class="gp-remap-action">Select (Search)</span>
+                                <button class="gp-remap-btn" data-action="select">Button <span class="gp-remap-current">8</span></button>
+                            </div>
+                            <div class="gp-remap-row" data-action="start">
+                                <span class="gp-remap-action">Start (Game Mode)</span>
+                                <button class="gp-remap-btn" data-action="start">Button <span class="gp-remap-current">9</span></button>
+                            </div>
+                            <div class="gp-remap-row" data-action="dup">
+                                <span class="gp-remap-action">D-Pad Up</span>
+                                <button class="gp-remap-btn" data-action="dup">Button <span class="gp-remap-current">12</span></button>
+                            </div>
+                            <div class="gp-remap-row" data-action="ddown">
+                                <span class="gp-remap-action">D-Pad Down</span>
+                                <button class="gp-remap-btn" data-action="ddown">Button <span class="gp-remap-current">13</span></button>
+                            </div>
+                            <div class="gp-remap-row" data-action="dleft">
+                                <span class="gp-remap-action">D-Pad Left</span>
+                                <button class="gp-remap-btn" data-action="dleft">Button <span class="gp-remap-current">14</span></button>
+                            </div>
+                            <div class="gp-remap-row" data-action="dright">
+                                <span class="gp-remap-action">D-Pad Right</span>
+                                <button class="gp-remap-btn" data-action="dright">Button <span class="gp-remap-current">15</span></button>
+                            </div>
+                        </div>
+                        <button class="settings-action-btn" id="gpResetMapping" style="margin-top:12px">Reset to Defaults</button>
+                    </section>
+
+                    <section class="settings-card">
+                        <div class="settings-card-header">
+                            <h4>Supported Controllers</h4>
+                        </div>
+                        <div class="gp-supported-list">
+                            <div class="gp-supported-item">
+                                <span class="gp-supported-name">DualSense (PS5)</span>
+                                <span class="gp-supported-badge hid">USB &amp; Bluetooth</span>
+                            </div>
+                            <div class="gp-supported-item">
+                                <span class="gp-supported-name">DualSense Edge</span>
+                                <span class="gp-supported-badge hid">USB &amp; Bluetooth</span>
+                            </div>
+                            <div class="gp-supported-item">
+                                <span class="gp-supported-name">DualShock 4 (PS4)</span>
+                                <span class="gp-supported-badge hid">USB &amp; Bluetooth</span>
+                            </div>
+                            <div class="gp-supported-item">
+                                <span class="gp-supported-name">Xbox Wireless Controller</span>
+                                <span class="gp-supported-badge xinput">XInput / USB</span>
+                            </div>
+                            <div class="gp-supported-item">
+                                <span class="gp-supported-name">Xbox One / Series X|S</span>
+                                <span class="gp-supported-badge xinput">XInput / USB</span>
+                            </div>
+                            <div class="gp-supported-item">
+                                <span class="gp-supported-name">Other DirectInput gamepads</span>
+                                <span class="gp-supported-badge winmm">Legacy</span>
+                            </div>
+                        </div>
+                        <p class="settings-card-hint" style="margin-top:10px">PlayStation controllers use direct HID for reliable Bluetooth support. Xbox controllers use XInput. Other controllers use the legacy WinMM driver.</p>
+                    </section>
+                </div>
+
                 <div class="settings-pane" id="settingsPane-about">
                     <section class="settings-card settings-about-hero">
                         <img class="about-logo-img" src="/static/img/logo-120.png" alt="YancoHub" draggable="false">
@@ -782,6 +911,7 @@
     </div>
 
     <link rel="stylesheet" href="/static/css/emulator.css">
+    <script src="/static/js/gamepad-bridge.js"></script>
     <script src="/static/js/emulator.js"></script>
     <script src="/static/js/app.js"></script>
 </body>

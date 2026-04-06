@@ -39,6 +39,16 @@ const $ = (id) => document.getElementById(id);
 const $$ = (sel) => document.querySelectorAll(sel);
 const qs = (sel) => document.querySelector(sel);
 
+/**
+ * Fetch JSON with HTTP status validation.
+ * Throws on non-OK responses so callers' catch blocks handle it.
+ */
+async function fetchJSON(url, opts) {
+    const r = await fetch(url, opts);
+    if (!r.ok) throw new Error(`HTTP ${r.status} from ${url}`);
+    return r.json();
+}
+
 // ── Global Toast Notifications ────────────────────────────────────────────
 
 const TOAST_ICONS = {
@@ -182,12 +192,11 @@ async function init() {
 
     // Auto-enter Game Mode if setting is enabled
     try {
-        const gmResp = await fetch('/api/settings/start-in-game-mode');
-        const gmData = await gmResp.json();
+        const gmData = await fetchJSON('/api/settings/start-in-game-mode');
         if (gmData.start_in_game_mode && state.games.length > 0) {
             setTimeout(() => enterGamingMode(), 800);
         }
-    } catch {}
+    } catch (e) { console.warn('Game mode setting check failed:', e); }
 
     bindEvents();
 }
@@ -197,7 +206,7 @@ async function waitForBackend() {
         try {
             const r = await fetch('/health');
             if (r.ok) return;
-        } catch {}
+        } catch (e) { console.debug('Waiting for backend:', e.message); }
         await new Promise(r => setTimeout(r, 500));
     }
 }
@@ -211,8 +220,7 @@ function updateSplash(pct, text) {
 
 async function loadGames() {
     try {
-        const r = await fetch('/api/games');
-        const data = await r.json();
+        const data = await fetchJSON('/api/games');
         if (data.status === 'scanning') {
             state.games = [];
             state.scanning = true;
@@ -220,35 +228,31 @@ async function loadGames() {
         }
         state.games = Array.isArray(data) ? data : (data.games || []);
         state.scanning = false;
-    } catch { state.games = []; state.scanning = false; }
+    } catch (e) { console.warn('loadGames failed:', e); state.games = []; state.scanning = false; }
 }
 
 async function loadStores() {
     try {
-        const r = await fetch('/api/stores');
-        state.stores = await r.json();
-    } catch {}
+        state.stores = await fetchJSON('/api/stores');
+    } catch (e) { console.warn('loadStores failed:', e); }
 }
 
 async function loadFavorites() {
     try {
-        const r = await fetch('/api/favorites');
-        state.favorites = new Set(await r.json());
-    } catch {}
+        state.favorites = new Set(await fetchJSON('/api/favorites'));
+    } catch (e) { console.warn('loadFavorites failed:', e); }
 }
 
 async function loadCollections() {
     try {
-        const r = await fetch('/api/collections');
-        state.collections = await r.json();
-    } catch {}
+        state.collections = await fetchJSON('/api/collections');
+    } catch (e) { console.warn('loadCollections failed:', e); }
 }
 
 async function loadHiddenSystems() {
     try {
-        const r = await fetch('/api/hidden-systems');
-        state.hiddenSystems = new Set(await r.json());
-    } catch {}
+        state.hiddenSystems = new Set(await fetchJSON('/api/hidden-systems'));
+    } catch (e) { console.warn('loadHiddenSystems failed:', e); }
 }
 
 // ── Artwork Progress Polling ──────────────────────────────────────────────
@@ -264,8 +268,7 @@ function startArtworkProgressPoll() {
 
 async function pollArtworkProgress() {
     try {
-        const r = await fetch('/api/artwork/progress');
-        const p = await r.json();
+        const p = await fetchJSON('/api/artwork/progress');
         const pill = $('artworkProgressPill');
         const stack = $('toastStack');
 
@@ -298,18 +301,17 @@ async function pollArtworkProgress() {
 
 async function loadPlaytimes() {
     try {
-        const r = await fetch('/api/playtime');
-        state.playtimes = await r.json();
-    } catch {}
+        state.playtimes = await fetchJSON('/api/playtime');
+    } catch (e) { console.warn('loadPlaytimes failed:', e); }
 }
 
 async function checkCatbyteStatus() {
     let d = null;
     try {
-        const r = await fetch('/api/catbyte/status');
-        d = await r.json();
+        d = await fetchJSON('/api/catbyte/status');
         state.catbyteOnline = d.status === 'online';
-    } catch {
+    } catch (e) {
+        console.warn('CatByte status check failed:', e);
         state.catbyteOnline = false;
     }
     const on = state.catbyteOnline;
@@ -851,7 +853,7 @@ function enterGamingMode() {
     if (window.pywebview && window.pywebview.api) {
         window.pywebview.api.toggle_fullscreen();
     } else {
-        try { document.documentElement.requestFullscreen().catch(() => {}); } catch {}
+        try { document.documentElement.requestFullscreen().catch(() => {}); } catch (e) { console.warn('Fullscreen enter failed:', e); }
     }
 
     renderGamingGrid();
@@ -889,7 +891,7 @@ function exitGamingMode() {
     if (window.pywebview && window.pywebview.api) {
         window.pywebview.api.toggle_fullscreen();
     } else {
-        try { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); } catch {}
+        try { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); } catch (e) { console.warn('Fullscreen exit failed:', e); }
     }
 }
 
@@ -1049,7 +1051,9 @@ function gamingLaunch() {
 
     // Actually launch and clean up
     setTimeout(() => {
-        fetch(`/api/launch/${encodeURIComponent(game.id)}`, { method: 'POST' }).catch(() => {});
+        fetch(`/api/launch/${encodeURIComponent(game.id)}`, { method: 'POST' })
+            .then(r => { if (!r.ok) return r.json().then(d => showToast(d.error || 'Launch failed', 'error')); })
+            .catch(e => showToast('Failed to launch game', 'error'));
         setTimeout(() => {
             ceremony.classList.add('phase-done');
             setTimeout(() => ceremony.remove(), 500);
@@ -1101,7 +1105,7 @@ function extractDominantColor(gameId, callback) {
                 callback(color);
                 return;
             }
-        } catch {}
+        } catch (e) { console.warn('Color extraction failed:', e); }
         callback(null);
     };
     img.onerror = () => callback(null);
@@ -1446,19 +1450,18 @@ async function fetchCatbyteMoodRec(mood, games) {
         `Give a fun one-liner recommendation or comment (1 sentence max, stay in character as CatByte).`;
 
     try {
-        const r = await fetch('/api/catbyte/chat', {
+        const d = await fetchJSON('/api/catbyte/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ message: prompt, history: [] }),
         });
-        const d = await r.json();
         // Only show if mood hasn't changed while we were waiting
         if (d.response && d.status !== 'offline' && state.activeMood === mood) {
             textEl.textContent = d.response;
             bubble.classList.remove('hidden');
         }
     } catch {
-        // Silent fail — non-blocking
+        // Silent fail — non-blocking mood comment
     }
 }
 
@@ -1752,7 +1755,7 @@ function updateGameInfo() {
         badges.push(`<span class="meta-badge fav">${stars}</span>`);
     }
     if (game.installed === false) {
-        badges.push(`<span class="meta-badge" style="background:rgba(255,255,255,0.05);color:var(--text-dim)">Not Installed</span>`);
+        badges.push(`<span class="meta-badge not-installed">Not Installed</span>`);
     }
 
     const pt = state.playtimes[game.id];
@@ -1867,8 +1870,7 @@ async function updateDirectLaunchButton(gameId) {
     const label = $('detailDirectLabel');
     if (!btn || !label) return;
     try {
-        const r = await fetch(`/api/settings/direct-launch/${gameId}`);
-        const d = await r.json();
+        const d = await fetchJSON(`/api/settings/direct-launch/${gameId}`);
         if (d.override === true) {
             label.textContent = 'Direct: ON';
             btn.classList.add('dl-force-on');
@@ -1881,7 +1883,7 @@ async function updateDirectLaunchButton(gameId) {
             label.textContent = d.effective ? 'Direct' : 'Via Store';
             btn.classList.remove('dl-force-on', 'dl-force-off');
         }
-    } catch {}
+    } catch (e) { console.warn('updateDirectLaunchButton failed:', e); }
 }
 
 async function cycleDirectLaunch() {
@@ -1889,20 +1891,21 @@ async function cycleDirectLaunch() {
     if (!game) return;
     try {
         // Get current state
-        const r = await fetch(`/api/settings/direct-launch/${game.id}`);
-        const d = await r.json();
+        const d = await fetchJSON(`/api/settings/direct-launch/${game.id}`);
         // Cycle: null → true → false → null
         let next;
         if (d.override === null || d.override === undefined) next = true;
         else if (d.override === true) next = false;
         else next = null;
-        await fetch(`/api/settings/direct-launch/${game.id}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ value: next }),
-        });
+        try {
+            await fetch(`/api/settings/direct-launch/${game.id}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ value: next }),
+            });
+        } catch (e2) { console.warn('Set direct launch failed:', e2); }
         updateDirectLaunchButton(game.id);
-    } catch {}
+    } catch (e) { console.warn('cycleDirectLaunch failed:', e); }
 }
 
 function updateGameCount() {
@@ -2210,18 +2213,17 @@ async function launchGame(gameId) {
 
 async function toggleFavorite(gameId) {
     try {
-        const r = await fetch('/api/favorites/toggle', {
+        const d = await fetchJSON('/api/favorites/toggle', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ game_id: gameId }),
         });
-        const d = await r.json();
         if (d.is_favorite) state.favorites.add(gameId);
         else state.favorites.delete(gameId);
         // Refresh carousel to update star badge
         renderCarousel();
         updateGameInfo();
-    } catch {}
+    } catch (e) { console.warn('toggleFavorite failed:', e); }
 }
 
 // ── Collection Dropdown (detail panel) ────────────────────────────────────
@@ -2248,15 +2250,17 @@ async function toggleCollectionDropdown(e) {
         item.className = 'detail-collection-item';
         item.innerHTML = `<span class="check">${inCol ? '\u2713' : ''}</span><span>${escapeHtml(name)}</span>`;
         item.addEventListener('click', async () => {
-            if (inCol) {
-                await fetch(`/api/collections/${encodeURIComponent(name)}/games/${encodeURIComponent(game.id)}`, { method: 'DELETE' });
-            } else {
-                await fetch(`/api/collections/${encodeURIComponent(name)}/games`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ game_id: game.id }),
-                });
-            }
+            try {
+                if (inCol) {
+                    await fetch(`/api/collections/${encodeURIComponent(name)}/games/${encodeURIComponent(game.id)}`, { method: 'DELETE' });
+                } else {
+                    await fetch(`/api/collections/${encodeURIComponent(name)}/games`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ game_id: game.id }),
+                    });
+                }
+            } catch (e2) { console.warn('Toggle collection game failed:', e2); }
             await loadCollections();
             toggleCollectionDropdown(e);
         });
@@ -2289,7 +2293,7 @@ async function createCollectionFromDetail() {
         await loadCollections();
         input.value = '';
         $('collectionDropdown').classList.add('hidden');
-    } catch {}
+    } catch (e) { console.warn('createCollectionFromDetail failed:', e); }
 }
 
 // ── Search ─────────────────────────────────────────────────────────────────
@@ -2308,8 +2312,7 @@ async function doSearch() {
     if (!q) { $('searchResults').innerHTML = ''; return; }
 
     try {
-        const r = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
-        const results = await r.json();
+        const results = await fetchJSON(`/api/search?q=${encodeURIComponent(q)}`);
 
         $('searchResults').innerHTML = results.map(g => `
             <div class="search-result" data-id="${escapeAttr(g.id)}">
@@ -2333,7 +2336,7 @@ async function doSearch() {
                 }
             });
         });
-    } catch {}
+    } catch (e) { console.warn('doSearch failed:', e); }
 }
 
 // ── CatByte ────────────────────────────────────────────────────────────────
@@ -2351,8 +2354,7 @@ async function toggleCatbyte() {
             const sessions = state.chatSessions;
             if (sessions.length > 0) {
                 // Restore last active
-                const resp = await fetch('/api/catbyte/sessions');
-                const data = await resp.json();
+                const data = await fetchJSON('/api/catbyte/sessions');
                 const activeId = data.active_session_id;
                 if (activeId && sessions.find(s => s.id === activeId)) {
                     await selectChatSession(activeId);
@@ -2371,10 +2373,9 @@ async function toggleCatbyte() {
 
 async function loadChatSessions() {
     try {
-        const r = await fetch('/api/catbyte/sessions');
-        const data = await r.json();
+        const data = await fetchJSON('/api/catbyte/sessions');
         state.chatSessions = data.sessions || [];
-    } catch { state.chatSessions = []; }
+    } catch (e) { console.warn('loadChatSessions failed:', e); state.chatSessions = []; }
     renderChatSidebar();
 }
 
@@ -2419,11 +2420,13 @@ function renderChatSidebar() {
             if (btn.dataset.action === 'delete') {
                 await deleteChatSession(sid);
             } else if (btn.dataset.action === 'pin') {
-                await fetch(`/api/catbyte/sessions/${sid}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ pinned: true }),
-                });
+                try {
+                    await fetch(`/api/catbyte/sessions/${sid}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ pinned: true }),
+                    });
+                } catch (e) { console.warn('Pin session failed:', e); }
                 await loadChatSessions();
             }
         });
@@ -2432,8 +2435,7 @@ function renderChatSidebar() {
 
 async function selectChatSession(sessionId) {
     try {
-        const r = await fetch(`/api/catbyte/sessions/${sessionId}`);
-        const session = await r.json();
+        const session = await fetchJSON(`/api/catbyte/sessions/${sessionId}`);
         if (session.error) return;
 
         state.chatSessionId = sessionId;
@@ -2454,7 +2456,7 @@ async function selectChatSession(sessionId) {
         }
 
         // Mark active on server
-        fetch(`/api/catbyte/sessions/${sessionId}/active`, { method: 'POST' }).catch(() => {});
+        fetch(`/api/catbyte/sessions/${sessionId}/active`, { method: 'POST' }).catch(e => console.warn('Set active session failed:', e));
 
         // Update sidebar active state
         renderChatSidebar();
@@ -2505,7 +2507,7 @@ function renderMessagesWithGrouping(messages) {
 async function createNewChat() {
     const game = state.filteredGames[state.selectedIndex];
     try {
-        const r = await fetch('/api/catbyte/sessions', {
+        const session = await fetchJSON('/api/catbyte/sessions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -2513,7 +2515,6 @@ async function createNewChat() {
                 model: state.catbyteCurrentModel,
             }),
         });
-        const session = await r.json();
         state.chatSessionId = session.id;
         state.chatHistory = [];
 
@@ -2529,7 +2530,8 @@ async function createNewChat() {
 
 async function deleteChatSession(sessionId) {
     try {
-        await fetch(`/api/catbyte/sessions/${sessionId}`, { method: 'DELETE' });
+        const delResp = await fetch(`/api/catbyte/sessions/${sessionId}`, { method: 'DELETE' });
+        if (!delResp.ok) console.warn('Delete session failed:', delResp.status);
         if (state.chatSessionId === sessionId) {
             state.chatSessionId = null;
             state.chatHistory = [];
@@ -2565,16 +2567,16 @@ function closeChatSidebar() {
 
 async function loadChatModels() {
     try {
-        const [modelsResp, configResp] = await Promise.all([
-            fetch('/api/catbyte/models'),
-            fetch('/api/catbyte/config'),
+        const [models, config] = await Promise.all([
+            fetchJSON('/api/catbyte/models'),
+            fetchJSON('/api/catbyte/config'),
         ]);
-        state.catbyteModels = await modelsResp.json();
-        const config = await configResp.json();
+        state.catbyteModels = models;
         // Use configured model, or fall back to first available from backend
         state.catbyteCurrentModel = config.model || (state.catbyteModels[0] || '');
         updateModelPill();
-    } catch {
+    } catch (e) {
+        console.warn('loadChatModels failed:', e);
         state.catbyteModels = [];
     }
 }
@@ -2595,13 +2597,12 @@ async function toggleModelDropdown(e) {
     if (wasHidden) {
         dd.innerHTML = '<div class="catbyte-model-option" style="color:var(--text-dim);cursor:default">Loading...</div>';
         try {
-            const [modelsResp, configResp] = await Promise.all([
-                fetch('/api/catbyte/models'),
-                fetch('/api/catbyte/config'),
+            const [models, config] = await Promise.all([
+                fetchJSON('/api/catbyte/models'),
+                fetchJSON('/api/catbyte/config'),
             ]);
-            state.catbyteModels = await modelsResp.json();
-            const config = await configResp.json();
-        } catch { state.catbyteModels = []; }
+            state.catbyteModels = models;
+        } catch (e) { console.warn('toggleModelDropdown load failed:', e); state.catbyteModels = []; }
         renderModelDropdown();
     }
 }
@@ -2626,11 +2627,13 @@ function renderModelDropdown() {
             state.catbyteCurrentModel = model;
             updateModelPill();
             dd.classList.add('hidden');
-            await fetch('/api/catbyte/config', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ model }),
-            });
+            try {
+                await fetch('/api/catbyte/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model }),
+                });
+            } catch (e) { console.warn('Set model failed:', e); }
         });
     });
 }
@@ -2659,7 +2662,7 @@ async function sendCatbyteMessage() {
 
     const game = state.filteredGames[state.selectedIndex];
     try {
-        const r = await fetch('/api/catbyte/chat', {
+        const d = await fetchJSON('/api/catbyte/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -2668,7 +2671,6 @@ async function sendCatbyteMessage() {
                 game_context: game?.name || '',
             }),
         });
-        const d = await r.json();
         hideTypingIndicator();
         appendChat('bot', d.response, Date.now() / 1000);
         state.chatHistory.push({ role: 'assistant', content: d.response });
@@ -2861,7 +2863,7 @@ async function sendScreenshot() {
         showTypingIndicator();
 
         const game = state.filteredGames[state.selectedIndex];
-        const r = await fetch('/api/catbyte/chat-vision', {
+        const d = await fetchJSON('/api/catbyte/chat-vision', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -2871,7 +2873,6 @@ async function sendScreenshot() {
                 game_context: game?.name || '',
             }),
         });
-        const d = await r.json();
         hideTypingIndicator();
         appendChat('bot', d.response, Date.now() / 1000);
         state.chatHistory.push({ role: 'assistant', content: d.response });
@@ -2995,12 +2996,11 @@ function validateDirInput(inputId) {
 
     _validateTimer = setTimeout(async () => {
         try {
-            const r = await fetch('/api/validate-path', {
+            const d = await fetchJSON('/api/validate-path', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ path }),
             });
-            const d = await r.json();
             if (d.valid) {
                 validationEl.className = 'dir-validation valid';
                 validationEl.textContent = `\u2713 Valid \u2014 ${d.message}`;
@@ -3017,13 +3017,12 @@ function validateDirInput(inputId) {
 
 async function toggleShowUninstalled() {
     try {
-        const r = await fetch('/api/settings/show-uninstalled', { method: 'POST' });
-        const d = await r.json();
+        const d = await fetchJSON('/api/settings/show-uninstalled', { method: 'POST' });
         $('btnToggleUninstalled').textContent = d.show_uninstalled
             ? 'Hide Uninstalled Games'
             : 'Show Uninstalled Games';
         setTimeout(async () => { await loadGames(); applyFilter(); }, 3000);
-    } catch {}
+    } catch (e) { console.warn('toggleShowUninstalled failed:', e); }
 }
 
 async function openSettings() {
@@ -3123,12 +3122,10 @@ function renderCatbyteSummary(config, status) {
 
 async function renderAccountsTab() {
     try {
-        const [accountsResp, epicManifestResp] = await Promise.all([
-            fetch('/api/accounts'),
-            fetch('/api/epic/manifest-count'),
+        const [accounts, epicManifest] = await Promise.all([
+            fetchJSON('/api/accounts'),
+            fetchJSON('/api/epic/manifest-count'),
         ]);
-        const accounts = await accountsResp.json();
-        const epicManifest = await epicManifestResp.json();
 
         let accountsHtml = '';
 
@@ -3288,7 +3285,8 @@ async function renderAccountsTab() {
         const btnDisconnect = document.getElementById('btnDisconnectSteam');
         if (btnDisconnect) {
             btnDisconnect.addEventListener('click', async () => {
-                await fetch('/api/accounts/steam/disconnect', { method: 'POST' });
+                try { await fetch('/api/accounts/steam/disconnect', { method: 'POST' }); }
+                catch (e) { console.warn('Disconnect Steam failed:', e); }
                 $('steamConnectSection').classList.add('hidden');
                 renderSettings();
                 setTimeout(async () => { await loadGames(); applyFilter(); }, 3000);
@@ -3297,7 +3295,8 @@ async function renderAccountsTab() {
         const btnGalaxy = document.getElementById('btnToggleGalaxy');
         if (btnGalaxy) {
             btnGalaxy.addEventListener('click', async () => {
-                await fetch('/api/accounts/gog-galaxy/toggle', { method: 'POST' });
+                try { await fetch('/api/accounts/gog-galaxy/toggle', { method: 'POST' }); }
+                catch (e) { console.warn('Toggle GOG Galaxy failed:', e); }
                 renderSettings();
                 setTimeout(async () => { await loadGames(); applyFilter(); }, 3000);
             });
@@ -3307,8 +3306,7 @@ async function renderAccountsTab() {
             btnEpicAuth.addEventListener('click', async () => {
                 btnEpicAuth.textContent = 'Connecting...';
                 btnEpicAuth.disabled = true;
-                const r = await fetch('/api/accounts/epic/auth', { method: 'POST' });
-                const d = await r.json();
+                const d = await fetchJSON('/api/accounts/epic/auth', { method: 'POST' });
                 if (d.status === 'ok') {
                     renderSettings();
                     setTimeout(async () => { await loadGames(); applyFilter(); }, 5000);
@@ -3324,12 +3322,11 @@ async function renderAccountsTab() {
         }
 
         renderAccountsSummary(accounts);
-    } catch {}
+    } catch (e) { console.warn('renderAccountsTab failed:', e); }
 
     // ── Show/Hide Uninstalled toggle ──
     try {
-        const uResp = await fetch('/api/settings/show-uninstalled');
-        const uData = await uResp.json();
+        const uData = await fetchJSON('/api/settings/show-uninstalled');
         $('btnToggleUninstalled').textContent = uData.show_uninstalled
             ? 'Hide Uninstalled Games'
             : 'Show Uninstalled Games';
@@ -3341,18 +3338,16 @@ async function renderAccountsTab() {
     const dlToggle = $('toggleDirectLaunch');
     if (dlToggle) {
         try {
-            const dlResp = await fetch('/api/settings/direct-launch');
-            const dlData = await dlResp.json();
+            const dlData = await fetchJSON('/api/settings/direct-launch');
             dlToggle.setAttribute('aria-checked', dlData.direct_launch ? 'true' : 'false');
         } catch {
             dlToggle.setAttribute('aria-checked', 'true');
         }
         dlToggle.onclick = async () => {
             try {
-                const r = await fetch('/api/settings/direct-launch', { method: 'POST' });
-                const d = await r.json();
+                const d = await fetchJSON('/api/settings/direct-launch', { method: 'POST' });
                 dlToggle.setAttribute('aria-checked', d.direct_launch ? 'true' : 'false');
-            } catch {}
+            } catch (e) { console.warn('toggleDirectLaunch failed:', e); }
         };
     }
 
@@ -3360,18 +3355,16 @@ async function renderAccountsTab() {
     const gmToggle = $('toggleStartGameMode');
     if (gmToggle) {
         try {
-            const gmResp = await fetch('/api/settings/start-in-game-mode');
-            const gmData = await gmResp.json();
+            const gmData = await fetchJSON('/api/settings/start-in-game-mode');
             gmToggle.setAttribute('aria-checked', gmData.start_in_game_mode ? 'true' : 'false');
         } catch {
             gmToggle.setAttribute('aria-checked', 'false');
         }
         gmToggle.onclick = async () => {
             try {
-                const r = await fetch('/api/settings/start-in-game-mode', { method: 'POST' });
-                const d = await r.json();
+                const d = await fetchJSON('/api/settings/start-in-game-mode', { method: 'POST' });
                 gmToggle.setAttribute('aria-checked', d.start_in_game_mode ? 'true' : 'false');
-            } catch {}
+            } catch (e) { console.warn('toggleStartGameMode failed:', e); }
         };
     }
 
@@ -3393,8 +3386,7 @@ async function renderDirectoriesTab() {
 
     // ROM dirs
     try {
-        const r = await fetch('/api/rom-dirs');
-        romDirs = await r.json();
+        romDirs = await fetchJSON('/api/rom-dirs');
         $('settingsRomDirs').innerHTML = romDirs.map(d => `
             <div class="dir-entry">
                 <span class="dir-icon">\uD83D\uDCC2</span>
@@ -3402,12 +3394,11 @@ async function renderDirectoriesTab() {
                 <button class="dir-remove" data-dir="${escapeAttr(d)}" data-type="rom">&times;</button>
             </div>
         `).join('') || '<div style="color:var(--text-dim);font-size:12px;padding:4px 0">No ROM directories configured</div>';
-    } catch {}
+    } catch (e) { console.warn('loadRomDirs failed:', e); }
 
     // Local dirs
     try {
-        const r = await fetch('/api/local-dirs');
-        localDirs = await r.json();
+        localDirs = await fetchJSON('/api/local-dirs');
         $('settingsLocalDirs').innerHTML = localDirs.map(d => `
             <div class="dir-entry">
                 <span class="dir-icon">\uD83C\uDFAE</span>
@@ -3415,7 +3406,7 @@ async function renderDirectoriesTab() {
                 <button class="dir-remove" data-dir="${escapeAttr(d)}" data-type="local">&times;</button>
             </div>
         `).join('') || '<div style="color:var(--text-dim);font-size:12px;padding:4px 0">No local game directories configured</div>';
-    } catch {}
+    } catch (e) { console.warn('loadLocalDirs failed:', e); }
 
     renderDirectoriesSummary(romDirs, localDirs);
 
@@ -3427,11 +3418,13 @@ async function renderDirectoriesTab() {
             if (!confirm(`Remove ${typeLabel} directory?\n${dirPath}`)) return;
             const typeMap = { rom: '/api/rom-dirs', local: '/api/local-dirs', bios: '/api/bios/dirs' };
             const endpoint = typeMap[btn.dataset.type] || '/api/local-dirs';
-            await fetch(endpoint, {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ path: dirPath }),
-            });
+            try {
+                await fetch(endpoint, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: dirPath }),
+                });
+            } catch (e) { console.warn('Remove directory failed:', e); }
             showToast(`${typeLabel.charAt(0).toUpperCase() + typeLabel.slice(1)} directory removed`, 'info');
             renderSettings();
         });
@@ -3463,12 +3456,10 @@ async function renderEmulationTab() {
 
     // BIOS dirs + status
     try {
-        const [bdResp, bsResp] = await Promise.all([
-            fetch('/api/bios/dirs'),
-            fetch('/api/bios/status'),
+        const [biosDirs, biosStatus] = await Promise.all([
+            fetchJSON('/api/bios/dirs'),
+            fetchJSON('/api/bios/status'),
         ]);
-        const biosDirs = await bdResp.json();
-        const biosStatus = await bsResp.json();
         _biosStatus = biosStatus;
 
         $('settingsBiosDirs').innerHTML = biosDirs.map(d => `
@@ -3501,16 +3492,18 @@ async function renderEmulationTab() {
         $('settingsBiosDirs').querySelectorAll('.dir-remove').forEach(btn => {
             btn.addEventListener('click', async () => {
                 if (!confirm(`Remove BIOS directory?\n${btn.dataset.dir}`)) return;
-                await fetch('/api/bios/dirs', {
-                    method: 'DELETE',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ path: btn.dataset.dir }),
-                });
+                try {
+                    await fetch('/api/bios/dirs', {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ path: btn.dataset.dir }),
+                    });
+                } catch (e) { console.warn('Remove BIOS dir failed:', e); }
                 showToast('BIOS directory removed', 'info');
                 renderEmulationTab();
             });
         });
-    } catch {}
+    } catch (e) { console.warn('renderEmulationTab BIOS section failed:', e); }
 
     // Systems with icons
     const systems = {
@@ -3541,12 +3534,11 @@ async function renderEmulationTab() {
     // Bind system toggles
     $$('.system-toggle').forEach(btn => {
         btn.addEventListener('click', async () => {
-            const r = await fetch('/api/hidden-systems/toggle', {
+            const d = await fetchJSON('/api/hidden-systems/toggle', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ system: btn.dataset.system }),
             });
-            const d = await r.json();
             if (d.is_hidden) state.hiddenSystems.add(btn.dataset.system);
             else state.hiddenSystems.delete(btn.dataset.system);
             btn.classList.toggle('hidden-sys', d.is_hidden);
@@ -3556,22 +3548,20 @@ async function renderEmulationTab() {
 
     // RetroArch path
     try {
-        const raResp = await fetch('/api/settings/retroarch-path');
-        const raData = await raResp.json();
+        const raData = await fetchJSON('/api/settings/retroarch-path');
         if (raData.retroarch_path) $('retroarchPathInput').value = raData.retroarch_path;
-    } catch {}
+    } catch (e) { console.warn('retroarch-path load failed:', e); }
 
     // LaunchBox path
     let lbPath = '';
     try {
-        const lbResp = await fetch('/api/settings/launchbox-path');
-        const lbData = await lbResp.json();
+        const lbData = await fetchJSON('/api/settings/launchbox-path');
         lbPath = lbData.launchbox_path || '';
         $('launchboxPathInput').value = lbPath;
         $('launchboxStatus').textContent = lbPath
             ? 'Artwork will be loaded directly from LaunchBox — no files copied.'
             : '';
-    } catch {}
+    } catch (e) { console.warn('launchbox-path load failed:', e); }
 
     renderEmulationSummary(_biosStatus, lbPath);
 
@@ -3586,15 +3576,14 @@ async function saveLaunchboxPath() {
     btn.textContent = 'Saving...';
     btn.disabled = true;
     try {
-        const r = await fetch('/api/settings/launchbox-path', {
+        const d = await fetchJSON('/api/settings/launchbox-path', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ path }),
         });
-        const d = await r.json();
         if (d.error) {
             $('launchboxStatus').textContent = d.error;
-            $('launchboxStatus').style.color = 'var(--danger, #ff4444)';
+            $('launchboxStatus').style.color = 'var(--danger)';
             showToast(d.error, 'error');
         } else {
             const msg = path
@@ -3604,9 +3593,10 @@ async function saveLaunchboxPath() {
             $('launchboxStatus').style.color = 'var(--accent)';
             showToast(path ? `LaunchBox linked \u2014 <strong>${d.matched_count ?? '?'}</strong> games indexed` : 'LaunchBox path cleared', 'success');
         }
-    } catch {
+    } catch (e) {
+        console.warn('saveLaunchboxPath failed:', e);
         $('launchboxStatus').textContent = 'Failed to save.';
-        $('launchboxStatus').style.color = 'var(--danger, #ff4444)';
+        $('launchboxStatus').style.color = 'var(--danger)';
         showToast('Failed to save LaunchBox path', 'error');
     }
     btn.textContent = 'Save';
@@ -3620,15 +3610,14 @@ async function saveRetroarchPath() {
     btn.textContent = 'Saving...';
     btn.disabled = true;
     try {
-        const r = await fetch('/api/settings/retroarch-path', {
+        const d = await fetchJSON('/api/settings/retroarch-path', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ path }),
         });
-        const d = await r.json();
         if (d.error) {
             $('retroarchStatus').textContent = d.error;
-            $('retroarchStatus').style.color = 'var(--danger, #ff4444)';
+            $('retroarchStatus').style.color = 'var(--danger)';
             showToast(d.error, 'error');
         } else {
             const msg = path ? 'RetroArch path saved.' : 'Cleared.';
@@ -3638,7 +3627,7 @@ async function saveRetroarchPath() {
         }
     } catch {
         $('retroarchStatus').textContent = 'Failed to save.';
-        $('retroarchStatus').style.color = 'var(--danger, #ff4444)';
+        $('retroarchStatus').style.color = 'var(--danger)';
         showToast('Failed to save RetroArch path', 'error');
     }
     btn.textContent = 'Save';
@@ -3653,12 +3642,11 @@ async function testRetroarch() {
     btn.textContent = 'Testing...';
     btn.disabled = true;
     try {
-        const r = await fetch('/api/test/retroarch', {
+        const d = await fetchJSON('/api/test/retroarch', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ path }),
         });
-        const d = await r.json();
         status.textContent = d.message;
         status.style.color = d.ok ? 'var(--accent)' : 'var(--danger)';
         showToast(d.ok ? `RetroArch OK \u2014 ${d.message}` : d.message, d.ok ? 'success' : 'error');
@@ -3679,12 +3667,11 @@ async function testLaunchbox() {
     btn.textContent = 'Testing...';
     btn.disabled = true;
     try {
-        const r = await fetch('/api/test/launchbox', {
+        const d = await fetchJSON('/api/test/launchbox', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ path }),
         });
-        const d = await r.json();
         status.textContent = d.message;
         status.style.color = d.ok ? 'var(--accent)' : 'var(--danger)';
         showToast(d.ok ? `LaunchBox OK \u2014 ${d.message}` : d.message, d.ok ? 'success' : 'error');
@@ -3703,8 +3690,7 @@ async function renderEmuSetupStatus() {
     const container = $('emuSetupStatus');
     if (!container) return;
     try {
-        const resp = await fetch('/api/emulators/status');
-        const data = await resp.json();
+        const data = await fetchJSON('/api/emulators/status');
 
         const ra = data.retroarch;
         const cores = data.cores || {};
@@ -3757,8 +3743,7 @@ async function startEmuSetup() {
     btn.textContent = 'Starting...';
     btn.disabled = true;
     try {
-        const resp = await fetch('/api/emulators/setup', { method: 'POST' });
-        const data = await resp.json();
+        const data = await fetchJSON('/api/emulators/setup', { method: 'POST' });
         if (data.error) {
             showToast(data.error, 'error');
             btn.textContent = 'Auto-Setup Emulators';
@@ -3777,8 +3762,7 @@ async function startEmuSetup() {
 
 async function pollEmuProgress() {
     try {
-        const resp = await fetch('/api/emulators/progress');
-        const p = await resp.json();
+        const p = await fetchJSON('/api/emulators/progress');
         const bar = $('emuProgressBar');
         const text = $('emuProgressText');
 
@@ -3819,21 +3803,18 @@ async function pollEmuProgress() {
                 renderEmuSetupStatus();
             }, 2000);
         }
-    } catch {}
+    } catch (e) { console.warn('pollEmuProgress error:', e); }
 }
 
 // ── CatByte Settings Tab ──────────────────────────────────────────────────
 
 async function renderCatbyteTab() {
     try {
-        const [configResp, presetsResp, detectResp] = await Promise.all([
-            fetch('/api/catbyte/config'),
-            fetch('/api/catbyte/presets'),
-            fetch('/api/catbyte/detect'),
+        const [config, presets, detected] = await Promise.all([
+            fetchJSON('/api/catbyte/config'),
+            fetchJSON('/api/catbyte/presets'),
+            fetchJSON('/api/catbyte/detect'),
         ]);
-        const config = await configResp.json();
-        const presets = await presetsResp.json();
-        const detected = await detectResp.json();
 
         // Backend selector cards — show detection status
         const backendOrder = ['ollama', 'openclaw', 'lmstudio', 'openai', 'custom'];
@@ -3869,11 +3850,13 @@ async function renderCatbyteTab() {
         $$('.backend-card').forEach(card => {
             card.addEventListener('click', async () => {
                 const backend = card.dataset.backend;
-                await fetch('/api/catbyte/config', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ backend }),
-                });
+                try {
+                    await fetch('/api/catbyte/config', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ backend }),
+                    });
+                } catch (e) { console.warn('Set backend failed:', e); }
                 renderCatbyteTab();
             });
         });
@@ -3937,12 +3920,17 @@ async function renderCatbyteTab() {
                 if (modelInput) updates.model = modelInput.value.trim();
 
                 btnSave.textContent = 'Saving...';
-                await fetch('/api/catbyte/config', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(updates),
-                });
-                btnSave.textContent = 'Saved!';
+                try {
+                    await fetch('/api/catbyte/config', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(updates),
+                    });
+                    btnSave.textContent = 'Saved!';
+                } catch (e) {
+                    console.warn('Save catbyte config failed:', e);
+                    btnSave.textContent = 'Error';
+                }
                 setTimeout(() => { btnSave.textContent = 'Save'; }, 1500);
             });
         }
@@ -3955,8 +3943,7 @@ async function renderCatbyteTab() {
             if (!modelSelect) return;
             if (btnRefresh) { btnRefresh.textContent = '...'; btnRefresh.disabled = true; }
             try {
-                const r = await fetch('/api/catbyte/models');
-                const models = await r.json();
+                const models = await fetchJSON('/api/catbyte/models');
                 const currentModel = config.model || preset.default_model || '';
                 modelSelect.innerHTML = '';
 
@@ -4002,11 +3989,13 @@ async function renderCatbyteTab() {
             catPunsToggle.onclick = async () => {
                 const newVal = catPunsToggle.getAttribute('aria-checked') !== 'true';
                 catPunsToggle.setAttribute('aria-checked', newVal);
-                await fetch('/api/catbyte/config', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ cat_puns: newVal }),
-                });
+                try {
+                    await fetch('/api/catbyte/config', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ cat_puns: newVal }),
+                    });
+                } catch (e) { console.warn('Toggle cat puns failed:', e); }
             };
         }
         if (gameAwareToggle) {
@@ -4014,11 +4003,13 @@ async function renderCatbyteTab() {
             gameAwareToggle.onclick = async () => {
                 const newVal = gameAwareToggle.getAttribute('aria-checked') !== 'true';
                 gameAwareToggle.setAttribute('aria-checked', newVal);
-                await fetch('/api/catbyte/config', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ game_awareness: newVal }),
-                });
+                try {
+                    await fetch('/api/catbyte/config', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ game_awareness: newVal }),
+                    });
+                } catch (e) { console.warn('Toggle game awareness failed:', e); }
             };
         }
 
@@ -4028,8 +4019,7 @@ async function renderCatbyteTab() {
         );
 
         // Check connection status
-        const statusResp = await fetch('/api/catbyte/status');
-        const status = await statusResp.json();
+        const status = await fetchJSON('/api/catbyte/status');
         const dot = $('catbyteConnDot');
         const text = $('catbyteConnText');
         if (status.status === 'online') {
@@ -4054,8 +4044,7 @@ function bindCatbyteTest() {
         btn.textContent = 'Testing...';
         btn.disabled = true;
         try {
-            const r = await fetch('/api/catbyte/test', { method: 'POST' });
-            const d = await r.json();
+            const d = await fetchJSON('/api/catbyte/test', { method: 'POST' });
             const dot = $('catbyteConnDot');
             const text = $('catbyteConnText');
             if (d.success) {
@@ -4085,20 +4074,21 @@ async function addRomDir() {
     addBtn.textContent = 'Adding...';
     addBtn.disabled = true;
 
-    await fetch('/api/rom-dirs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path }),
-    });
-
-    // Scan preview
     try {
-        const scanResp = await fetch('/api/scan-rom-dir', {
+        await fetch('/api/rom-dirs', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ path }),
         });
-        const scanData = await scanResp.json();
+    } catch (e) { console.warn('Add ROM dir failed:', e); }
+
+    // Scan preview
+    try {
+        const scanData = await fetchJSON('/api/scan-rom-dir', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path }),
+        });
         const preview = $('romDirPreview');
         if (preview && scanData.total > 0) {
             let tagsHtml = Object.entries(scanData.systems)
@@ -4114,7 +4104,8 @@ async function addRomDir() {
         } else {
             showToast('ROM directory added', 'success');
         }
-    } catch {
+    } catch (e) {
+        console.warn('ROM dir scan preview failed:', e);
         showToast('ROM directory added', 'success');
     }
 
@@ -4135,18 +4126,20 @@ async function addLocalDir() {
     addBtn.textContent = 'Adding...';
     addBtn.disabled = true;
 
-    await fetch('/api/local-dirs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path }),
-    });
+    try {
+        await fetch('/api/local-dirs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path }),
+        });
+    } catch (e) { console.warn('Add local dir failed:', e); }
     input.value = '';
     $('localDirValidation').textContent = '';
     addBtn.textContent = 'Add';
     addBtn.disabled = false;
     showToast('Local game directory added', 'success');
     renderSettings();
-    await fetch('/api/rescan', { method: 'POST' });
+    fetch('/api/rescan', { method: 'POST' }).catch(e => console.warn('Rescan failed:', e));
     setTimeout(async () => { await loadGames(); applyFilter(); }, 3000);
 }
 
@@ -4159,11 +4152,13 @@ async function addBiosDir() {
     addBtn.textContent = 'Adding...';
     addBtn.disabled = true;
 
-    await fetch('/api/bios/dirs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path }),
-    });
+    try {
+        await fetch('/api/bios/dirs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path }),
+        });
+    } catch (e) { console.warn('Add BIOS dir failed:', e); }
     input.value = '';
     addBtn.textContent = 'Add';
     addBtn.disabled = false;
@@ -4176,7 +4171,7 @@ async function rescanLibrary() {
     btn.textContent = 'Scanning...';
     btn.disabled = true;
     showToast('Rescanning all libraries\u2026', 'info', 4000);
-    await fetch('/api/rescan', { method: 'POST' });
+    fetch('/api/rescan', { method: 'POST' }).catch(e => console.warn('Rescan failed:', e));
     // Start polling for artwork progress (batch fetch starts after rescan)
     setTimeout(() => startArtworkProgressPoll(), 3000);
     setTimeout(async () => {
@@ -4293,17 +4288,31 @@ function debounce(fn, ms) {
 
 // ── Gamepad Support ─────────────────────────────────────────────────────────
 
+// Default W3C Standard button mapping (action → button index)
+const GP_DEFAULT_MAP = {
+    a: 0, b: 1, x: 2, y: 3,
+    lb: 4, rb: 5, select: 8, start: 9,
+    dup: 12, ddown: 13, dleft: 14, dright: 15,
+};
+
+// Active mapping — starts as defaults, overridden by user prefs
+let gpMap = Object.assign({}, GP_DEFAULT_MAP);
+
+// Remap UI state
+let _gpRemapListening = null;   // action key currently listening for, or null
+
 const _gp = {
     connected: false,
     index: null,
+    polling: false,         // whether the rAF poll loop is running
     // Repeat timers: held buttons fire repeatedly after initial delay
     navRepeat: null,
     navDelay: 220,          // ms between repeated nav inputs
     navInitialDelay: 400,   // ms before repeat kicks in
     // Track button-down state to detect fresh presses
     prev: {},
-    // Axis dead zone
-    deadZone: 0.5,
+    // Axis dead zone — 0.2 works well for DualSense, Xbox, and most controllers
+    deadZone: 0.2,
     // Horizontal held direction
     heldDir: 0,
     holdStart: 0,
@@ -4318,6 +4327,11 @@ window.addEventListener('gamepadconnected', (e) => {
     _gp.connected = true;
     _gp.index = e.gamepad.index;
     $('gamepadIndicator').classList.remove('hidden');
+    // Start polling only when a gamepad is connected
+    if (!_gp.polling) {
+        _gp.polling = true;
+        requestAnimationFrame(pollGamepad);
+    }
 });
 
 window.addEventListener('gamepaddisconnected', (e) => {
@@ -4326,15 +4340,66 @@ window.addEventListener('gamepaddisconnected', (e) => {
         _gp.index = null;
         _gp.prev = {};
         _gp.heldDir = 0;
+        _gp.heldDirY = 0;
+        _gp.polling = false;  // stop polling — will restart on next connect
         $('gamepadIndicator').classList.add('hidden');
+        // Reset tester UI
+        const disc = $('gpTesterDisconnected');
+        const conn = $('gpTesterConnected');
+        if (disc) disc.classList.remove('hidden');
+        if (conn) conn.classList.add('hidden');
+        const container = $('gpTesterButtons');
+        if (container) container.innerHTML = '';
+        // Reset status bar
+        const dot = $('gpStatusDot');
+        const txt = $('gpStatusText');
+        if (dot) { dot.classList.remove('connected'); dot.classList.add('disconnected'); }
+        if (txt) txt.textContent = 'No controller detected';
     }
 });
 
+/** Handle gamepad input when the built-in emulator is running.
+ *  EmulatorJS owns game input — we only handle meta controls (pause, save, exit). */
+function pollGamepadEmulator(gp) {
+    const pressed = (i) => gp.buttons[i] && gp.buttons[i].pressed;
+    const justPressed = (i) => {
+        const now = pressed(i);
+        const was = _gp.prev[i] || false;
+        _gp.prev[i] = now;
+        return now && !was;
+    };
+
+    const btnB      = justPressed(1);   // Circle — back/exit
+    const btnStart  = justPressed(9);   // Options — pause menu
+    const btnSelect = justPressed(8);   // Create — screenshot
+    const btnLB     = justPressed(4);   // L1 — quick save
+    const btnRB     = justPressed(5);   // R1 — quick load
+
+    // Options / Start → toggle pause menu
+    if (btnStart) togglePauseMenu();
+
+    // When pause menu is open, handle menu actions
+    if (typeof emuPaused !== 'undefined' && emuPaused) {
+        if (btnB)      exitEmulator();       // Circle → exit emulator
+        if (btnLB)     emuSaveState();       // L1 → save state
+        if (btnRB)     emuLoadState();       // R1 → load state
+        if (btnSelect) emuScreenshot();      // Create → screenshot
+    }
+}
+
 function pollGamepad() {
-    if (!_gp.connected) { requestAnimationFrame(pollGamepad); return; }
+    if (!_gp.connected) { _gp.polling = false; return; }
 
     const gp = navigator.getGamepads()[_gp.index];
     if (!gp) { requestAnimationFrame(pollGamepad); return; }
+
+    // When the built-in emulator is active, let EmulatorJS own the gamepad.
+    // Only handle emulator-specific controls (pause menu, save/load, exit).
+    if (typeof emuActive !== 'undefined' && emuActive) {
+        pollGamepadEmulator(gp);
+        requestAnimationFrame(pollGamepad);
+        return;
+    }
 
     const pressed = (i) => gp.buttons[i] && gp.buttons[i].pressed;
     const justPressed = (i) => {
@@ -4344,18 +4409,18 @@ function pollGamepad() {
         return now && !was;
     };
 
-    // Read all button states first (so justPressed is consumed once)
-    const btnA      = justPressed(0);   // A / Cross
-    const btnB      = justPressed(1);   // B / Circle
-    const btnY      = justPressed(3);   // Y / Triangle
-    const btnLB     = justPressed(4);   // Left bumper
-    const btnRB     = justPressed(5);   // Right bumper
-    const btnSelect = justPressed(8);   // Select / Back / Share
-    const btnStart  = justPressed(9);   // Start / Menu
-    const dpadUp    = justPressed(12);  // D-pad up
-    const dpadDown  = justPressed(13);  // D-pad down
-    const dpadLeft  = justPressed(14);  // D-pad left
-    const dpadRight = justPressed(15);  // D-pad right
+    // Read all button states via user-remappable mapping
+    const btnA      = justPressed(gpMap.a);
+    const btnB      = justPressed(gpMap.b);
+    const btnY      = justPressed(gpMap.y);
+    const btnLB     = justPressed(gpMap.lb);
+    const btnRB     = justPressed(gpMap.rb);
+    const btnSelect = justPressed(gpMap.select);
+    const btnStart  = justPressed(gpMap.start);
+    const dpadUp    = justPressed(gpMap.dup);
+    const dpadDown  = justPressed(gpMap.ddown);
+    const dpadLeft  = justPressed(gpMap.dleft);
+    const dpadRight = justPressed(gpMap.dright);
 
     // Left stick axes
     const axisX = gp.axes[0] || 0;
@@ -4491,9 +4556,169 @@ function pollGamepad() {
     requestAnimationFrame(pollGamepad);
 }
 
-// Start the gamepad poll loop
-requestAnimationFrame(pollGamepad);
+// Gamepad poll loop starts on-demand when a gamepad connects (see gamepadconnected handler)
+
+
+// ── Gamepad Tester & Remap UI ──────────────────────────────────────────────
+
+const GP_BTN_LABELS = [
+    'A','B','X','Y','LB','RB','LT','RT',
+    'Sel','Sta','LS','RS',
+    'Up','Dn','Lt','Rt','Home',
+];
+
+/** Update the live gamepad tester in the Controller settings tab. */
+function updateGpTester() {
+    if (!_gp.connected) return;
+    const pane = $('settingsPane-controller');
+    if (!pane || !pane.classList.contains('active')) return;
+
+    const gp = navigator.getGamepads()[_gp.index];
+    if (!gp) return;
+
+    // ── Buttons ──
+    const container = $('gpTesterButtons');
+    if (container && container.children.length === 0) {
+        // Build button grid on first call
+        for (let i = 0; i < gp.buttons.length; i++) {
+            const el = document.createElement('div');
+            el.className = 'gp-tester-btn';
+            el.dataset.idx = i;
+            el.textContent = i < GP_BTN_LABELS.length ? GP_BTN_LABELS[i] : i;
+            container.appendChild(el);
+        }
+    }
+    if (container) {
+        for (const el of container.children) {
+            const idx = parseInt(el.dataset.idx);
+            const p = gp.buttons[idx] && gp.buttons[idx].pressed;
+            el.classList.toggle('active', !!p);
+        }
+    }
+
+    // ── Axes ──
+    for (let i = 0; i < 4; i++) {
+        const val = gp.axes[i] || 0;
+        const fill = $('gpAxis' + i);
+        const valEl = $('gpAxisVal' + i);
+        if (fill) {
+            const pct = Math.abs(val) * 50;
+            if (val >= 0) {
+                fill.style.left = '50%';
+                fill.style.width = pct + '%';
+            } else {
+                fill.style.left = (50 - pct) + '%';
+                fill.style.width = pct + '%';
+            }
+        }
+        if (valEl) valEl.textContent = val.toFixed(2);
+    }
+
+    // ── Remap listening mode: detect pressed button ──
+    if (_gpRemapListening) {
+        for (let i = 0; i < gp.buttons.length; i++) {
+            if (gp.buttons[i] && gp.buttons[i].pressed) {
+                gpMap[_gpRemapListening] = i;
+                const btn = document.querySelector(`.gp-remap-btn[data-action="${_gpRemapListening}"]`);
+                if (btn) {
+                    btn.classList.remove('listening');
+                    btn.querySelector('.gp-remap-current').textContent = i;
+                }
+                _gpRemapListening = null;
+                saveGpMapping();
+                break;
+            }
+        }
+    }
+
+    // Show/hide connected state
+    const disc = $('gpTesterDisconnected');
+    const conn = $('gpTesterConnected');
+    if (disc) disc.classList.add('hidden');
+    if (conn) conn.classList.remove('hidden');
+    const nameEl = $('gpTesterName');
+    if (nameEl) nameEl.textContent = gp.id;
+
+    // Update status bar
+    const dot = $('gpStatusDot');
+    const txt = $('gpStatusText');
+    if (dot) { dot.classList.remove('disconnected'); dot.classList.add('connected'); }
+    if (txt) {
+        let label = gp.id;
+        if (label.includes('HID'))    label += '  \u2022  Direct HID';
+        else if (label.includes('XInput')) label += '  \u2022  XInput';
+        else label += '  \u2022  WinMM';
+        txt.textContent = label;
+    }
+}
+
+/** Load user's custom gamepad mapping from backend. */
+function loadGpMapping() {
+    fetch('/api/settings/gamepad-mapping')
+        .then(r => r.json())
+        .then(data => {
+            if (data.mapping) {
+                Object.assign(gpMap, data.mapping);
+            }
+            refreshGpRemapUI();
+        })
+        .catch(() => {});
+}
+
+/** Save current gamepad mapping to backend. */
+function saveGpMapping() {
+    fetch('/api/settings/gamepad-mapping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mapping: gpMap }),
+    }).catch(() => {});
+}
+
+/** Update the remap button labels to reflect current mapping. */
+function refreshGpRemapUI() {
+    document.querySelectorAll('.gp-remap-btn').forEach(btn => {
+        const action = btn.dataset.action;
+        if (action && gpMap[action] !== undefined) {
+            btn.querySelector('.gp-remap-current').textContent = gpMap[action];
+        }
+    });
+}
+
+/** Initialize remap button click handlers. */
+function initGpRemap() {
+    document.querySelectorAll('.gp-remap-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            // Cancel any previous listening
+            document.querySelectorAll('.gp-remap-btn.listening').forEach(b => b.classList.remove('listening'));
+            const action = btn.dataset.action;
+            _gpRemapListening = action;
+            btn.classList.add('listening');
+            btn.querySelector('.gp-remap-current').textContent = '...';
+        });
+    });
+
+    const resetBtn = $('gpResetMapping');
+    if (resetBtn) {
+        resetBtn.addEventListener('click', () => {
+            Object.assign(gpMap, GP_DEFAULT_MAP);
+            refreshGpRemapUI();
+            saveGpMapping();
+        });
+    }
+
+    loadGpMapping();
+}
+
+// Hook tester updates into the existing poll loop
+const _origPollGamepad = pollGamepad;
+
+// Run tester at ~30fps when the controller tab is open
+setInterval(updateGpTester, 33);
+
 
 // ── Start ──────────────────────────────────────────────────────────────────
 
-document.addEventListener('DOMContentLoaded', init);
+document.addEventListener('DOMContentLoaded', () => {
+    init();
+    initGpRemap();
+});
