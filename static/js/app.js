@@ -180,6 +180,15 @@ async function init() {
         startArtworkProgressPoll();
     }, 400);
 
+    // Auto-enter Game Mode if setting is enabled
+    try {
+        const gmResp = await fetch('/api/settings/start-in-game-mode');
+        const gmData = await gmResp.json();
+        if (gmData.start_in_game_mode && state.games.length > 0) {
+            setTimeout(() => enterGamingMode(), 800);
+        }
+    } catch {}
+
     bindEvents();
 }
 
@@ -840,18 +849,50 @@ function enterGamingMode() {
     const overlay = $('gamingMode');
     overlay.classList.remove('hidden');
 
-    // Try fullscreen
-    try { document.documentElement.requestFullscreen().catch(() => {}); } catch {}
+    // Use native pywebview fullscreen (falls back to browser API)
+    if (window.pywebview && window.pywebview.api) {
+        window.pywebview.api.toggle_fullscreen();
+    } else {
+        try { document.documentElement.requestFullscreen().catch(() => {}); } catch {}
+    }
 
     renderGamingGrid();
     updateGamingInfo();
     updateGamingCategory();
+    initGamingCardTilt();
+
+    // Animate entrance — stagger only the first ~20 visible cards
+    overlay.classList.add('gaming-entering');
+    const cards = overlay.querySelectorAll('.gaming-card');
+    const animCount = Math.min(cards.length, 20);
+    for (let i = 0; i < animCount; i++) {
+        cards[i].style.animationDelay = `${60 + i * 25}ms`;
+        cards[i].classList.add('gaming-card-enter');
+    }
+    setTimeout(() => {
+        overlay.classList.remove('gaming-entering');
+        for (let i = 0; i < animCount; i++) {
+            cards[i].classList.remove('gaming-card-enter');
+            cards[i].style.animationDelay = '';
+        }
+    }, 700);
 }
 
 function exitGamingMode() {
     state.gamingMode = false;
-    $('gamingMode').classList.add('hidden');
-    try { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); } catch {}
+    const overlay = $('gamingMode');
+    overlay.classList.add('gaming-exiting');
+    setTimeout(() => {
+        overlay.classList.add('hidden');
+        overlay.classList.remove('gaming-exiting');
+    }, 300);
+
+    // Exit native fullscreen
+    if (window.pywebview && window.pywebview.api) {
+        window.pywebview.api.toggle_fullscreen();
+    } else {
+        try { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); } catch {}
+    }
 }
 
 function renderGamingGrid() {
@@ -860,6 +901,8 @@ function renderGamingGrid() {
     grid.innerHTML = '';
 
     const games = state.filteredGames;
+    const frag = document.createDocumentFragment();
+
     games.forEach((game, i) => {
         const card = document.createElement('div');
         card.className = `gaming-card${i === state.gamingFocusIndex ? ' focused' : ''}`;
@@ -874,17 +917,25 @@ function renderGamingGrid() {
                 <div class="gaming-card-name">${game.name}</div>
             </div>
         `;
-        grid.appendChild(card);
+        frag.appendChild(card);
+    });
 
-        // Load artwork
-        const artEl = card.querySelector('.gaming-card-art');
-        if (game.source === 'retro' || (game.artwork && game.artwork.cover)) {
-            const img = new Image();
-            img.onload = () => {
-                artEl.style.backgroundImage = `url(/api/artwork/${encodeURIComponent(game.id)}/cover)`;
-            };
-            img.onerror = () => {};
-            img.src = `/api/artwork/${encodeURIComponent(game.id)}/cover`;
+    // Single DOM insert — no reflow per card
+    grid.appendChild(frag);
+
+    // Lazy-load artwork after DOM is settled
+    requestAnimationFrame(() => {
+        const cards = grid.children;
+        for (let i = 0; i < games.length; i++) {
+            const game = games[i];
+            if (game.source === 'retro' || (game.artwork && game.artwork.cover)) {
+                const artEl = cards[i]?.querySelector('.gaming-card-art');
+                if (!artEl) continue;
+                const url = `/api/artwork/${encodeURIComponent(game.id)}/cover`;
+                const img = new Image();
+                img.onload = () => { artEl.style.backgroundImage = `url(${url})`; };
+                img.src = url;
+            }
         }
     });
 }
@@ -893,16 +944,21 @@ function updateGamingInfo() {
     const game = state.filteredGames[state.gamingFocusIndex];
     const title = $('gamingInfoTitle');
     const meta = $('gamingInfoMeta');
+    const desc = $('gamingInfoDesc');
     const hero = $('gamingHero');
+    const cover = $('gamingSpotlightCover');
     if (!game) {
         title.textContent = '';
         meta.textContent = '';
+        if (desc) desc.textContent = '';
         hero.style.backgroundImage = '';
         hero.classList.remove('active');
+        if (cover) cover.style.backgroundImage = '';
         return;
     }
     title.textContent = game.name;
     const parts = [];
+    if (game.source) parts.push(game.source.charAt(0).toUpperCase() + game.source.slice(1));
     if (game.genre) parts.push(game.genre.split(';')[0].trim());
     if (game.developer) parts.push(game.developer.split(';')[0].trim());
     if (game.release_year) parts.push(game.release_year);
@@ -910,9 +966,20 @@ function updateGamingInfo() {
     if (pt > 0) parts.push(`${pt < 1 ? Math.round(pt * 60) + 'm' : Math.round(pt) + 'h'} played`);
     meta.textContent = parts.join('  \u00B7  ');
 
+    // Description
+    if (desc) desc.textContent = game.description || '';
+
+    // Spotlight cover art
+    if (cover) {
+        cover.style.backgroundImage = `url(/api/artwork/${encodeURIComponent(game.id)}/cover)`;
+    }
+
     // Hero backdrop
     hero.style.backgroundImage = `url(/api/artwork/${encodeURIComponent(game.id)}/hero)`;
     hero.classList.add('active');
+
+    // Dynamic ambient color from artwork
+    applyGameAmbientColor(game.id);
 }
 
 function updateGamingCategory() {
@@ -929,7 +996,9 @@ function gamingNavigate(dir) {
     if (total === 0) return;
 
     const grid = $('gamingGrid');
-    const cols = Math.max(1, Math.floor(grid.offsetWidth / 200));
+    // Read actual column count from computed grid
+    const gridStyle = getComputedStyle(grid);
+    const cols = Math.max(1, gridStyle.gridTemplateColumns.split(' ').length);
     let idx = state.gamingFocusIndex;
 
     switch (dir) {
@@ -951,7 +1020,176 @@ function gamingNavigate(dir) {
 function gamingLaunch() {
     const game = state.filteredGames[state.gamingFocusIndex];
     if (!game) return;
-    fetch(`/api/launch/${encodeURIComponent(game.id)}`, { method: 'POST' }).catch(() => {});
+
+    // ── Launch Ceremony ──
+    const overlay = $('gamingMode');
+    const ceremony = document.createElement('div');
+    ceremony.className = 'launch-ceremony';
+    ceremony.innerHTML = `
+        <div class="launch-ceremony-bg"></div>
+        <div class="launch-ceremony-art"></div>
+        <div class="launch-ceremony-title">${escapeHtml(game.name)}</div>
+        <div class="launch-ceremony-flash"></div>
+    `;
+
+    // Set art
+    const artEl = ceremony.querySelector('.launch-ceremony-art');
+    artEl.style.backgroundImage = `url(/api/artwork/${encodeURIComponent(game.id)}/hero)`;
+    const bgEl = ceremony.querySelector('.launch-ceremony-bg');
+    bgEl.style.backgroundImage = `url(/api/artwork/${encodeURIComponent(game.id)}/hero)`;
+
+    overlay.appendChild(ceremony);
+
+    // Phase 1: cards fade, art swells (0-400ms)
+    requestAnimationFrame(() => ceremony.classList.add('phase-1'));
+
+    // Phase 2: title appears, hold (400-900ms)
+    setTimeout(() => ceremony.classList.add('phase-2'), 400);
+
+    // Phase 3: flash and fade to black (900-1200ms)
+    setTimeout(() => ceremony.classList.add('phase-3'), 900);
+
+    // Actually launch and clean up
+    setTimeout(() => {
+        fetch(`/api/launch/${encodeURIComponent(game.id)}`, { method: 'POST' }).catch(() => {});
+        setTimeout(() => {
+            ceremony.classList.add('phase-done');
+            setTimeout(() => ceremony.remove(), 500);
+        }, 800);
+    }, 1100);
+}
+
+// ── Dynamic Color Extraction ─────────────────────────────────────────────
+
+const _colorCache = {};
+
+function extractDominantColor(gameId, callback) {
+    if (_colorCache[gameId]) { callback(_colorCache[gameId]); return; }
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const size = 32; // downsample for speed
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, size, size);
+
+        try {
+            const data = ctx.getImageData(0, 0, size, size).data;
+            let rSum = 0, gSum = 0, bSum = 0, count = 0;
+            // Sample from center region and skip very dark/very light pixels
+            for (let i = 0; i < data.length; i += 16) { // sample every 4th pixel
+                const r = data[i], g = data[i+1], b = data[i+2];
+                const brightness = (r + g + b) / 3;
+                if (brightness > 30 && brightness < 220) {
+                    rSum += r; gSum += g; bSum += b; count++;
+                }
+            }
+            if (count > 0) {
+                const color = {
+                    r: Math.round(rSum / count),
+                    g: Math.round(gSum / count),
+                    b: Math.round(bSum / count),
+                };
+                // Find the most saturated channel to make the accent pop
+                const max = Math.max(color.r, color.g, color.b);
+                const boost = max > 0 ? Math.min(255 / max, 1.8) : 1;
+                color.r = Math.min(255, Math.round(color.r * boost));
+                color.g = Math.min(255, Math.round(color.g * boost));
+                color.b = Math.min(255, Math.round(color.b * boost));
+                _colorCache[gameId] = color;
+                callback(color);
+                return;
+            }
+        } catch {}
+        callback(null);
+    };
+    img.onerror = () => callback(null);
+    img.src = `/api/artwork/${encodeURIComponent(gameId)}/cover`;
+}
+
+function applyGameAmbientColor(gameId) {
+    extractDominantColor(gameId, (color) => {
+        const overlay = $('gamingMode');
+        if (!color) {
+            overlay.style.setProperty('--game-r', '0');
+            overlay.style.setProperty('--game-g', '229');
+            overlay.style.setProperty('--game-b', '193');
+            return;
+        }
+        overlay.style.setProperty('--game-r', color.r);
+        overlay.style.setProperty('--game-g', color.g);
+        overlay.style.setProperty('--game-b', color.b);
+    });
+}
+
+// ── Holographic Card Tilt ────────────────────────────────────────────────
+
+function initGamingCardTilt() {
+    const grid = $('gamingGrid');
+    if (!grid) return;
+
+    // Remove old listeners if re-initializing
+    if (grid._tiltCleanup) grid._tiltCleanup();
+
+    let rafPending = false;
+    let lastCard = null;
+    let lastX = 0, lastY = 0;
+
+    const onMove = (e) => {
+        if (rafPending) return;
+        const card = e.target.closest('.gaming-card');
+        if (!card) return;
+        lastCard = card;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        rafPending = true;
+        requestAnimationFrame(() => {
+            rafPending = false;
+            if (!lastCard) return;
+            const rect = lastCard.getBoundingClientRect();
+            const x = (lastX - rect.left) / rect.width;
+            const y = (lastY - rect.top) / rect.height;
+            const rotY = (x - 0.5) * 14;
+            const rotX = (0.5 - y) * 10;
+
+            lastCard.style.transform = lastCard.classList.contains('focused')
+                ? `scale(1.1) perspective(600px) rotateX(${rotX}deg) rotateY(${rotY}deg)`
+                : `perspective(600px) rotateX(${rotX}deg) rotateY(${rotY}deg)`;
+
+            const hex = lastCard.querySelector('.gaming-card-hex');
+            if (hex) {
+                hex.style.setProperty('--spec-x', `${x * 100}%`);
+                hex.style.setProperty('--spec-y', `${y * 100}%`);
+            }
+        });
+    };
+
+    const onOut = (e) => {
+        const card = e.target.closest('.gaming-card');
+        if (card && !card.contains(e.relatedTarget)) {
+            card.style.transform = card.classList.contains('focused') ? 'scale(1.1)' : '';
+        }
+    };
+
+    const onLeave = () => {
+        lastCard = null;
+        grid.querySelectorAll('.gaming-card[style*="perspective"]').forEach(c => {
+            c.style.transform = c.classList.contains('focused') ? 'scale(1.1)' : '';
+        });
+    };
+
+    grid.addEventListener('mousemove', onMove);
+    grid.addEventListener('mouseout', onOut);
+    grid.addEventListener('mouseleave', onLeave);
+
+    grid._tiltCleanup = () => {
+        grid.removeEventListener('mousemove', onMove);
+        grid.removeEventListener('mouseout', onOut);
+        grid.removeEventListener('mouseleave', onLeave);
+    };
 }
 
 // ── Mood Helpers ──────────────────────────────────────────────────────────
@@ -1725,6 +1963,7 @@ function bindEvents() {
 
     // Gaming mode
     $('btnGamingMode').addEventListener('click', enterGamingMode);
+    $('gamingLaunchBtn').addEventListener('click', gamingLaunch);
     $('gamingGrid').addEventListener('click', (e) => {
         const card = e.target.closest('.gaming-card');
         if (!card) return;
@@ -1738,6 +1977,26 @@ function bindEvents() {
         }
     });
 
+    // Gaming mode clock
+    function updateGamingClock() {
+        const el = $('gamingClock');
+        if (el) {
+            const d = new Date();
+            el.textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+    }
+    updateGamingClock();
+    setInterval(updateGamingClock, 30000);
+
+    // Show gamepad hints when gamepad is connected
+    function updateGamingHintVisibility() {
+        const hints = $('gamingHints');
+        if (!hints) return;
+        hints.classList.toggle('gp-connected', _gp.connected);
+    }
+    window.addEventListener('gamepadconnected', updateGamingHintVisibility);
+    window.addEventListener('gamepaddisconnected', updateGamingHintVisibility);
+
     // Gaming mode keyboard
     document.addEventListener('keydown', (e) => {
         if (!state.gamingMode) return;
@@ -1750,10 +2009,11 @@ function bindEvents() {
             case 'Enter':      gamingLaunch();          e.preventDefault(); break;
             case 'Tab': {
                 e.preventDefault();
-                // Cycle to next hex category
                 const hexes = Array.from(document.querySelectorAll('.console-hex-wrap'));
                 const activeIdx = hexes.findIndex(h => h.classList.contains('active'));
-                const next = (activeIdx + 1) % hexes.length;
+                const next = e.shiftKey
+                    ? (activeIdx - 1 + hexes.length) % hexes.length
+                    : (activeIdx + 1) % hexes.length;
                 selectConsoleHex(hexes[next].dataset.tab);
                 renderGamingGrid();
                 updateGamingInfo();
@@ -1771,9 +2031,9 @@ function bindEvents() {
         }
     });
 
-    // Exit gaming mode when fullscreen exits
+    // Exit gaming mode when browser fullscreen exits (only if not using pywebview native)
     document.addEventListener('fullscreenchange', () => {
-        if (!document.fullscreenElement && state.gamingMode) {
+        if (!document.fullscreenElement && state.gamingMode && !(window.pywebview && window.pywebview.api)) {
             exitGamingMode();
         }
     });
@@ -3140,6 +3400,25 @@ async function renderAccountsTab() {
         };
     }
 
+    // ── Start in Game Mode toggle ──
+    const gmToggle = $('toggleStartGameMode');
+    if (gmToggle) {
+        try {
+            const gmResp = await fetch('/api/settings/start-in-game-mode');
+            const gmData = await gmResp.json();
+            gmToggle.setAttribute('aria-checked', gmData.start_in_game_mode ? 'true' : 'false');
+        } catch {
+            gmToggle.setAttribute('aria-checked', 'false');
+        }
+        gmToggle.onclick = async () => {
+            try {
+                const r = await fetch('/api/settings/start-in-game-mode', { method: 'POST' });
+                const d = await r.json();
+                gmToggle.setAttribute('aria-checked', d.start_in_game_mode ? 'true' : 'false');
+            } catch {}
+        };
+    }
+
     // ── Detected Stores ──
     const storeNames = {
         steam: 'Steam', epic: 'Epic Games', gog: 'GOG Galaxy', xbox: 'Xbox/Game Pass',
@@ -3965,6 +4244,8 @@ function initStarfield() {
 
     let frame = 0;
     function animate() {
+        // Pause when gaming mode is fullscreen — no point rendering behind it
+        if (state.gamingMode) { requestAnimationFrame(animate); return; }
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         frame++;
 
@@ -4039,10 +4320,14 @@ const _gp = {
     prev: {},
     // Axis dead zone
     deadZone: 0.5,
-    // Which direction is being held (-1, 0, 1)
+    // Horizontal held direction
     heldDir: 0,
     holdStart: 0,
     holdFired: false,
+    // Vertical held direction
+    heldDirY: 0,
+    holdStartY: 0,
+    holdFiredY: false,
 };
 
 window.addEventListener('gamepadconnected', (e) => {
@@ -4083,51 +4368,88 @@ function pollGamepad() {
     const btnRB     = justPressed(5);   // Right bumper
     const btnSelect = justPressed(8);   // Select / Back / Share
     const btnStart  = justPressed(9);   // Start / Menu
+    const dpadUp    = justPressed(12);  // D-pad up
+    const dpadDown  = justPressed(13);  // D-pad down
     const dpadLeft  = justPressed(14);  // D-pad left
     const dpadRight = justPressed(15);  // D-pad right
 
-    // Left stick axis (axis 0 = horizontal)
+    // Left stick axes
     const axisX = gp.axes[0] || 0;
-
-    // ── Determine navigation direction ──
-    // Combine D-pad discrete presses and stick axis for left/right
-    let navDir = 0;
-    if (dpadLeft)  navDir = -1;
-    if (dpadRight) navDir = 1;
-
-    // Stick-based navigation with repeat
-    const stickDir = Math.abs(axisX) > _gp.deadZone ? Math.sign(axisX) : 0;
+    const axisY = gp.axes[1] || 0;
     const now = performance.now();
 
-    if (stickDir !== 0) {
-        if (_gp.heldDir !== stickDir) {
-            // Direction changed — fire immediately
-            _gp.heldDir = stickDir;
-            _gp.holdStart = now;
-            _gp.holdFired = false;
-            navDir = stickDir;
+    // ── Determine horizontal nav direction ──
+    let navDirX = 0;
+    if (dpadLeft)  navDirX = -1;
+    if (dpadRight) navDirX = 1;
+
+    const stickDirX = Math.abs(axisX) > _gp.deadZone ? Math.sign(axisX) : 0;
+    if (stickDirX !== 0) {
+        if (_gp.heldDir !== stickDirX) {
+            _gp.heldDir = stickDirX; _gp.holdStart = now; _gp.holdFired = false;
+            navDirX = stickDirX;
         } else if (!_gp.holdFired && now - _gp.holdStart > _gp.navInitialDelay) {
-            // Initial delay passed — start repeating
-            _gp.holdFired = true;
-            _gp.holdStart = now;
-            navDir = stickDir;
+            _gp.holdFired = true; _gp.holdStart = now; navDirX = stickDirX;
         } else if (_gp.holdFired && now - _gp.holdStart > _gp.navDelay) {
-            // Repeat fire
-            _gp.holdStart = now;
-            navDir = stickDir;
+            _gp.holdStart = now; navDirX = stickDirX;
         }
-    } else {
-        _gp.heldDir = 0;
+    } else { _gp.heldDir = 0; }
+
+    // ── Determine vertical nav direction ──
+    let navDirY = 0;
+    if (dpadUp)   navDirY = -1;
+    if (dpadDown) navDirY = 1;
+
+    const stickDirY = Math.abs(axisY) > _gp.deadZone ? Math.sign(axisY) : 0;
+    if (stickDirY !== 0) {
+        if (_gp.heldDirY !== stickDirY) {
+            _gp.heldDirY = stickDirY; _gp.holdStartY = now; _gp.holdFiredY = false;
+            navDirY = stickDirY;
+        } else if (!_gp.holdFiredY && now - _gp.holdStartY > _gp.navInitialDelay) {
+            _gp.holdFiredY = true; _gp.holdStartY = now; navDirY = stickDirY;
+        } else if (_gp.holdFiredY && now - _gp.holdStartY > _gp.navDelay) {
+            _gp.holdStartY = now; navDirY = stickDirY;
+        }
+    } else { _gp.heldDirY = 0; }
+
+    // ── Gaming Mode: dedicated gamepad handling ──
+    if (state.gamingMode) {
+        if (btnB)      exitGamingMode();
+        if (navDirX < 0) gamingNavigate('left');
+        if (navDirX > 0) gamingNavigate('right');
+        if (navDirY < 0) gamingNavigate('up');
+        if (navDirY > 0) gamingNavigate('down');
+        if (btnA)      gamingLaunch();
+        if (btnY) {
+            const game = state.filteredGames[state.gamingFocusIndex];
+            if (game) toggleFavorite(game.id);
+        }
+        // Bumpers: cycle categories in gaming mode
+        if (btnLB || btnRB) {
+            const hexes = Array.from(document.querySelectorAll('.console-hex-wrap'));
+            const activeIdx = hexes.findIndex(h => h.classList.contains('active'));
+            const next = btnRB
+                ? (activeIdx + 1) % hexes.length
+                : (activeIdx - 1 + hexes.length) % hexes.length;
+            selectConsoleHex(hexes[next].dataset.tab);
+            renderGamingGrid();
+            updateGamingInfo();
+            updateGamingCategory();
+        }
+        requestAnimationFrame(pollGamepad);
+        return;
     }
 
-    // ── Check which overlay is open ──
+    // ── Normal mode ──
+
+    // Check which overlay is open
     const settingsOpen = !$('settingsOverlay').classList.contains('hidden');
     const searchOpen   = !$('searchOverlay').classList.contains('hidden');
     const catbyteOpen  = !$('catbytePanel').classList.contains('hidden');
     const catbyteInfoOpen = !$('catbyteInfoOverlay').classList.contains('hidden');
     const anyOverlay   = settingsOpen || searchOpen || catbyteOpen || catbyteInfoOpen;
 
-    // ── B: Back / Close ──
+    // B: Back / Close
     if (btnB) {
         if (catbyteInfoOpen) $('catbyteInfoOverlay').classList.add('hidden');
         else if (searchOpen)   closeSearch();
@@ -4135,22 +4457,21 @@ function pollGamepad() {
         else if (catbyteOpen)  $('catbytePanel').classList.add('hidden');
     }
 
-    // ── Start: Toggle settings ──
+    // Start: Toggle settings (hold Start+Select to enter gaming mode)
     if (btnStart) {
-        if (settingsOpen) $('settingsOverlay').classList.add('hidden');
-        else if (!anyOverlay) openSettings();
+        if (!anyOverlay) enterGamingMode();
+        else if (settingsOpen) $('settingsOverlay').classList.add('hidden');
     }
 
-    // ── Select: Toggle search ──
+    // Select: Toggle search
     if (btnSelect) {
         if (searchOpen) closeSearch();
         else if (!anyOverlay) openSearch();
     }
 
-    // ── Bumpers: Tab switching ──
+    // Bumpers: Tab switching
     if (btnLB || btnRB) {
         if (settingsOpen) {
-            // Switch settings tabs
             const tabs = Array.from(document.querySelectorAll('.settings-tab'));
             const activeIdx = tabs.findIndex(t => t.classList.contains('active'));
             const next = btnRB
@@ -4158,7 +4479,6 @@ function pollGamepad() {
                 : (activeIdx - 1 + tabs.length) % tabs.length;
             switchSettingsTab(tabs[next].dataset.stab);
         } else if (!anyOverlay) {
-            // Switch hex panel tabs via gamepad bumpers
             const hexes = Array.from(document.querySelectorAll('.console-hex-wrap'));
             const activeIdx = hexes.findIndex(h => h.classList.contains('active'));
             const next = btnRB
@@ -4168,17 +4488,17 @@ function pollGamepad() {
         }
     }
 
-    // ── Navigation (only when no text-input overlay is focused) ──
-    if (navDir !== 0 && !searchOpen) {
-        navigateCarousel(navDir);
+    // Navigation (only when no text-input overlay is focused)
+    if (navDirX !== 0 && !searchOpen) {
+        navigateCarousel(navDirX);
     }
 
-    // ── A: Launch / Confirm ──
+    // A: Launch / Confirm
     if (btnA && !anyOverlay) {
         launchSelected();
     }
 
-    // ── Y: Favorite toggle ──
+    // Y: Favorite toggle
     if (btnY && !anyOverlay) {
         const game = state.filteredGames[state.selectedIndex];
         if (game) toggleFavorite(game.id);

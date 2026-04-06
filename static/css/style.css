@@ -3867,7 +3867,17 @@ body::before {
 
 /* ── Gaming Mode ────────────────────────────────────────────────────────── */
 
+/* ── Gaming Mode — Premium Cinematic "Living Gallery" UI ───────────────── */
+
 .gaming-mode {
+    /* Dynamic per-game ambient color (set by JS) */
+    --game-r: 0;
+    --game-g: 229;
+    --game-b: 193;
+    --game-color: rgb(var(--game-r), var(--game-g), var(--game-b));
+    --game-glow: rgba(var(--game-r), var(--game-g), var(--game-b), 0.35);
+    --game-dim: rgba(var(--game-r), var(--game-g), var(--game-b), 0.12);
+
     position: fixed;
     inset: 0;
     z-index: 10000;
@@ -3881,15 +3891,63 @@ body::before {
     display: none !important;
 }
 
-/* Hero backdrop */
-.gaming-hero {
+/* Noise texture overlay — static repeating pattern (no feTurbulence, GPU-friendly) */
+.gaming-mode::before {
+    content: '';
     position: absolute;
     inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    opacity: 0.04;
+    background: repeating-conic-gradient(rgba(255,255,255,0.08) 0% 25%, transparent 0% 50%) 0 0 / 2px 2px;
+}
+
+/* Ambient glow — dynamic per-game color cast on edges (transition opacity, not gradient) */
+.gaming-mode::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background:
+        radial-gradient(ellipse 50% 40% at 10% 80%, var(--game-glow), transparent 70%),
+        radial-gradient(ellipse 40% 30% at 90% 20%, var(--game-dim), transparent 70%);
+}
+
+/* Entrance/exit animations */
+.gaming-mode.gaming-entering {
+    animation: gamingFadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.gaming-mode.gaming-exiting {
+    animation: gamingFadeOut 0.3s ease-in forwards;
+}
+@keyframes gamingFadeIn {
+    from { opacity: 0; transform: scale(1.03); }
+    to   { opacity: 1; transform: scale(1); }
+}
+@keyframes gamingFadeOut {
+    from { opacity: 1; }
+    to   { opacity: 0; transform: scale(0.98); }
+}
+
+/* Staggered card entrance */
+.gaming-card-enter {
+    animation: cardReveal 0.5s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+@keyframes cardReveal {
+    from { opacity: 0; transform: translateY(30px) scale(0.9); }
+    to   { opacity: 0.7; transform: translateY(0) scale(1); }
+}
+
+/* Hero backdrop — cinematic blurred background (static transform, no infinite anim) */
+.gaming-hero {
+    position: absolute;
+    inset: -30px;
     background-size: cover;
     background-position: center 30%;
-    filter: blur(40px) brightness(0.25) saturate(1.2);
+    filter: blur(40px) brightness(0.18) saturate(1.4);
     opacity: 0;
-    transition: opacity 1s ease, background-image 0.8s ease;
+    transition: opacity 1.2s ease;
     transform: scale(1.15);
     z-index: 0;
 }
@@ -3903,106 +3961,218 @@ body::before {
     position: absolute;
     inset: 0;
     background:
-        radial-gradient(ellipse 80% 70% at 50% 40%, transparent 0%, var(--bg) 100%),
-        linear-gradient(180deg, var(--bg) 0%, transparent 20%, transparent 70%, var(--bg) 100%);
+        radial-gradient(ellipse 90% 60% at 50% 30%, transparent 0%, var(--bg) 100%),
+        linear-gradient(180deg, rgba(6,11,20,0.5) 0%, transparent 12%, transparent 55%, var(--bg) 100%);
 }
 
-/* Header */
+/* Header bar */
 .gaming-header {
     position: relative;
-    z-index: 2;
+    z-index: 3;
     display: flex;
     align-items: center;
     gap: 24px;
-    padding: 24px 40px 0;
+    padding: 28px 48px 0;
 }
 
 .gaming-title {
-    font-size: 28px;
+    font-size: 32px;
     font-weight: 800;
-    letter-spacing: 2px;
+    letter-spacing: 3px;
     color: var(--text-bright);
 }
 
 .gaming-title-accent {
-    color: var(--accent);
-    text-shadow: 0 0 20px var(--accent-dim);
+    color: var(--game-color);
+    text-shadow: 0 0 24px var(--game-dim);
+    transition: color 1s ease, text-shadow 1s ease;
 }
 
 .gaming-category {
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 600;
-    color: var(--accent);
-    background: rgba(0, 229, 193, 0.08);
-    padding: 4px 14px;
-    border-radius: 8px;
-    border: 1px solid rgba(0, 229, 193, 0.15);
+    color: var(--game-color);
+    background: var(--game-dim);
+    padding: 6px 18px;
+    border-radius: 10px;
+    border: 1px solid rgba(var(--game-r), var(--game-g), var(--game-b), 0.2);
+    transition: color 1s ease, background 1s ease, border-color 1s ease;
 }
 
 .gaming-sort {
     font-size: 12px;
     color: var(--text-dim);
-    margin-left: auto;
 }
 
-/* Game info (focused game) */
-.gaming-info {
+.gaming-clock {
+    margin-left: auto;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: 1px;
+    opacity: 0.5;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ── Spotlight: selected game detail area ─────────────────────────────── */
+
+.gaming-spotlight {
     position: relative;
-    z-index: 2;
-    padding: 16px 40px 8px;
-    min-height: 60px;
+    z-index: 3;
+    display: flex;
+    align-items: flex-end;
+    gap: 28px;
+    padding: 20px 48px 12px;
+    min-height: 170px;
+}
+
+.gaming-spotlight-cover {
+    width: 105px;
+    height: 186px;
+    flex-shrink: 0;
+    clip-path: polygon(50% 0%, 100% var(--hex-point), 100% calc(100% - var(--hex-point)), 50% 100%, 0% calc(100% - var(--hex-point)), 0% var(--hex-point));
+    background-size: contain;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-color: rgba(var(--game-r), var(--game-g), var(--game-b), 0.06);
+    border: none;
+    transition: background-image 0.4s ease, background-color 1s ease;
+}
+
+.gaming-spotlight-detail {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
 }
 
 .gaming-info-title {
-    font-size: 28px;
+    font-size: 38px;
     font-weight: 700;
     color: var(--text-bright);
-    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+    text-shadow: 0 2px 20px rgba(0, 0, 0, 0.7);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.2;
 }
 
 .gaming-info-meta {
     font-size: 14px;
     color: var(--text);
-    margin-top: 4px;
+    margin-top: 2px;
+    opacity: 0.7;
 }
 
-/* Grid */
+.gaming-info-desc {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-top: 4px;
+    max-height: 2.8em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-height: 1.4;
+}
+
+.gaming-launch-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    padding: 12px 32px;
+    background: var(--game-color);
+    color: var(--bg);
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: background 0.3s, box-shadow 0.3s, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    box-shadow: 0 0 24px var(--game-glow);
+    width: fit-content;
+}
+
+.gaming-launch-btn:hover,
+.gaming-launch-btn:focus-visible {
+    filter: brightness(1.15);
+    box-shadow: 0 0 32px var(--game-glow);
+    transform: scale(1.04);
+}
+
+/* ── Grid ─────────────────────────────────────────────────────────────── */
+
 .gaming-grid {
     position: relative;
-    z-index: 2;
+    z-index: 3;
     flex: 1;
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     gap: 16px;
-    padding: 16px 40px 80px;
+    padding: 12px 48px 80px;
     overflow-y: auto;
     overflow-x: hidden;
     scrollbar-width: thin;
-    scrollbar-color: rgba(0, 229, 193, 0.15) transparent;
+    scrollbar-color: rgba(var(--game-r), var(--game-g), var(--game-b), 0.15) transparent;
 }
 
-/* Gaming card */
+/* ── Gaming card — holographic tilt + specular highlight ──────────────── */
+
 .gaming-card {
     aspect-ratio: 0.5625;
     cursor: pointer;
-    filter: drop-shadow(0 0 0 transparent);
-    transition: filter 0.2s ease, transform 0.2s ease;
     outline: none;
+    opacity: 0.55;
+    transition: filter 0.3s ease, opacity 0.25s ease, transform 0.3s ease;
+    transform-style: preserve-3d;
 }
 
 .gaming-card.focused {
-    filter: drop-shadow(0 0 16px rgba(0, 229, 193, 0.6))
-            drop-shadow(0 0 32px rgba(0, 229, 193, 0.25));
-    transform: scale(1.06);
+    filter: drop-shadow(0 0 16px var(--game-glow));
     z-index: 5;
+    opacity: 1;
+    transform: scale(1.1);
+    will-change: transform;
+}
+
+.gaming-card:hover:not(.focused) {
+    opacity: 0.75;
 }
 
 .gaming-card-hex {
+    --spec-x: 50%;
+    --spec-y: 50%;
     width: 100%;
     height: 100%;
     clip-path: polygon(50% 0%, 100% var(--hex-point), 100% calc(100% - var(--hex-point)), 50% 100%, 0% calc(100% - var(--hex-point)), 0% var(--hex-point));
     position: relative;
     overflow: hidden;
+}
+
+/* Specular / holographic highlight that follows cursor */
+.gaming-card-hex::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    pointer-events: none;
+    background: radial-gradient(
+        circle at var(--spec-x) var(--spec-y),
+        rgba(255, 255, 255, 0.18) 0%,
+        rgba(255, 255, 255, 0.04) 40%,
+        transparent 70%
+    );
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.gaming-card:hover .gaming-card-hex::after,
+.gaming-card.focused .gaming-card-hex::after {
+    opacity: 1;
 }
 
 .gaming-card-art {
@@ -4017,17 +4187,17 @@ body::before {
 .gaming-card-overlay {
     position: absolute;
     inset: 0;
-    background: linear-gradient(180deg, transparent 50%, rgba(4, 10, 22, 0.9) 100%);
+    background: linear-gradient(180deg, transparent 45%, rgba(4, 10, 22, 0.85) 100%);
     z-index: 2;
 }
 
 .gaming-card-name {
     position: absolute;
     bottom: 12%;
-    left: 10%;
-    right: 10%;
+    left: 8%;
+    right: 8%;
     z-index: 3;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
     color: var(--text-bright);
     text-align: center;
@@ -4035,28 +4205,128 @@ body::before {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    transition: color 0.6s ease, text-shadow 0.6s ease;
 }
 
 .gaming-card.focused .gaming-card-name {
-    color: var(--accent);
+    color: var(--game-color);
+    text-shadow: 0 0 12px var(--game-glow);
 }
 
-/* Button hints bar */
+/* ── Launch Ceremony ──────────────────────────────────────────────────── */
+
+.launch-ceremony {
+    position: absolute;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    pointer-events: none;
+}
+
+.launch-ceremony-bg {
+    position: absolute;
+    inset: -40px;
+    background-size: cover;
+    background-position: center;
+    filter: blur(30px) brightness(0.15) saturate(1.5);
+    transform: scale(1.2);
+    opacity: 0;
+    transition: opacity 0.5s ease, transform 1.5s ease;
+}
+
+.launch-ceremony-art {
+    position: relative;
+    width: 0;
+    height: 0;
+    background-size: cover;
+    background-position: center;
+    border-radius: 4px;
+    opacity: 0;
+    transition: width 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+                height 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+                opacity 0.4s ease;
+    box-shadow: 0 0 60px var(--game-glow);
+}
+
+.launch-ceremony-title {
+    position: relative;
+    font-size: 52px;
+    font-weight: 800;
+    letter-spacing: 4px;
+    color: var(--text-bright);
+    text-shadow: 0 0 40px rgba(0,0,0,0.8);
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.4s ease 0.1s, transform 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.1s;
+    text-align: center;
+    max-width: 80%;
+}
+
+.launch-ceremony-flash {
+    position: absolute;
+    inset: 0;
+    background: white;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+/* Phase 1: Art swells from center */
+.launch-ceremony.phase-1 .launch-ceremony-bg {
+    opacity: 1;
+    transform: scale(1.3);
+}
+.launch-ceremony.phase-1 .launch-ceremony-art {
+    width: 60vw;
+    height: 50vh;
+    opacity: 1;
+}
+
+/* Phase 2: Title appears */
+.launch-ceremony.phase-2 .launch-ceremony-title {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Phase 3: Flash + fade to black */
+.launch-ceremony.phase-3 .launch-ceremony-flash {
+    opacity: 0.7;
+    transition: opacity 0.12s ease;
+}
+.launch-ceremony.phase-3 .launch-ceremony-art {
+    transform: scale(1.15);
+}
+
+/* Phase done: fade everything out */
+.launch-ceremony.phase-done {
+    opacity: 0;
+    transition: opacity 0.5s ease;
+}
+
+/* ── Hints bar ────────────────────────────────────────────────────────── */
+
 .gaming-hints {
     position: absolute;
     bottom: 0;
     left: 0;
     right: 0;
-    z-index: 3;
+    z-index: 4;
     display: flex;
     justify-content: center;
-    gap: 24px;
-    padding: 16px;
-    background: linear-gradient(transparent, rgba(6, 11, 20, 0.95));
+    gap: 20px;
+    padding: 20px 48px;
+    background: linear-gradient(transparent, rgba(6, 11, 20, 0.97));
 }
 
+/* Show keyboard hints by default, gamepad hints when connected */
+.gaming-hint-gp { display: none; }
+.gaming-hints.gp-connected .gaming-hint-kbd { display: none; }
+.gaming-hints.gp-connected .gaming-hint-gp { display: flex; }
+
 .gaming-hint {
-    font-size: 12px;
+    font-size: 13px;
     color: var(--text-dim);
     display: flex;
     align-items: center;
@@ -4064,13 +4334,54 @@ body::before {
 }
 
 .gaming-hint kbd {
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.06);
     border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 4px;
-    padding: 2px 6px;
+    border-radius: 5px;
+    padding: 3px 8px;
     font-size: 11px;
     font-family: inherit;
     color: var(--text);
+}
+
+/* Gamepad button badges */
+.gp-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    height: 24px;
+    padding: 0 6px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--bg);
+}
+.gp-a { background: #4caf50; }
+.gp-b { background: #f44336; }
+.gp-stick { background: rgba(255,255,255,0.2); color: var(--text-bright); }
+.gp-bumper { background: rgba(255,255,255,0.12); color: var(--text); font-size: 10px; }
+
+/* ── Large screen gaming mode ─────────────────────────────────────────── */
+
+@media (min-width: 1600px) {
+    .gaming-grid {
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 18px;
+    }
+    .gaming-info-title { font-size: 44px; }
+    .gaming-spotlight-cover { width: 120px; height: 213px; }
+}
+
+@media (min-width: 2400px) {
+    .gaming-grid {
+        grid-template-columns: repeat(auto-fill, minmax(185px, 1fr));
+        gap: 22px;
+    }
+    .gaming-info-title { font-size: 52px; }
+    .gaming-spotlight { padding: 28px 64px 16px; }
+    .gaming-header { padding: 36px 64px 0; }
+    .gaming-grid { padding: 16px 64px 90px; }
+    .launch-ceremony-title { font-size: 64px; }
 }
 
 /* ── Responsive ──────────────────────────────────────────────────────────── */

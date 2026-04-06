@@ -971,6 +971,22 @@ def api_toggle_direct_launch():
     return jsonify({'direct_launch': new_val})
 
 
+@app.route('/api/settings/start-in-game-mode', methods=['GET'])
+def api_get_start_in_game_mode():
+    """Get start_in_game_mode setting."""
+    settings = userdata.get_settings()
+    return jsonify({'start_in_game_mode': settings.get('start_in_game_mode', False)})
+
+
+@app.route('/api/settings/start-in-game-mode', methods=['POST'])
+def api_toggle_start_in_game_mode():
+    """Toggle start in game mode."""
+    settings = userdata.get_settings()
+    new_val = not settings.get('start_in_game_mode', False)
+    userdata.update_settings({'start_in_game_mode': new_val})
+    return jsonify({'start_in_game_mode': new_val})
+
+
 @app.route('/api/settings/direct-launch/<game_id>', methods=['GET'])
 def api_get_game_direct_launch(game_id):
     """Get per-game direct launch override."""

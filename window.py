@@ -49,6 +49,20 @@ class Api:
             return str(result[0])
         return None
 
+    def toggle_fullscreen(self) -> bool:
+        """Toggle native fullscreen. Returns new fullscreen state."""
+        if not self._window:
+            return False
+        self._window.toggle_fullscreen()
+        return True
+
+    def minimize(self) -> bool:
+        """Minimize the window."""
+        if not self._window:
+            return False
+        self._window.minimize()
+        return True
+
 
 api = Api()
 

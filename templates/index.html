@@ -312,6 +312,7 @@
                 <button class="settings-tab" data-stab="directories">Directories</button>
                 <button class="settings-tab" data-stab="emulation">Emulation</button>
                 <button class="settings-tab" data-stab="catbyte">CatByte</button>
+                <button class="settings-tab" data-stab="display">Display</button>
                 <button class="settings-tab" data-stab="about">About</button>
             </nav>
             <div class="settings-body">
@@ -569,6 +570,25 @@
                 </div>
 
                 <!-- ═══ About Tab ═══ -->
+                <!-- ═══ Display Tab ═══ -->
+                <div class="settings-pane" id="settingsPane-display">
+                    <section class="settings-card">
+                        <div class="settings-card-header">
+                            <h4>Game Mode</h4>
+                            <p class="settings-card-hint">Fullscreen cinematic interface for couch gaming — navigate with keyboard or gamepad.</p>
+                        </div>
+                        <div class="catbyte-toggle-row">
+                            <label class="catbyte-toggle-label">
+                                <strong>Start in Game Mode</strong>
+                                <span class="catbyte-toggle-hint">Launch YancoHub directly into fullscreen Game Mode</span>
+                            </label>
+                            <button class="toggle-switch" id="toggleStartGameMode" role="switch" aria-checked="false">
+                                <span class="toggle-knob"></span>
+                            </button>
+                        </div>
+                    </section>
+                </div>
+
                 <div class="settings-pane" id="settingsPane-about">
                     <section class="settings-card settings-about-hero">
                         <div class="about-logo">
@@ -736,17 +756,30 @@
             <span class="gaming-title">YANCO<span class="gaming-title-accent">HUB</span></span>
             <span class="gaming-category" id="gamingCategory"></span>
             <span class="gaming-sort" id="gamingSort"></span>
+            <span class="gaming-clock" id="gamingClock"></span>
         </div>
-        <div class="gaming-info" id="gamingInfo">
-            <div class="gaming-info-title" id="gamingInfoTitle"></div>
-            <div class="gaming-info-meta" id="gamingInfoMeta"></div>
+        <div class="gaming-spotlight" id="gamingSpotlight">
+            <div class="gaming-spotlight-cover" id="gamingSpotlightCover"></div>
+            <div class="gaming-spotlight-detail">
+                <div class="gaming-info-title" id="gamingInfoTitle"></div>
+                <div class="gaming-info-meta" id="gamingInfoMeta"></div>
+                <div class="gaming-info-desc" id="gamingInfoDesc"></div>
+                <button class="gaming-launch-btn" id="gamingLaunchBtn">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+                    Play
+                </button>
+            </div>
         </div>
         <div class="gaming-grid" id="gamingGrid"></div>
-        <div class="gaming-hints">
-            <span class="gaming-hint"><kbd>Enter</kbd> Launch</span>
-            <span class="gaming-hint"><kbd>Esc</kbd> Exit</span>
-            <span class="gaming-hint"><kbd>&larr;&rarr;&uarr;&darr;</kbd> Navigate</span>
-            <span class="gaming-hint"><kbd>Tab</kbd> Next Category</span>
+        <div class="gaming-hints" id="gamingHints">
+            <span class="gaming-hint gaming-hint-kbd"><kbd>Enter</kbd> Launch</span>
+            <span class="gaming-hint gaming-hint-kbd"><kbd>Esc</kbd> Exit</span>
+            <span class="gaming-hint gaming-hint-kbd"><kbd>&larr;&rarr;&uarr;&darr;</kbd> Navigate</span>
+            <span class="gaming-hint gaming-hint-kbd"><kbd>Tab</kbd> Category</span>
+            <span class="gaming-hint gaming-hint-gp"><span class="gp-btn gp-a">A</span> Launch</span>
+            <span class="gaming-hint gaming-hint-gp"><span class="gp-btn gp-b">B</span> Exit</span>
+            <span class="gaming-hint gaming-hint-gp"><span class="gp-btn gp-stick">L</span> Navigate</span>
+            <span class="gaming-hint gaming-hint-gp"><span class="gp-btn gp-bumper">LB/RB</span> Category</span>
         </div>
     </div>
 
