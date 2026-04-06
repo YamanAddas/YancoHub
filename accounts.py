@@ -122,6 +122,58 @@ class SteamAccount:
 
 
 
+def detect_steam_users() -> list[dict]:
+    """Auto-detect Steam users from local loginusers.vdf.
+
+    Returns a list of dicts with steam_id, account_name, persona_name,
+    and most_recent (bool). The most recently logged-in user is first.
+    """
+    steam_path = _find_steam_path()
+    if not steam_path:
+        return []
+
+    login_file = steam_path / 'config' / 'loginusers.vdf'
+    if not login_file.exists():
+        return []
+
+    try:
+        import vdf as vdf_lib
+        with open(login_file, 'r', encoding='utf-8') as f:
+            data = vdf_lib.load(f)
+
+        users_data = data.get('users', {})
+        users = []
+        for steam_id, info in users_data.items():
+            users.append({
+                'steam_id': steam_id,
+                'account_name': info.get('AccountName', ''),
+                'persona_name': info.get('PersonaName', ''),
+                'most_recent': info.get('MostRecent', '0') == '1',
+            })
+
+        # Sort so most recent user is first
+        users.sort(key=lambda u: not u['most_recent'])
+        return users
+    except Exception as e:
+        logger.debug(f"Failed to parse loginusers.vdf: {e}")
+        return []
+
+
+def _find_steam_path() -> Path | None:
+    """Find Steam installation path from registry or common locations."""
+    try:
+        import winreg
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam")
+        steam_path, _ = winreg.QueryValueEx(key, "SteamPath")
+        winreg.CloseKey(key)
+        return Path(steam_path)
+    except Exception:
+        for p in [Path("C:/Program Files (x86)/Steam"), Path("C:/Program Files/Steam")]:
+            if p.exists():
+                return p
+    return None
+
+
 def resolve_steam_vanity_url(api_key, vanity_name):
     """Resolve a Steam vanity URL name to a Steam ID.
     e.g. 'gabelogannewell' → '76561197960287930'

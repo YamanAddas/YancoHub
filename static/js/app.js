@@ -2674,26 +2674,31 @@ async function connectSteam() {
     const steamId = $('steamIdInput').value.trim();
     const status = $('steamConnectStatus');
 
-    if (!apiKey || !steamId) {
+    if (!steamId) {
         status.style.color = 'var(--danger)';
-        status.textContent = 'Both API key and Steam ID are required';
+        status.textContent = 'Steam ID is required (API key is optional)';
         return;
     }
 
     status.style.color = 'var(--accent)';
-    status.textContent = 'Connecting...';
+    status.textContent = apiKey ? 'Connecting with full library...' : 'Connecting...';
 
     try {
+        const body = { steam_id: steamId };
+        if (apiKey) body.api_key = apiKey;
         const r = await fetch('/api/accounts/steam/connect', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ api_key: apiKey, steam_id: steamId }),
+            body: JSON.stringify(body),
         });
         const d = await r.json();
 
         if (r.ok) {
             status.style.color = 'var(--success)';
-            status.textContent = `Connected as ${d.persona_name}! Library loading...`;
+            const msg = d.has_api_key
+                ? `Connected as ${d.persona_name}! Full library loading...`
+                : `Connected as ${d.persona_name}! Installed games ready.`;
+            status.textContent = msg;
             $('steamConnectSection').classList.add('hidden');
             renderSettings();
             setTimeout(async () => { await loadGames(); applyFilter(); }, 5000);
@@ -2913,16 +2918,35 @@ async function renderAccountsTab() {
 
         // Steam
         const steam = accounts.steam || {};
+        const detectedUsers = steam.detected_users || [];
+        const detectedUser = detectedUsers[0]; // Most recent login
+
         if (steam.connected) {
+            const apiNote = steam.has_api_key
+                ? 'Full library (installed + owned)'
+                : 'Installed games only';
             accountsHtml += `
                 <div class="account-card">
                     <div class="account-icon">🎮</div>
                     <div class="account-info">
                         <div class="account-name">Steam</div>
-                        <div class="account-detail">${escapeHtml(steam.persona_name || 'Connected')}</div>
+                        <div class="account-detail">${escapeHtml(steam.persona_name || 'Connected')} &mdash; ${apiNote}</div>
                     </div>
                     <div class="account-status connected"></div>
-                    <button class="account-btn disconnect" id="btnDisconnectSteam">Disconnect</button>
+                    <button class="account-btn${steam.has_api_key ? ' disconnect' : ''}" id="${steam.has_api_key ? 'btnDisconnectSteam' : 'btnShowSteamConnect'}">${steam.has_api_key ? 'Disconnect' : 'Add API Key'}</button>
+                </div>`;
+        } else if (detectedUser) {
+            // Steam user detected locally — one-click connect
+            accountsHtml += `
+                <div class="account-card">
+                    <div class="account-icon">🎮</div>
+                    <div class="account-info">
+                        <div class="account-name">Steam</div>
+                        <div class="account-detail">Detected: ${escapeHtml(detectedUser.persona_name)} &mdash; click to connect</div>
+                    </div>
+                    <div class="account-status disconnected"></div>
+                    <button class="account-btn" id="btnQuickConnectSteam">Connect</button>
+                    <button class="account-btn" id="btnShowSteamConnect" style="margin-left:4px">Manual</button>
                 </div>`;
         } else {
             accountsHtml += `
@@ -2930,7 +2954,7 @@ async function renderAccountsTab() {
                     <div class="account-icon">🎮</div>
                     <div class="account-info">
                         <div class="account-name">Steam</div>
-                        <div class="account-detail">Not connected</div>
+                        <div class="account-detail">Not detected</div>
                     </div>
                     <div class="account-status disconnected"></div>
                     <button class="account-btn" id="btnShowSteamConnect">Connect</button>
@@ -3010,10 +3034,39 @@ async function renderAccountsTab() {
         $('settingsAccounts').innerHTML = accountsHtml || '<div style="color:var(--text-dim);font-size:12px">No accounts connected</div>';
 
         // Bind account buttons
+        const btnQuickSteam = document.getElementById('btnQuickConnectSteam');
+        if (btnQuickSteam && detectedUser) {
+            btnQuickSteam.addEventListener('click', async () => {
+                btnQuickSteam.textContent = 'Connecting...';
+                btnQuickSteam.disabled = true;
+                try {
+                    const r = await fetch('/api/accounts/steam/connect', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ steam_id: detectedUser.steam_id }),
+                    });
+                    const d = await r.json();
+                    if (r.ok) {
+                        renderSettings();
+                        setTimeout(async () => { await loadGames(); applyFilter(); }, 3000);
+                    } else {
+                        btnQuickSteam.textContent = d.error || 'Failed';
+                        setTimeout(() => { btnQuickSteam.textContent = 'Connect'; btnQuickSteam.disabled = false; }, 3000);
+                    }
+                } catch {
+                    btnQuickSteam.textContent = 'Failed';
+                    setTimeout(() => { btnQuickSteam.textContent = 'Connect'; btnQuickSteam.disabled = false; }, 3000);
+                }
+            });
+        }
         const btnShowSteam = document.getElementById('btnShowSteamConnect');
         if (btnShowSteam) {
             btnShowSteam.addEventListener('click', () => {
                 $('steamConnectSection').classList.remove('hidden');
+                // Auto-fill Steam ID if detected
+                if (detectedUser && $('steamIdInput')) {
+                    $('steamIdInput').value = steam.steam_id || detectedUser.steam_id || '';
+                }
             });
         }
         const btnDisconnect = document.getElementById('btnDisconnectSteam');

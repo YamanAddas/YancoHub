@@ -20,7 +20,7 @@ from emusetup import EmulatorSetup
 from userdata import UserData
 from catbyte import CatByte
 from chathistory import ChatHistory
-from accounts import SteamAccount, GogGalaxyDB, EpicCatalogDB, EpicAccount, resolve_steam_vanity_url
+from accounts import SteamAccount, GogGalaxyDB, EpicCatalogDB, EpicAccount, resolve_steam_vanity_url, detect_steam_users
 from metadata import MetadataFetcher
 from artwork import ArtworkScraper
 from biosmanager import BIOSManager
@@ -806,10 +806,16 @@ def api_accounts():
     # Check Epic catalog availability
     epic_catalog = EpicCatalogDB()
 
+    # Auto-detect Steam users from local files
+    detected_steam = detect_steam_users()
+
     return jsonify({
         'steam': {
             'connected': accounts.get('steam', {}).get('connected', False),
             'persona_name': accounts.get('steam', {}).get('persona_name', ''),
+            'steam_id': accounts.get('steam', {}).get('steam_id', ''),
+            'has_api_key': bool(accounts.get('steam', {}).get('api_key', '')),
+            'detected_users': detected_steam,
         },
         'gog_galaxy': {
             'available': galaxy_available,
@@ -827,52 +833,70 @@ def api_accounts():
 
 @app.route('/api/accounts/steam/connect', methods=['POST'])
 def api_connect_steam():
-    """Connect a Steam account using API key + Steam ID or vanity URL."""
+    """Connect a Steam account.
+
+    Two modes:
+    - Quick connect (steam_id only): uses auto-detected Steam ID from local
+      files. Installed games are already scanned; this saves the persona name.
+    - Full connect (steam_id + api_key): also fetches ALL owned games
+      (including uninstalled) via Steam Web API.
+    """
     data = request.get_json() or {}
     api_key = data.get('api_key', '').strip()
     steam_id = data.get('steam_id', '').strip()
 
-    if not api_key:
-        return jsonify({'error': 'API key required'}), 400
     if not steam_id:
-        return jsonify({'error': 'Steam ID or profile URL required'}), 400
+        return jsonify({'error': 'Steam ID required'}), 400
 
     # Handle various Steam ID formats
-    # Full profile URL: https://steamcommunity.com/id/vanityname or /profiles/76561...
     if 'steamcommunity.com' in steam_id:
         if '/id/' in steam_id:
             vanity = steam_id.split('/id/')[-1].strip('/')
-            resolved = resolve_steam_vanity_url(api_key, vanity)
-            if not resolved:
-                return jsonify({'error': f'Could not resolve vanity URL: {vanity}'}), 400
-            steam_id = resolved
+            if api_key:
+                resolved = resolve_steam_vanity_url(api_key, vanity)
+                if not resolved:
+                    return jsonify({'error': f'Could not resolve vanity URL: {vanity}'}), 400
+                steam_id = resolved
+            else:
+                return jsonify({'error': 'API key needed to resolve vanity URLs'}), 400
         elif '/profiles/' in steam_id:
             steam_id = steam_id.split('/profiles/')[-1].strip('/')
 
-    # If it looks like a vanity name (not all digits), resolve it
     if not steam_id.isdigit():
-        resolved = resolve_steam_vanity_url(api_key, steam_id)
-        if not resolved:
-            return jsonify({'error': f'Could not resolve: {steam_id}'}), 400
-        steam_id = resolved
+        if api_key:
+            resolved = resolve_steam_vanity_url(api_key, steam_id)
+            if not resolved:
+                return jsonify({'error': f'Could not resolve: {steam_id}'}), 400
+            steam_id = resolved
+        else:
+            return jsonify({'error': 'API key needed to resolve vanity names'}), 400
 
-    # Validate the connection
-    steam = SteamAccount(api_key, steam_id)
-    validation = steam.validate()
-
-    if not validation['valid']:
-        return jsonify({'error': validation['error']}), 400
+    # If API key provided, validate it
+    persona_name = ''
+    if api_key:
+        steam = SteamAccount(api_key, steam_id)
+        validation = steam.validate()
+        if not validation['valid']:
+            return jsonify({'error': validation['error']}), 400
+        persona_name = validation.get('persona_name', '')
+    else:
+        # Try to get persona name from local detection
+        detected = detect_steam_users()
+        for user in detected:
+            if user['steam_id'] == steam_id:
+                persona_name = user['persona_name']
+                break
 
     # Save account
-    userdata.set_steam_account(api_key, steam_id, validation.get('persona_name', ''))
+    userdata.set_steam_account(api_key, steam_id, persona_name)
 
     # Trigger library rescan
     threading.Thread(target=_build_library, daemon=True).start()
 
     return jsonify({
         'status': 'connected',
-        'persona_name': validation.get('persona_name', ''),
-        'avatar': validation.get('avatar', ''),
+        'persona_name': persona_name,
+        'has_api_key': bool(api_key),
     })
 
 

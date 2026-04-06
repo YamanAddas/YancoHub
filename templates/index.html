@@ -330,16 +330,16 @@
                     <section class="settings-card hidden" id="steamConnectSection">
                         <div class="settings-card-header">
                             <h4>Connect Steam</h4>
-                            <p class="settings-card-hint">Get your API key from <a href="https://steamcommunity.com/dev/apikey" target="_blank">steamcommunity.com/dev/apikey</a></p>
-                        </div>
-                        <div class="settings-field">
-                            <label class="settings-label">Steam Web API Key</label>
-                            <input type="text" class="settings-input" id="steamApiKey" placeholder="Paste your API key">
+                            <p class="settings-card-hint">Your Steam ID is auto-detected. Add an API key to also see uninstalled owned games.</p>
                         </div>
                         <div class="settings-field">
                             <label class="settings-label">Steam ID</label>
+                            <input type="text" class="settings-input" id="steamIdInput" placeholder="76561198... (auto-filled if detected)">
+                        </div>
+                        <div class="settings-field">
+                            <label class="settings-label">Steam Web API Key <span style="color:var(--text);font-weight:normal">(optional &mdash; unlocks full owned library)</span></label>
                             <div class="settings-input-row">
-                                <input type="text" class="settings-input" id="steamIdInput" placeholder="76561198... or profile URL or vanity name">
+                                <input type="text" class="settings-input" id="steamApiKey" placeholder="Get from steamcommunity.com/dev/apikey">
                                 <button class="btn-small" id="btnConnectSteam">Connect</button>
                             </div>
                         </div>
