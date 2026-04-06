@@ -14,7 +14,10 @@ Priority chain:
 
 import re
 import time
+import json
 import logging
+import threading
+import concurrent.futures
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -29,6 +32,9 @@ logger = logging.getLogger('yancohub.artwork')
 
 CACHE_DIR = Path(__file__).parent / 'cache' / 'artwork'
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+# Negative cache: don't re-attempt failed artwork lookups within this window
+MISS_TTL = 86400  # 24 hours
 
 
 # YancoHub system ID → LaunchBox platform folder name
@@ -134,6 +140,11 @@ class ArtworkScraper:
         if self._lb_path:
             self._build_lb_title_index()
             self._build_lb_art_index()
+        # Steam bulk app list for instant local name→appid lookups
+        self._steam_app_list: dict[str, str] = {}  # normalized name → appid
+        self._steam_app_list_loaded = False
+        # Lock for concurrent batch fetching
+        self._fetch_lock = threading.Lock()
         # Batch fetch progress tracking
         self.batch_progress = {'active': False, 'fetched': 0, 'total': 0, 'done': False}
 
@@ -141,6 +152,7 @@ class ArtworkScraper:
         """Get artwork for a game. Returns local file path or None.
 
         Checks cache first, then fetches from appropriate source.
+        Failed lookups are negative-cached for 24h to avoid repeated attempts.
         """
         game_id = game.get('id', '')
         if not game_id:
@@ -150,6 +162,10 @@ class ArtworkScraper:
         cached = self._get_cached(game_id, art_type)
         if cached:
             return cached
+
+        # 1b. Skip known failures (negative cache)
+        if self._is_negative_cached(game_id, art_type):
+            return None
 
         # 2. Check LaunchBox artwork (serves directly, no copy)
         lb_art = self._find_launchbox_art(game, art_type)
@@ -168,12 +184,48 @@ class ArtworkScraper:
             if local:
                 return local
 
-        # 4. Try to download
-        url = self._resolve_artwork_url(game, art_type)
-        if url:
-            downloaded = self._download_and_cache(game_id, art_type, url)
-            if downloaded:
-                return downloaded
+        # 4. Try to download (with name variants for retro games)
+        source = game.get('source', '')
+        system = game.get('system', '')
+        if source == 'retro' and system in LIBRETRO_SYSTEMS:
+            downloaded = self._try_libretro_variants(game, art_type)
+        else:
+            url = self._resolve_artwork_url(game, art_type)
+            downloaded = self._download_and_cache(game_id, art_type, url) if url else None
+
+        if downloaded:
+            return downloaded
+
+        # 5. All sources exhausted — mark as miss to avoid re-attempting
+        self._mark_miss(game_id, art_type)
+        return None
+
+    def get_artwork_path_cached_only(self, game, art_type='cover'):
+        """Fast path: return artwork only from cache and local sources (no network).
+
+        Used by the HTTP endpoint to avoid blocking on slow network lookups.
+        """
+        game_id = game.get('id', '')
+        if not game_id:
+            return None
+
+        cached = self._get_cached(game_id, art_type)
+        if cached:
+            return cached
+
+        lb_art = self._find_launchbox_art(game, art_type)
+        if lb_art:
+            return lb_art
+
+        if game.get('source') == 'steam' and game.get('appid'):
+            local = self._find_local_steam_art(game['appid'], art_type)
+            if local:
+                return local
+
+        if game.get('source') == 'xbox' and game.get('install_dir'):
+            local = self._find_uwp_art(game['install_dir'], art_type)
+            if local:
+                return local
 
         return None
 
@@ -188,6 +240,27 @@ class ArtworkScraper:
             if path.exists():
                 return str(path)
         return None
+
+    def _is_negative_cached(self, game_id: str, art_type: str) -> bool:
+        """Check if this artwork was previously attempted and failed."""
+        miss_path = CACHE_DIR / f"{game_id}_{art_type}.miss"
+        if miss_path.exists():
+            try:
+                age = time.time() - miss_path.stat().st_mtime
+                if age < MISS_TTL:
+                    return True
+                miss_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        return False
+
+    def _mark_miss(self, game_id: str, art_type: str):
+        """Record a failed artwork lookup to avoid re-attempting for 24h."""
+        try:
+            miss_path = CACHE_DIR / f"{game_id}_{art_type}.miss"
+            miss_path.write_text('')
+        except OSError:
+            pass
 
     def _find_local_steam_art(self, appid, art_type):
         """Check Steam's local artwork cache."""
@@ -725,6 +798,65 @@ class ArtworkScraper:
     # Cache: game name → Steam appid (avoids repeated API calls)
     _steam_appid_cache: dict[str, str | None] = {}
 
+    def _load_steam_app_list(self):
+        """Download the full Steam app list for instant local name→appid lookups.
+
+        Replaces per-game HTTP searches with a single bulk download (~30MB).
+        Cached to disk for 7 days.
+        """
+        if self._steam_app_list_loaded:
+            return
+        self._steam_app_list_loaded = True
+
+        cache_file = CACHE_DIR.parent / 'steam_applist.json'
+
+        # Check if cached file is fresh (< 7 days old)
+        if cache_file.exists():
+            try:
+                age = time.time() - cache_file.stat().st_mtime
+                if age < 604800:  # 7 days
+                    with open(cache_file, 'r', encoding='utf-8') as f:
+                        self._steam_app_list = json.load(f)
+                    logger.info(f"Steam app list loaded from cache: "
+                                f"{len(self._steam_app_list)} apps")
+                    return
+            except Exception:
+                pass
+
+        # Download fresh list
+        try:
+            logger.info("Downloading Steam app list for bulk lookups...")
+            resp = self._session.get(
+                'https://api.steampowered.com/ISteamApps/GetAppList/v2/',
+                timeout=30,
+            )
+            if resp.status_code != 200:
+                logger.warning(f"Steam app list download failed: HTTP {resp.status_code}")
+                return
+
+            data = resp.json()
+            apps = data.get('applist', {}).get('apps', [])
+
+            # Build normalized name → appid dict (keep first/lowest appid per name)
+            name_map = {}
+            for app in apps:
+                name = app.get('name', '').strip()
+                if not name:
+                    continue
+                key = name.lower()
+                if key not in name_map:
+                    name_map[key] = str(app['appid'])
+
+            self._steam_app_list = name_map
+
+            # Cache to disk
+            with open(cache_file, 'w', encoding='utf-8') as f:
+                json.dump(name_map, f)
+
+            logger.info(f"Steam app list downloaded: {len(name_map)} apps cached")
+        except Exception as e:
+            logger.warning(f"Failed to load Steam app list: {e}")
+
     # Suffixes to strip when searching for artwork (store bundles, editions)
     _NAME_STRIP_SUFFIXES = [
         ' - Amazon Prime', ' - Prime Gaming', ' - Humble Bundle',
@@ -732,17 +864,18 @@ class ArtworkScraper:
     ]
 
     def _search_steam_appid(self, game_name: str) -> str | None:
-        """Search Steam Store for a game by name and return its appid.
+        """Search for a game's Steam appid using bulk list first, API fallback.
 
-        Uses the free store search API (no key needed). Results are cached
-        in memory to avoid repeated lookups. Strips common bundle/store
-        suffixes before searching.
+        Priority:
+          1. In-memory cache (instant)
+          2. Bulk app list — local dict lookup (instant, ~170k entries)
+          3. Steam Store search API (slow, 8s timeout — last resort)
         """
         name_lower = game_name.lower().strip()
         if name_lower in self._steam_appid_cache:
             return self._steam_appid_cache[name_lower]
 
-        # Try the original name first, then stripped versions
+        # Build search name variants (original + suffix-stripped)
         search_names = [game_name]
         for suffix in self._NAME_STRIP_SUFFIXES:
             if game_name.lower().endswith(suffix.lower()):
@@ -750,6 +883,16 @@ class ArtworkScraper:
                 if stripped and stripped not in search_names:
                     search_names.append(stripped)
 
+        # Try bulk app list first (instant local lookup)
+        if self._steam_app_list:
+            for sn in search_names:
+                key = sn.lower().strip()
+                if key in self._steam_app_list:
+                    appid = self._steam_app_list[key]
+                    self._steam_appid_cache[name_lower] = appid
+                    return appid
+
+        # Fall back to Steam Store search API (slow, one HTTP call per game)
         for search_name in search_names:
             try:
                 resp = self._session.get(
@@ -801,6 +944,74 @@ class ArtworkScraper:
         clean = clean.replace('>', '_')
         clean = clean.replace('|', '_')
         return clean
+
+    def _libretro_name_variants(self, name: str) -> list[str]:
+        """Generate LibRetro-compatible name variations for thumbnail lookup.
+
+        LibRetro uses No-Intro naming conventions which differ from common ROM
+        filenames. Tries multiple transformations to improve match rate.
+        """
+        clean = self._clean_libretro_name(name)
+        variants = [clean]
+
+        # "Legend of Zelda, The" → "The Legend of Zelda"
+        if ', The' in name:
+            alt = 'The ' + name.replace(', The', '').strip()
+            variants.append(self._clean_libretro_name(alt))
+
+        # "The Legend of Zelda" → "Legend of Zelda, The"
+        if name.startswith('The '):
+            alt = name[4:] + ', The'
+            variants.append(self._clean_libretro_name(alt))
+
+        # Remove subtitle: "Game - Subtitle" → "Game"
+        if ' - ' in clean:
+            variants.append(clean.split(' - ')[0].strip())
+
+        # Strip trailing version/revision markers
+        trimmed = re.sub(r'\s*[vV]\d+(\.\d+)*\s*$', '', clean)
+        if trimmed != clean:
+            variants.append(trimmed)
+
+        # Deduplicate while preserving order
+        seen = set()
+        return [v for v in variants if v and v not in seen and not seen.add(v)]
+
+    def _try_libretro_variants(self, game, art_type: str):
+        """Try multiple LibRetro name variations for retro artwork.
+
+        Returns downloaded file path on first success, or None.
+        """
+        game_id = game.get('id', '')
+        system = game.get('system', '')
+        libretro_system = LIBRETRO_SYSTEMS.get(system)
+        if not libretro_system:
+            return None
+
+        art_type_map = {
+            'cover': 'Named_Boxarts',
+            'header': 'Named_Titles',
+            'screenshot': 'Named_Snaps',
+        }
+        lt_type = art_type_map.get(art_type, 'Named_Boxarts')
+
+        resolved = _strip_num_prefix(self._resolve_lb_title(game))
+        variants = self._libretro_name_variants(resolved)
+
+        for name in variants:
+            url = (f'{LIBRETRO_THUMB}/{quote(libretro_system)}'
+                   f'/{lt_type}/{quote(name)}.png')
+            result = self._download_and_cache(game_id, art_type, url)
+            if result:
+                return result
+
+        # Last resort: SteamGridDB for retro games
+        if self._sgdb_key:
+            url = self._steamgriddb_search(game.get('name', ''), art_type)
+            if url:
+                return self._download_and_cache(game_id, art_type, url)
+
+        return None
 
     def _steamgriddb_search(self, game_name, art_type):
         """Search SteamGridDB for artwork."""
@@ -903,37 +1114,64 @@ class ArtworkScraper:
                 count += 1
         logger.info(f"Pre-warmed artwork cache: {count} retro games resolved")
 
-    def fetch_for_games(self, games, art_type='cover', batch_delay=0.1,
-                        max_fetch=200, timeout=300):
-        """Batch fetch artwork for a list of games.
+    def fetch_for_games(self, games, art_types=('cover',), max_workers=8,
+                        timeout=600):
+        """Batch fetch artwork for games using concurrent downloads.
 
         Args:
-            max_fetch: Stop after fetching this many new images (skip cached).
-            timeout: Overall time limit in seconds (default 5 minutes).
+            games: List of game dicts to fetch artwork for.
+            art_types: Tuple of art types to fetch (e.g., ('cover', 'header')).
+            max_workers: Number of concurrent download threads.
+            timeout: Overall time limit in seconds (default 10 minutes).
         """
-        # Count how many actually need fetching (not cached)
-        need_fetch = [g for g in games if g.get('id') and not self._get_cached(g['id'], art_type)]
-        total = min(len(need_fetch), max_fetch)
+        # Load Steam bulk app list before batch (one-time, ~30MB)
+        if not self._steam_app_list_loaded:
+            self._load_steam_app_list()
 
+        # Build work list: (game, art_type) pairs that need fetching
+        need_fetch = []
+        for g in games:
+            gid = g.get('id')
+            if not gid:
+                continue
+            for at in art_types:
+                if not self._get_cached(gid, at) and not self._is_negative_cached(gid, at):
+                    need_fetch.append((g, at))
+
+        total = len(need_fetch)
         self.batch_progress = {'active': True, 'fetched': 0, 'total': total, 'done': False}
+
+        if not need_fetch:
+            self.batch_progress = {'active': False, 'fetched': 0, 'total': 0, 'done': True}
+            logger.info(f"Artwork batch: nothing to fetch "
+                        f"({len(games) * len(art_types)} already cached/skipped)")
+            return 0
 
         fetched = 0
         start = time.monotonic()
 
-        for game in need_fetch:
-            if fetched >= max_fetch or (time.monotonic() - start) > timeout:
-                logger.info(f"Artwork batch stopped: fetched={fetched}, "
-                            f"elapsed={time.monotonic() - start:.0f}s")
-                break
-
+        def _fetch_one(item):
+            nonlocal fetched
+            game, art_type = item
+            if (time.monotonic() - start) > timeout:
+                return None
             path = self.get_artwork_path(game, art_type)
-            if path:
-                fetched += 1
-            self.batch_progress['fetched'] = fetched
+            with self._fetch_lock:
+                if path:
+                    fetched += 1
+                self.batch_progress['fetched'] = fetched
+            return path
 
-            if batch_delay:
-                time.sleep(batch_delay)
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
+                list(pool.map(_fetch_one, need_fetch, timeout=timeout))
+        except concurrent.futures.TimeoutError:
+            logger.info(f"Artwork batch timed out after {timeout}s")
+        except Exception as e:
+            logger.warning(f"Artwork batch error: {e}")
 
+        elapsed = time.monotonic() - start
         self.batch_progress = {'active': False, 'fetched': fetched, 'total': total, 'done': True}
-        logger.info(f"Artwork: fetched {fetched}/{total} (skipped {len(games) - len(need_fetch)} cached)")
+        logger.info(f"Artwork batch complete: {fetched}/{total} fetched in {elapsed:.0f}s "
+                    f"({total - fetched} failed/skipped)")
         return fetched

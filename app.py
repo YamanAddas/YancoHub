@@ -264,16 +264,29 @@ def _build_library():
 
     # Background: pre-warm artwork title cache, enrich metadata, fetch artwork
     def _enrich():
+        # Prioritize: installed games first, then favorites, then alphabetical
         try:
-            artwork_scraper.prewarm_title_cache(new_library)
+            favorites = set(userdata.get_favorites())
+        except Exception:
+            favorites = set()
+        prioritized = sorted(new_library, key=lambda g: (
+            not g.get('installed', True),   # installed first
+            g['id'] not in favorites,       # favorites next
+            g.get('name', '').lower(),
+        ))
+
+        try:
+            artwork_scraper.prewarm_title_cache(prioritized)
         except Exception as e:
             logger.debug(f"Title cache prewarm error: {e}")
         try:
-            metadata_fetcher.enrich_games(new_library[:50])  # First 50 to avoid rate limits
+            metadata_fetcher.enrich_games(prioritized[:200])
         except Exception as e:
             logger.debug(f"Metadata enrichment error: {e}")
         try:
-            artwork_scraper.fetch_for_games(new_library[:100])
+            # Fetch all games, cover + header art types, 8 concurrent threads
+            artwork_scraper.fetch_for_games(
+                prioritized, art_types=('cover', 'header'))
         except Exception as e:
             logger.debug(f"Artwork fetch error: {e}")
     threading.Thread(target=_enrich, daemon=True).start()
@@ -381,16 +394,25 @@ def api_artwork(game_id, art_type):
     if artwork_path and not artwork_path.startswith('http') and Path(artwork_path).exists():
         return _send_artwork(artwork_path)
 
-    # 2. Use the artwork scraper (checks cache, then fetches)
-    scraped = artwork_scraper.get_artwork_path(game, art_type)
-    if scraped and Path(scraped).exists():
-        return _send_artwork(scraped)
+    # 2. Fast path: cache + local sources only (no network I/O)
+    fast = artwork_scraper.get_artwork_path_cached_only(game, art_type)
+    if fast and Path(fast).exists():
+        return _send_artwork(fast)
 
-    # 3. Fallback: try remote URL from game data
+    # 3. If batch is actively running, don't block — let the batch handle it
+    if artwork_scraper.batch_progress.get('active'):
+        abort(404)
+
+    # 4. Fallback: try remote URL already embedded in game data
     if artwork_path and artwork_path.startswith('http'):
         downloaded = artwork_scraper._download_and_cache(game_id, art_type, artwork_path)
         if downloaded:
             return _send_artwork(downloaded)
+
+    # 5. Full fetch (only when batch is done — handles stragglers)
+    scraped = artwork_scraper.get_artwork_path(game, art_type)
+    if scraped and Path(scraped).exists():
+        return _send_artwork(scraped)
 
     abort(404)
 
