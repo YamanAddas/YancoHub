@@ -2812,7 +2812,12 @@ function renderMarkdown(text) {
     // Unordered lists
     html = html.replace(/^[*\-] (.+)$/gm, '<li>$1</li>');
     // Links
-    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, url) => {
+        if (/^https?:|^mailto:/i.test(url)) {
+            return `<a href="${url}" target="_blank" rel="noopener">${text}</a>`;
+        }
+        return text;
+    });
     // Double newline → paragraph break
     html = html.replace(/\n\n/g, '<br><br>');
     // Single newline → line break (but not inside pre)

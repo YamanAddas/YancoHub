@@ -33,7 +33,7 @@ YancoHub is a unified PC game launcher that aggregates Steam, Epic, GOG, Xbox, E
 - Cinematic per-system boot sequences, save states, screenshots, glassmorphism pause menu
 
 ### CatByte AI
-- Gaming companion powered by OpenClaw
+- Gaming companion with multiple AI backend options (Ollama, LM Studio, OpenAI, OpenClaw, or any OpenAI-compatible endpoint)
 - Ask for tips, walkthroughs, recommendations
 - Aware of your current game and library
 - Screenshot analysis for stuck moments
@@ -44,18 +44,6 @@ YancoHub is a unified PC game launcher that aggregates Steam, Epic, GOG, Xbox, E
 - Animated starfield with nebulae and floating particles
 - Glassmorphism panels and overlays
 - Keyboard, mouse, and gamepad navigation
-
-## Quick Start
-
-```bash
-git clone https://github.com/YamanAddas/YancoHub.git
-cd YancoHub
-python -m venv venv
-venv\Scripts\pip install -r requirements.txt
-venv\Scripts\python launch.py
-```
-
-**Requirements:** Python 3.10+, Windows 10/11
 
 ## Configuration
 
@@ -71,6 +59,36 @@ Settings → Directories → ROM Directories → Add a folder organized by syste
 
 ### BIOS
 Place BIOS files in `bios/` directory. Open-source GBA and PS1 BIOS included. See `bios/README.md`.
+
+## Download
+
+### Option A: Installer (recommended)
+Download `YancoHub-x.x.x-setup.exe` from [Releases](https://github.com/YamanAddas/YancoHub/releases). Installs to your AppData, creates Start Menu and Desktop shortcuts, and adds an uninstaller to Add/Remove Programs.
+
+### Option B: Portable (no install)
+Download `YancoHub-x.x.x-portable.zip` from [Releases](https://github.com/YamanAddas/YancoHub/releases). Extract anywhere and run `YancoHub.exe`. All data stays in the same folder — perfect for USB drives or restricted machines.
+
+### Option C: From source
+```bash
+git clone https://github.com/YamanAddas/YancoHub.git
+cd YancoHub
+python -m venv venv
+venv\Scripts\pip install -r requirements.txt
+venv\Scripts\python launch.py
+```
+
+**Requirements (from source):** Python 3.10+, Windows 10/11
+
+## Building from Source
+
+```bash
+pip install pyinstaller
+python build.py              # Build both installer and portable zip
+python build.py --portable   # Portable zip only
+python build.py --installer  # NSIS installer only (requires NSIS on PATH)
+```
+
+Output goes to `dist/`. The NSIS installer requires [NSIS 3.x](https://nsis.sourceforge.io/) to be installed and on your PATH.
 
 ## Security Note
 

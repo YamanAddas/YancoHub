@@ -93,11 +93,26 @@ def cleanup():
                 pass
 
 
+def _should_start_openclaw() -> bool:
+    """Check if the user has OpenClaw selected as their CatByte backend."""
+    try:
+        import json
+        data_file = PROJECT_DIR / 'userdata.json'
+        if data_file.exists():
+            with open(data_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            return data.get('catbyte', {}).get('backend', 'ollama') == 'openclaw'
+    except Exception:
+        pass
+    return False
+
+
 def main():
     print("[YancoHub] Starting...")
 
-    # Start OpenClaw (non-blocking, non-critical)
-    threading.Thread(target=start_openclaw, daemon=True).start()
+    # Start OpenClaw only if user has it selected as their CatByte backend
+    if _should_start_openclaw():
+        threading.Thread(target=start_openclaw, daemon=True).start()
 
     # Start Flask
     flask_proc = start_flask()

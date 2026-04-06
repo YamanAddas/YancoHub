@@ -214,7 +214,7 @@ Uses process-snapshot diffing: snapshots PIDs before launch, identifies new larg
 ## File Paths (Windows)
 
 ```
-D:\yancohub\                    Project root (development)
+C:\YancoHub\                    Project root (example)
   app.py, scanner.py, ...       Python modules
   static\                       Frontend assets
   templates\index.html          SPA template

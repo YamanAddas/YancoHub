@@ -4,11 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>YancoHub</title>
+    <link rel="icon" type="image/png" href="/static/favicon.png">
     <link rel="stylesheet" href="/static/css/style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/regular/style.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/fill/style.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/bold/style.css">
+    <link rel="stylesheet" href="/static/fonts/inter.css">
+    <link rel="stylesheet" href="/static/icons/phosphor-regular.css">
+    <link rel="stylesheet" href="/static/icons/phosphor-fill.css">
+    <link rel="stylesheet" href="/static/icons/phosphor-bold.css">
 </head>
 <body>
     <!-- Starfield Canvas -->
@@ -20,9 +21,7 @@
     <!-- Splash Screen -->
     <div id="splash" class="splash">
         <div class="splash-content">
-            <div class="splash-logo">
-                <span class="splash-logo-text">YANCO</span><span class="splash-logo-accent">HUB</span>
-            </div>
+            <img class="splash-logo-img" src="/static/img/logo-420.png" alt="YancoHub" draggable="false">
             <div class="splash-tagline">All your games. One place.</div>
             <div class="splash-progress">
                 <div class="splash-progress-bar" id="splashProgress"></div>
@@ -36,7 +35,7 @@
         <!-- Top Bar -->
         <header class="top-bar">
             <div class="logo">
-                <span class="logo-text">YANCO</span><span class="logo-accent">HUB</span>
+                <img class="logo-icon" src="/static/img/logo-360.png" alt="YancoHub" draggable="false">
             </div>
             <div class="top-bar-center">
                 <div class="store-indicators" id="storeIndicators"></div>
@@ -225,10 +224,11 @@
             <h3>CatByte needs an AI backend</h3>
             <p>CatByte is your gaming AI companion. Connect it to any of these backends:</p>
             <ul style="text-align:left;margin:12px 0;padding-left:20px;line-height:2">
-                <li><strong>Ollama</strong> &mdash; free, private, runs on your GPU</li>
-                <li><strong>OpenClaw</strong> &mdash; uses your ChatGPT subscription</li>
+                <li><strong>Ollama</strong> &mdash; free, private, runs on your GPU (recommended)</li>
                 <li><strong>LM Studio</strong> &mdash; local models with visual UI</li>
-                <li><strong>OpenAI API</strong> &mdash; GPT-4o with API key</li>
+                <li><strong>OpenAI API</strong> &mdash; GPT-4o and other models with API key</li>
+                <li><strong>OpenClaw</strong> &mdash; uses your ChatGPT subscription</li>
+                <li><strong>Custom</strong> &mdash; any OpenAI-compatible endpoint</li>
             </ul>
             <p class="catbyte-info-hint">Open <strong>Settings &rarr; CatByte</strong> to choose and configure your backend.</p>
             <div style="display:flex;gap:8px;justify-content:center;margin-top:14px">
@@ -499,7 +499,7 @@
                         <div class="settings-field">
                             <label class="settings-label">LaunchBox Path</label>
                             <div class="settings-input-row">
-                                <input type="text" class="settings-input" id="launchboxPathInput" placeholder="e.g. D:\Entertainment\Gaming\LaunchBox">
+                                <input type="text" class="settings-input" id="launchboxPathInput" placeholder="e.g. C:\LaunchBox">
                                 <button class="btn-small btn-browse" id="browseLaunchbox" title="Browse...">
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
                                 </button>
@@ -591,6 +591,7 @@
 
                 <div class="settings-pane" id="settingsPane-about">
                     <section class="settings-card settings-about-hero">
+                        <img class="about-logo-img" src="/static/img/logo-120.png" alt="YancoHub" draggable="false">
                         <div class="about-logo">
                             <span class="about-logo-text">YANCO</span><span class="about-logo-accent">HUB</span>
                         </div>
@@ -617,7 +618,7 @@
                             </div>
                             <div class="about-credit-row">
                                 <span class="about-credit-role">AI Companion</span>
-                                <span class="about-credit-name">CatByte (powered by OpenClaw)</span>
+                                <span class="about-credit-name">CatByte (multi-backend AI)</span>
                             </div>
                             <div class="about-credit-row">
                                 <span class="about-credit-role">Emulation</span>
@@ -753,7 +754,7 @@
     <div class="gaming-mode hidden" id="gamingMode">
         <div class="gaming-hero" id="gamingHero"></div>
         <div class="gaming-header">
-            <span class="gaming-title">YANCO<span class="gaming-title-accent">HUB</span></span>
+            <img class="gaming-logo" src="/static/img/logo-360.png" alt="YancoHub" draggable="false">
             <span class="gaming-category" id="gamingCategory"></span>
             <span class="gaming-sort" id="gamingSort"></span>
             <span class="gaming-clock" id="gamingClock"></span>

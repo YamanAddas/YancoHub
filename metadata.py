@@ -18,6 +18,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from pathlib import Path
+from constants import VERSION
 
 logger = logging.getLogger('yancohub.metadata')
 
@@ -90,7 +91,7 @@ class MetadataFetcher:
     def __init__(self):
         self.db = MetadataDB()
         self._session = requests.Session()
-        self._session.headers['User-Agent'] = 'YancoHub/1.0'
+        self._session.headers['User-Agent'] = f'YancoHub/{VERSION}'
         retry = Retry(total=3, backoff_factor=1.0,
                       status_forcelist=[429, 500, 502, 503, 504])
         self._session.mount('https://', HTTPAdapter(max_retries=retry))

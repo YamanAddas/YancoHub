@@ -22,7 +22,7 @@ from pathlib import Path
 import requests
 
 from scanner import ROM_SYSTEMS
-from constants import BUILTIN_SYSTEMS
+from constants import BUILTIN_SYSTEMS, VERSION
 
 logger = logging.getLogger('yancohub.emusetup')
 
@@ -48,7 +48,7 @@ class EmulatorSetup:
     def __init__(self):
         self._ra_dir = BASE_DIR / 'retroarch'
         self._session = requests.Session()
-        self._session.headers['User-Agent'] = 'YancoHub/1.0'
+        self._session.headers['User-Agent'] = f'YancoHub/{VERSION}'
         self._lock = threading.Lock()
         self.progress = {
             'active': False,

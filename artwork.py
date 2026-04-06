@@ -22,7 +22,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from urllib.parse import quote
 
-from constants import LIBRETRO_SYSTEMS, STEAM_CDN, LIBRETRO_THUMB
+from constants import LIBRETRO_SYSTEMS, STEAM_CDN, LIBRETRO_THUMB, VERSION
 from romident import read_rom_header_name, fuzzy_match, strip_numbering
 
 logger = logging.getLogger('yancohub.artwork')
@@ -115,7 +115,7 @@ class ArtworkScraper:
 
     def __init__(self, steamgriddb_api_key='', launchbox_path=''):
         self._session = requests.Session()
-        self._session.headers['User-Agent'] = 'YancoHub/1.0'
+        self._session.headers['User-Agent'] = f'YancoHub/{VERSION}'
         retry = Retry(total=3, backoff_factor=1.0,
                       status_forcelist=[429, 500, 502, 503, 504])
         self._session.mount('https://', HTTPAdapter(max_retries=retry))

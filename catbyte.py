@@ -85,7 +85,7 @@ class CatByte:
         self._offline_until = 0
         self._auto_model = ''  # Auto-detected first model from backend
         self._settings = {
-            'backend': 'openclaw',
+            'backend': 'ollama',
             'base_url': '',       # empty = use preset default
             'api_key': '',
             'model': '',          # empty = use preset default

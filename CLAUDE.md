@@ -1,21 +1,10 @@
 # YancoHub
 
-Unified Windows game launcher — Flask backend (port 8745) + pywebview native window. Aggregates Steam, Epic, GOG, Xbox, EA, Ubisoft, Battle.net, local games, and retro ROMs into one dark cinematic interface with CatByte AI companion (OpenClaw, port 18789).
+Unified Windows game launcher — Flask backend (port 8745) + pywebview native window. Aggregates Steam, Epic, GOG, Xbox, EA, Ubisoft, Battle.net, local games, and retro ROMs into one dark cinematic interface with CatByte AI companion.
 
 ## What This Is
 
-YancoHub is a **personal gaming cockpit** — not a storefront, not a social network. It replaces the chaos of 8+ launchers with a single cinematic interface where every game you own is one click away. Think GOG Galaxy's aggregation + LaunchBox/BigBox's visual polish + built-in retro emulation + an AI companion — in a lightweight, free, open-source Python app.
-
-## Competitive Landscape (as of April 2026)
-
-| App | What they do well | Where YancoHub wins |
-|-----|-------------------|---------------------|
-| **Playnite** v10.51 | Open source, 100+ plugins, fullscreen mode, IGDB metadata, huge community. WPF/.NET, ~200MB. Linux coming in P11 via Avalonia. | Lighter stack (no .NET). Built-in emulator (19 systems, no RetroArch needed). AI companion. Cinematic 3D carousel vs flat grid/list. |
-| **LaunchBox/BigBox** v13.26 | Best visual polish (4K art, videos, manuals, EmuMovies). Huge theming. $30-75 premium. | Free. No .NET dependency. AI companion. Lighter weight. |
-| **GOG Galaxy 2.0** | Official multi-store integration, friends/achievements across platforms. | Retro emulation built in. AI companion. Not tied to GOG ecosystem. More stores. |
-| **Heroic Launcher** | Open source, Epic+GOG+Amazon, cross-platform (Electron). | More store support. Built-in emulator. AI companion. Not Electron. |
-
-**Strategic position:** Beat Playnite on visual experience. Beat LaunchBox on accessibility (free, light, no runtime deps). The AI companion + built-in emulation are differentiators no competitor has.
+YancoHub is a unified game launcher — not a storefront, not a social network. It replaces the chaos of 8+ launchers with a single cinematic interface where every game you own is one click away. Built-in retro emulation (19 systems), multi-backend AI gaming companion, and a lightweight Python stack with no .NET or Electron dependencies.
 
 ## Commands
 
@@ -24,6 +13,9 @@ python launch.py                    # Run the app (Flask + pywebview)
 python app.py                       # Flask backend only (dev mode)
 pip install -r requirements.txt     # Install deps
 python -m venv venv && venv\Scripts\activate && pip install -r requirements.txt  # Fresh setup
+python build.py                     # Build installer + portable zip (needs PyInstaller)
+python build.py --portable          # Portable zip only
+python build.py --installer         # NSIS installer only (needs makensis on PATH)
 ```
 
 ## Architecture
@@ -47,13 +39,15 @@ Storage:  userdata.json (settings/favorites/playtime) + cache/metadata.db (SQLit
 | `artwork.py` | Steam CDN → LibRetro thumbnails → SteamGridDB → fallback gradient |
 | `biosmanager.py` | Auto-detect BIOS files by filename/MD5, per-system readiness |
 | `userdata.py` | JSON persistence for settings, playtime, collections |
-| `catbyte.py` | OpenClaw proxy with offline fallback |
+| `catbyte.py` | Multi-backend AI companion (Ollama, OpenClaw, LM Studio, OpenAI, custom) |
 | `chathistory.py` | CatByte conversation history persistence |
-| `constants.py` | Shared constants (ports, LIBRETRO_SYSTEMS, VALID_ART_TYPES, BUILTIN_SYSTEMS, STEAM_CDN, LIBRETRO_THUMB) |
+| `constants.py` | Shared constants (VERSION, ports, LIBRETRO_SYSTEMS, VALID_ART_TYPES, BUILTIN_SYSTEMS, STEAM_CDN, LIBRETRO_THUMB) |
 | `emusetup.py` | RetroArch + core auto-download and configuration |
 | `launch.py` | App entry point — starts Flask subprocess + pywebview window |
 | `romident.py` | ROM header parsing, fuzzy name matching, format priority |
-| `window.py` | pywebview window API (folder/file browse dialogs) |
+| `window.py` | pywebview window API (folder/file browse dialogs, native menu bar) |
+| `build.py` | PyInstaller + NSIS packaging for installer and portable zip |
+| `installer.nsi` | NSIS installer script for Windows setup.exe |
 | `static/js/app.js` | 3D hexagonal carousel, starfield, tabs, search, settings UI |
 | `static/js/emulator.js` | EmulatorJS integration (19 retro systems in-browser via WASM) |
 

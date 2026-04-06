@@ -103,25 +103,25 @@ body::before {
 
 .splash-content { text-align: center; }
 
-.splash-logo {
-    font-size: 64px;
-    font-weight: 800;
-    letter-spacing: 4px;
-    margin-bottom: 12px;
+.splash-logo-img {
+    width: 420px;
+    height: 420px;
+    margin-bottom: 16px;
+    filter: drop-shadow(0 0 40px rgba(0, 229, 193, 0.25)) drop-shadow(0 0 80px rgba(0, 229, 193, 0.1));
+    animation: splashLogoEntry 1s cubic-bezier(0.25, 0.1, 0.25, 1) both,
+               splashLogoBreathe 4s ease-in-out 1s infinite;
 }
 
-.splash-logo-text { color: var(--text-bright); }
-
-.splash-logo-accent {
-    color: var(--accent);
-    text-shadow: 0 0 30px var(--accent-dim), 0 0 60px rgba(0, 229, 193, 0.1);
-    animation: breatheGlow 3s ease-in-out infinite;
+@keyframes splashLogoEntry {
+    0%   { opacity: 0; transform: scale(0.7); }
+    100% { opacity: 1; transform: scale(1); }
 }
 
-@keyframes breatheGlow {
-    0%, 100% { text-shadow: 0 0 30px var(--accent-dim), 0 0 60px rgba(0, 229, 193, 0.1); }
-    50% { text-shadow: 0 0 50px var(--accent-dim), 0 0 100px rgba(0, 229, 193, 0.2); }
+@keyframes splashLogoBreathe {
+    0%, 100% { filter: drop-shadow(0 0 40px rgba(0, 229, 193, 0.25)) drop-shadow(0 0 80px rgba(0, 229, 193, 0.1)); }
+    50%      { filter: drop-shadow(0 0 60px rgba(0, 229, 193, 0.35)) drop-shadow(0 0 120px rgba(0, 229, 193, 0.15)); }
 }
+
 
 .splash-tagline {
     color: var(--text-dim);
@@ -171,23 +171,22 @@ body::before {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 24px;
+    padding: 4px 24px;
     z-index: 10;
     flex-shrink: 0;
     position: relative;
 }
 
 .logo {
-    font-size: 22px;
-    font-weight: 800;
-    letter-spacing: 2px;
+    display: flex;
+    align-items: center;
 }
 
-.logo-text { color: var(--text-bright); }
-
-.logo-accent {
-    color: var(--accent);
-    text-shadow: 0 0 20px var(--accent-dim);
+.logo-icon {
+    width: calc(var(--card-width) * 2);
+    height: calc(var(--card-width) * 2);
+    filter: drop-shadow(0 0 12px rgba(0, 229, 193, 0.2));
+    object-fit: contain;
 }
 
 .top-bar-center {
@@ -2342,6 +2341,13 @@ body::before {
         rgba(12, 22, 40, 0.6);
 }
 
+.about-logo-img {
+    width: 100px;
+    height: 100px;
+    margin-bottom: 12px;
+    filter: drop-shadow(0 0 20px rgba(0, 229, 193, 0.2));
+}
+
 .about-logo {
     font-size: 32px;
     font-weight: 800;
@@ -3975,17 +3981,11 @@ body::before {
     padding: 28px 48px 0;
 }
 
-.gaming-title {
-    font-size: 32px;
-    font-weight: 800;
-    letter-spacing: 3px;
-    color: var(--text-bright);
-}
-
-.gaming-title-accent {
-    color: var(--game-color);
-    text-shadow: 0 0 24px var(--game-dim);
-    transition: color 1s ease, text-shadow 1s ease;
+.gaming-logo {
+    height: var(--card-height);
+    width: auto;
+    object-fit: contain;
+    filter: drop-shadow(0 0 20px rgba(0, 229, 193, 0.2));
 }
 
 .gaming-category {

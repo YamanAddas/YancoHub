@@ -37,7 +37,8 @@ Thumbs.db
 # ── Reference codebase (not part of YancoHub) ──
 YancoDeck-main/
 
-# ── Distribution ──
+# ── Distribution / Build ──
 dist/
 build/
 *.egg-info/
+*.spec

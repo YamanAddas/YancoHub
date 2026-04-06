@@ -3,6 +3,9 @@ YancoHub — Shared Constants
 Single source of truth for values used across multiple modules.
 """
 
+# App version — used in User-Agent, About screen, packaging
+VERSION = '1.0.0'
+
 # Flask backend port
 FLASK_PORT = 8745
 

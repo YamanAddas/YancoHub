@@ -39,7 +39,7 @@ DEFAULT_DATA = {
         'direct_launch': True,     # Launch games directly without store client when possible
     },
     'catbyte': {
-        'backend': 'openclaw',     # openclaw, ollama, lmstudio, openai, custom
+        'backend': 'ollama',       # ollama, openclaw, lmstudio, openai, custom
         'base_url': '',            # empty = use preset default
         'api_key': '',             # for openai or custom backends
         'model': '',               # empty = use preset default
