@@ -14,6 +14,7 @@ import logging
 import sqlite3
 import requests
 from pathlib import Path
+from constants import STEAM_CDN
 
 logger = logging.getLogger('yancohub.accounts')
 
@@ -94,10 +95,10 @@ class SteamAccount:
 
                 # Steam artwork URLs (public CDN, no auth needed)
                 artwork = {
-                    'header': f'https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/header.jpg',
-                    'cover': f'https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/library_600x900_2x.jpg',
-                    'hero': f'https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/library_hero.jpg',
-                    'logo': f'https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/logo.png',
+                    'header': f'{STEAM_CDN}/{appid}/header.jpg',
+                    'cover': f'{STEAM_CDN}/{appid}/library_600x900_2x.jpg',
+                    'hero': f'{STEAM_CDN}/{appid}/library_hero.jpg',
+                    'logo': f'{STEAM_CDN}/{appid}/logo.png',
                 }
 
                 games.append({
@@ -119,27 +120,6 @@ class SteamAccount:
             logger.error(f"Steam API fetch failed: {e}")
             return []
 
-    def get_recently_played(self, count=20):
-        """Fetch recently played games."""
-        try:
-            resp = requests.get(
-                f"{STEAM_API_BASE}/IPlayerService/GetRecentlyPlayedGames/v1/",
-                params={
-                    'key': self.api_key,
-                    'steamid': self.steam_id,
-                    'count': count,
-                    'format': 'json',
-                },
-                timeout=10,
-            )
-            if resp.status_code != 200:
-                return []
-
-            data = resp.json()
-            return data.get('response', {}).get('games', [])
-        except Exception as e:
-            logger.debug(f"Failed to fetch recently played games: {e}")
-            return []
 
 
 def resolve_steam_vanity_url(api_key, vanity_name):

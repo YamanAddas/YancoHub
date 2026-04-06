@@ -4,9 +4,11 @@ Ordered execution plan. Each phase must be completed and verified before moving 
 
 ---
 
-## Phase 0 — Critical Fixes (Must Do Before First Run)
+## Phase 0 — Critical Fixes (COMPLETE)
 
-These are bugs that will cause crashes, security issues, or data corruption.
+> All Phase 0 items resolved — see BUGS.md BUG-001 through BUG-049.
+
+These were bugs that would cause crashes, security issues, or data corruption.
 
 ### 0.1 — Command injection fix
 - `app.py:276`: Replace `shell=True` with `shell=False` + argument list parsing

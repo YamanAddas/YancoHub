@@ -17,17 +17,9 @@ import sqlite3
 import requests
 from pathlib import Path
 
-from constants import LIBRETRO_SYSTEMS
-
 logger = logging.getLogger('yancohub.metadata')
 
 DB_PATH = Path(__file__).parent / 'cache' / 'metadata.db'
-
-LIBRETRO_THUMB_BASE = 'https://thumbnails.libretro.com'
-
-# ── Steam CDN ───────────────────────────────────────────────────────────────
-
-STEAM_CDN = 'https://cdn.cloudflare.steamstatic.com/steam/apps'
 
 # ── IGDB (via public proxy or direct) ───────────────────────────────────────
 
@@ -64,16 +56,6 @@ class MetadataDB:
                     cached_at REAL
                 )
             """)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS artwork_cache (
-                    game_id TEXT,
-                    art_type TEXT,
-                    local_path TEXT,
-                    remote_url TEXT,
-                    cached_at REAL,
-                    PRIMARY KEY (game_id, art_type)
-                )
-            """)
 
     def get(self, game_id):
         with sqlite3.connect(str(self.db_path)) as conn:
@@ -96,28 +78,6 @@ class MetadataDB:
                 [kwargs[c] for c in cols]
             )
 
-    def get_artwork(self, game_id, art_type):
-        with sqlite3.connect(str(self.db_path)) as conn:
-            conn.row_factory = sqlite3.Row
-            row = conn.execute(
-                "SELECT * FROM artwork_cache WHERE game_id = ? AND art_type = ?",
-                (game_id, art_type)
-            ).fetchone()
-            return dict(row) if row else None
-
-    def put_artwork(self, game_id, art_type, local_path='', remote_url=''):
-        with sqlite3.connect(str(self.db_path)) as conn:
-            conn.execute(
-                "INSERT OR REPLACE INTO artwork_cache (game_id, art_type, local_path, remote_url, cached_at) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (game_id, art_type, local_path, remote_url, time.time())
-            )
-
-    def get_stats(self):
-        with sqlite3.connect(str(self.db_path)) as conn:
-            meta_count = conn.execute("SELECT COUNT(*) FROM game_metadata").fetchone()[0]
-            art_count = conn.execute("SELECT COUNT(*) FROM artwork_cache").fetchone()[0]
-            return {'metadata_entries': meta_count, 'artwork_entries': art_count}
 
 
 # ── Metadata Fetcher ────────────────────────────────────────────────────────

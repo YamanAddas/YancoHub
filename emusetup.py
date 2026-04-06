@@ -16,13 +16,13 @@ import logging
 import shutil
 import subprocess
 import threading
-import time
 import zipfile
 from pathlib import Path
 
 import requests
 
 from scanner import ROM_SYSTEMS
+from constants import BUILTIN_SYSTEMS
 
 logger = logging.getLogger('yancohub.emusetup')
 
@@ -37,15 +37,6 @@ CORE_URL_TEMPLATE = (
     'https://buildbot.libretro.com/nightly/windows/x86_64/latest/{core}.dll.zip'
 )
 
-# Systems handled by the built-in browser emulator (EmulatorJS) —
-# these do NOT need RetroArch cores
-BUILTIN_SYSTEMS = {
-    'nes', 'snes', 'gb', 'gbc', 'gba',
-    'megadrive', 'mastersystem', 'gamegear',
-    'atari2600', 'ngp', 'psx',
-    'neogeo', 'fbneo', 'cps1', 'cps2', 'cps3', 'mame',
-    'nds', 'n64',
-}
 
 # Managed emulator base directory
 BASE_DIR = Path(__file__).parent / 'emulators'

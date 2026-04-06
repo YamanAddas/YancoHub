@@ -2,7 +2,7 @@
 
 Consolidated from full codebase audit (April 2026). Updated April 2026.
 
-**All 34 tracked bugs have been resolved.**
+**All 66 tracked bugs have been resolved.**
 
 ---
 
@@ -69,4 +69,30 @@ Consolidated from full codebase audit (April 2026). Updated April 2026.
 
 ---
 
-**Total: 49 bugs tracked — 49 fixed, 0 open**
+---
+
+## Round 3 Audit — FIXED
+
+| ID | Issue | Resolution |
+|----|-------|------------|
+| BUG-050 | Dead `SteamAccount.get_recently_played()` | Removed |
+| BUG-051 | Dead `UserData.get_active_game()` | Removed (app.py uses `_get_active()`) |
+| BUG-052 | Dead `MetadataDB.get_artwork()`/`put_artwork()`/`artwork_cache` table | Removed methods and table creation |
+| BUG-053 | Dead `MetadataDB.get_stats()` | Removed |
+| BUG-054 | Unused `LIBRETRO_THUMB_BASE`/`STEAM_CDN` in metadata.py | Removed; canonical copies in constants.py |
+| BUG-055 | `BUILTIN_SYSTEMS` duplicated in app.py + emusetup.py | Consolidated to constants.py |
+| BUG-056 | `STEAM_CDN`/`LIBRETRO_THUMB` duplicated across files | Consolidated to constants.py |
+| BUG-057 | `STEAM_CDN` hardcoded inline in accounts.py | Now imports from constants.py |
+| BUG-058 | 7 unwired API endpoints with no frontend consumers | Removed (`/api/active-game`, `/api/last-played`, `/api/accounts/epic/status`, `/api/metadata/<game_id>`, `/api/metadata/stats`, `/api/emulator/info/<system>`, `/assets/audio/<filename>`) |
+| BUG-059 | Empty stale `static/img/systems/` directory | Deleted |
+| BUG-060 | Unused `import sys` in app.py | Removed |
+| BUG-061 | Unused `from constants import LIBRETRO_SYSTEMS` in metadata.py | Removed |
+| BUG-062 | Unused `import time` in emusetup.py | Removed |
+| BUG-063 | 5 dead HTML element IDs never referenced by JS | Removed IDs from elements |
+| BUG-064 | 9 dead CSS selectors never used in HTML or JS | Removed |
+| BUG-065 | `pywin32` in requirements.txt but never imported | Removed |
+| BUG-066 | CLAUDE.md module table missing 5 modules | Added chathistory, emusetup, romident, launch, window |
+
+---
+
+**Total: 66 bugs tracked — 66 fixed, 0 open**

@@ -20,7 +20,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from urllib.parse import quote
 
-from constants import LIBRETRO_SYSTEMS
+from constants import LIBRETRO_SYSTEMS, STEAM_CDN, LIBRETRO_THUMB
 from romident import read_rom_header_name, fuzzy_match, strip_numbering
 
 logger = logging.getLogger('yancohub.artwork')
@@ -28,8 +28,6 @@ logger = logging.getLogger('yancohub.artwork')
 CACHE_DIR = Path(__file__).parent / 'cache' / 'artwork'
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-STEAM_CDN = 'https://cdn.cloudflare.steamstatic.com/steam/apps'
-LIBRETRO_THUMB = 'https://thumbnails.libretro.com'
 
 # YancoHub system ID → LaunchBox platform folder name
 _LB_PLATFORMS = {

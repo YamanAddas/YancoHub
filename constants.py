@@ -63,3 +63,19 @@ LIBRETRO_SYSTEMS = {
 
 # Valid artwork types for API validation
 VALID_ART_TYPES = {'cover', 'header', 'hero', 'logo', 'screenshot'}
+
+# Steam CDN base URL for app assets
+STEAM_CDN = 'https://cdn.cloudflare.steamstatic.com/steam/apps'
+
+# LibRetro thumbnail CDN base URL
+LIBRETRO_THUMB = 'https://thumbnails.libretro.com'
+
+# Systems handled by the built-in browser emulator (EmulatorJS) —
+# these do NOT need RetroArch cores
+BUILTIN_SYSTEMS = {
+    'nes', 'snes', 'gb', 'gbc', 'gba',
+    'megadrive', 'mastersystem', 'gamegear',
+    'atari2600', 'ngp', 'psx',
+    'neogeo', 'fbneo', 'cps1', 'cps2', 'cps3', 'mame',
+    'nds', 'n64',
+}

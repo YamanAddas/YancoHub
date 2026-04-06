@@ -48,7 +48,12 @@ Storage:  userdata.json (settings/favorites/playtime) + cache/metadata.db (SQLit
 | `biosmanager.py` | Auto-detect BIOS files by filename/MD5, per-system readiness |
 | `userdata.py` | JSON persistence for settings, playtime, collections |
 | `catbyte.py` | OpenClaw proxy with offline fallback |
-| `constants.py` | Shared constants (ports, LIBRETRO_SYSTEMS, VALID_ART_TYPES) |
+| `chathistory.py` | CatByte conversation history persistence |
+| `constants.py` | Shared constants (ports, LIBRETRO_SYSTEMS, VALID_ART_TYPES, BUILTIN_SYSTEMS, STEAM_CDN, LIBRETRO_THUMB) |
+| `emusetup.py` | RetroArch + core auto-download and configuration |
+| `launch.py` | App entry point — starts Flask subprocess + pywebview window |
+| `romident.py` | ROM header parsing, fuzzy name matching, format priority |
+| `window.py` | pywebview window API (folder/file browse dialogs) |
 | `static/js/app.js` | 3D hexagonal carousel, starfield, tabs, search, settings UI |
 | `static/js/emulator.js` | EmulatorJS integration (19 retro systems in-browser via WASM) |
 

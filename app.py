@@ -4,7 +4,6 @@ Unified game launcher for Windows with CatByte AI companion.
 """
 
 import os
-import sys
 import json
 import time
 import logging
@@ -552,21 +551,6 @@ def _start_url_monitor(game_id):
     t.start()
 
 
-@app.route('/api/active-game')
-def api_active_game():
-    _, current_game_id = _get_active()
-    if current_game_id:
-        with _library_lock:
-            game = game_index.get(current_game_id, {})
-        return jsonify({
-            'game_id': current_game_id,
-            'name': game.get('name', ''),
-            'source': game.get('source', ''),
-            'system': game.get('system', ''),
-        })
-    return jsonify(None)
-
-
 @app.route('/api/session/end/<game_id>', methods=['POST'])
 def api_session_end(game_id):
     userdata.session_end(game_id)
@@ -612,11 +596,6 @@ def api_search():
 @app.route('/api/playtime')
 def api_playtime():
     return jsonify(userdata.get_playtime())
-
-
-@app.route('/api/last-played')
-def api_last_played():
-    return jsonify({'game_id': userdata.get_last_played()})
 
 
 # ── Collections ─────────────────────────────────────────────────────────────
@@ -861,15 +840,6 @@ def api_toggle_gog_galaxy():
     return jsonify({
         'enabled': new_state,
         'platforms': galaxy_db.get_connected_platforms() if new_state else [],
-    })
-
-
-@app.route('/api/accounts/epic/status')
-def api_epic_status():
-    """Check Epic/legendary availability and auth status."""
-    return jsonify({
-        'legendary_installed': EpicAccount.is_available(),
-        'authenticated': EpicAccount.is_authenticated(),
     })
 
 
@@ -1212,28 +1182,6 @@ def _auto_title_session(session_id: str, messages: list):
 
 # ── Metadata ────────────────────────────────────────────────────────────────
 
-@app.route('/api/metadata/<game_id>')
-def api_metadata(game_id):
-    """Get rich metadata for a game (description, genre, developer, etc.)."""
-    with _library_lock:
-        game = game_index.get(game_id)
-    if not game:
-        abort(404)
-
-    meta = metadata_fetcher.get_metadata(
-        game_id, game.get('name', ''),
-        source=game.get('source', ''),
-        system=game.get('system', ''),
-    )
-    return jsonify(meta or {})
-
-
-@app.route('/api/metadata/stats')
-def api_metadata_stats():
-    """Get metadata cache statistics."""
-    return jsonify(metadata_fetcher.db.get_stats())
-
-
 # ── BIOS Management ────────────────────────────────────────────────────────
 
 @app.route('/api/bios/status')
@@ -1331,16 +1279,6 @@ def api_emulators_progress():
 
 # ── Built-in Emulator ───────────────────────────────────────────────────────
 
-# Systems that use the built-in emulator (EmulatorJS via webview)
-BUILTIN_SYSTEMS = {
-    'nes', 'snes', 'gb', 'gbc', 'gba',
-    'megadrive', 'mastersystem', 'gamegear',
-    'atari2600', 'ngp', 'psx',
-    'neogeo', 'fbneo', 'cps1', 'cps2', 'cps3', 'mame',
-    'nds', 'n64',
-}
-
-
 @app.route('/api/rom/<game_id>')
 def api_serve_rom(game_id):
     """Serve a ROM file for the built-in emulator."""
@@ -1389,31 +1327,6 @@ def api_serve_bios(system, filename=None):
         return send_file(bios_path, mimetype='application/octet-stream')
     except FileNotFoundError:
         abort(404)
-
-
-@app.route('/api/emulator/info/<system>')
-def api_emulator_info(system):
-    """Check if a system uses the built-in emulator."""
-    return jsonify({
-        'system': system,
-        'builtin': system in BUILTIN_SYSTEMS,
-    })
-
-
-# ── Assets ──────────────────────────────────────────────────────────────────
-
-@app.route('/assets/audio/<filename>')
-def assets_audio(filename):
-    audio_dir = Path(__file__).parent / 'assets' / 'audio'
-    audio_file = (audio_dir / filename).resolve()
-    if not audio_file.is_relative_to(audio_dir.resolve()):
-        abort(403)
-    if audio_file.exists():
-        try:
-            return send_file(str(audio_file))
-        except (FileNotFoundError, OSError):
-            abort(404)
-    abort(404)
 
 
 # ── Directory Validation ───────────────────────────────────────────────────

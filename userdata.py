@@ -160,13 +160,6 @@ class UserData:
                 recent = gid
         return recent
 
-    def get_active_game(self):
-        """Get currently active game ID, if any."""
-        for gid, session in self.data['sessions'].items():
-            if session.get('active_since'):
-                return gid
-        return None
-
     # ── Collections ─────────────────────────────────────────────────────────
 
     def get_collections(self):

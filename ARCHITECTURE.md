@@ -27,9 +27,9 @@ active_process = None     # written by monitor threads, read by /api/active-game
 active_game_id = None     # written by monitor threads, read by /api/catbyte/chat
 ```
 
-### Required Fix: Atomic Swap
+### Pattern: Atomic Swap
 
-**Never mutate `game_library` or `game_index` in place.** Build into local variables, then assign:
+`game_library` and `game_index` are never mutated in place. They are built into local variables, then assigned under lock:
 
 ```python
 import threading
@@ -217,10 +217,8 @@ D:\yancohub\                    Project root (development)
 | GET | `/api/games` | Full game library (filtered by source/system) |
 | GET | `/api/search?q=` | Search games by name |
 | POST | `/api/launch/<id>` | Launch a game |
-| GET | `/api/active-game` | Currently running game |
 | POST | `/api/rescan` | Trigger full library rescan |
 | GET | `/api/artwork/<id>/<type>` | Get game artwork (cover/header/hero/logo) |
-| GET | `/api/metadata/<id>` | Get game metadata |
 | POST | `/api/favorites/toggle` | Toggle game favorite |
 | GET/POST/DELETE | `/api/collections` | Manage collections |
 | GET/POST/DELETE | `/api/rom-dirs` | Manage ROM directories |
@@ -232,11 +230,9 @@ D:\yancohub\                    Project root (development)
 | POST | `/api/accounts/steam/connect` | Connect Steam account |
 | POST | `/api/accounts/steam/disconnect` | Disconnect Steam |
 | POST | `/api/accounts/gog-galaxy/toggle` | Toggle GOG Galaxy |
-| GET | `/api/accounts/epic/status` | Epic auth status |
 | POST | `/api/accounts/epic/auth` | Start Epic auth flow |
 | GET | `/api/stores` | Detected store installations |
 | GET | `/api/playtime` | All playtime data |
-| GET | `/api/last-played` | Last played game ID |
 | POST | `/api/catbyte/chat` | Chat with CatByte AI |
 | POST | `/api/catbyte/chat-vision` | Chat with screenshot |
 | GET | `/api/catbyte/status` | CatByte online/offline |
