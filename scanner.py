@@ -388,14 +388,20 @@ class GameScanner:
         if 'proton' in name.lower() or 'redistributable' in name.lower():
             return None
 
-        # Find artwork
+        # Find artwork — new Steam client uses per-appid subdirectories,
+        # older versions used flat {appid}_type.ext naming
         artwork_dir = steam_path / "appcache" / "librarycache"
+        appid_dir = artwork_dir / str(appid)
         artwork = {}
         for art_type, patterns in {
-            'header': [f'{appid}_header.jpg'],
-            'cover': [f'{appid}_library_600x900.jpg', f'{appid}_library_600x900_2x.jpg'],
-            'hero': [f'{appid}_library_hero.jpg'],
-            'logo': [f'{appid}_logo.png'],
+            'header': [f'{appid}/library_header.jpg', f'{appid}/header.jpg',
+                       f'{appid}_header.jpg'],
+            'cover': [f'{appid}/library_600x900.jpg', f'{appid}/library_600x900_2x.jpg',
+                      f'{appid}_library_600x900.jpg', f'{appid}_library_600x900_2x.jpg'],
+            'hero': [f'{appid}/library_hero.jpg',
+                     f'{appid}_library_hero.jpg'],
+            'logo': [f'{appid}/logo.png',
+                     f'{appid}_logo.png'],
         }.items():
             for pat in patterns:
                 art_path = artwork_dir / pat
