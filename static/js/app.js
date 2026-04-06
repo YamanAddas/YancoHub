@@ -145,6 +145,7 @@ async function init() {
     checkCatbyteStatus();
     setInterval(checkCatbyteStatus, 60000);
     buildRetroTabs();
+    autoShowConsolePanel();
     applyFilter();
 
     if (state.scanning) {
@@ -155,6 +156,7 @@ async function init() {
             if (!state.scanning) {
                 clearInterval(pollScan);
                 buildRetroTabs();
+                autoShowConsolePanel();
                 applyFilter();
             }
         }, 2000);
@@ -399,7 +401,7 @@ const RETRO_SYSTEM_ICONS = {
 };
 
 function buildRetroTabs() {
-    // Remove any previously injected retro system tabs
+    // Remove any legacy retro system tabs from the top tab bar
     document.querySelectorAll('.tab-retro-system').forEach(t => t.remove());
 
     // Count retro games per system (respecting hidden systems)
@@ -414,29 +416,126 @@ function buildRetroTabs() {
         return systemCounts[b] - systemCounts[a]; // most games first
     });
 
-    // Show/hide divider and All Retro tab based on whether there are ROMs
+    // Show/hide divider and All Retro tab
     const divider = $('retroDivider');
     const allRetroTab = document.querySelector('[data-tab="retro"]');
     if (systemKeys.length === 0) {
         if (divider) divider.classList.add('hidden');
         if (allRetroTab) allRetroTab.classList.add('hidden');
-        return;
+    } else {
+        if (divider) divider.classList.remove('hidden');
+        if (allRetroTab) allRetroTab.classList.remove('hidden');
     }
-    if (divider) divider.classList.remove('hidden');
-    if (allRetroTab) allRetroTab.classList.remove('hidden');
 
-    // Inject per-system tabs after the "All Retro" button
-    const tabBar = $('tabBar');
+    // Build the console panel hex tabs
+    buildConsolePanel(systemKeys, systemCounts);
+}
+
+function buildConsolePanel(systemKeys, systemCounts) {
+    const scroll = $('consolePanelScroll');
+    if (!scroll) return;
+    scroll.innerHTML = '';
+
+    if (systemKeys.length === 0) return;
+
     for (const sys of systemKeys) {
-        const btn = document.createElement('button');
-        btn.className = 'tab tab-retro-system';
-        btn.dataset.tab = `retro_${sys}`;
         const icon = RETRO_SYSTEM_ICONS[sys] || '\uD83C\uDFAE';
         const name = RETRO_SYSTEM_NAMES[sys] || sys;
-        btn.innerHTML = `<span class="tab-sys-icon">${icon}</span>${name}<span class="tab-count">${systemCounts[sys]}</span>`;
-        btn.title = `${name} \u2014 ${systemCounts[sys]} game${systemCounts[sys] !== 1 ? 's' : ''}`;
-        tabBar.appendChild(btn);
+        const count = systemCounts[sys];
+        const colors = SYS_COLORS[sys] || ['#1a2a3a', '#0a1520'];
+
+        const wrap = document.createElement('div');
+        wrap.className = 'console-hex-wrap';
+        wrap.dataset.tab = `retro_${sys}`;
+        wrap.title = `${name} \u2014 ${count} game${count !== 1 ? 's' : ''}`;
+
+        wrap.innerHTML = `
+            <div class="console-hex-border"></div>
+            <div class="console-hex">
+                <div class="console-hex-art" style="background: linear-gradient(135deg, ${colors[0]}, ${colors[1]});"></div>
+                <div class="console-hex-overlay"></div>
+                <span class="console-hex-fallback-icon">${icon}</span>
+                <div class="console-hex-glass"></div>
+                <div class="console-hex-label">
+                    <span class="console-hex-name">${name}</span>
+                    <span class="console-hex-count">${count} game${count !== 1 ? 's' : ''}</span>
+                </div>
+            </div>
+        `;
+
+        scroll.appendChild(wrap);
+
+        // Load platform artwork from LaunchBox
+        loadConsolePlatformArt(wrap, sys);
     }
+}
+
+function loadConsolePlatformArt(wrap, sys) {
+    const artEl = wrap.querySelector('.console-hex-art');
+    if (!artEl) return;
+
+    const img = new Image();
+    img.onload = () => {
+        artEl.style.background = 'none';
+        artEl.style.backgroundImage = `url(${img.src})`;
+        artEl.style.backgroundSize = 'cover';
+        artEl.style.backgroundPosition = 'center';
+    };
+    // Silently fail — fallback gradient + icon already in place
+    img.onerror = () => {};
+    img.src = `/api/platform-artwork/${encodeURIComponent(sys)}`;
+}
+
+function toggleConsolePanel() {
+    const panel = $('consolePanel');
+    const toggle = $('consolePanelToggle');
+    const app = $('app');
+    const isHidden = panel.classList.contains('hidden');
+
+    if (isHidden) {
+        panel.classList.remove('hidden');
+        toggle.classList.add('panel-open');
+        app.classList.add('console-panel-open');
+    } else {
+        panel.classList.add('hidden');
+        toggle.classList.remove('panel-open');
+        app.classList.remove('console-panel-open');
+    }
+}
+
+function selectConsoleHex(tab) {
+    // Deactivate all top bar tabs and console hex tabs
+    $$('.tab').forEach(t => t.classList.remove('active'));
+    $$('.console-hex-wrap').forEach(h => h.classList.remove('active'));
+
+    // Activate this console hex
+    const wrap = document.querySelector(`.console-hex-wrap[data-tab="${tab}"]`);
+    if (wrap) wrap.classList.add('active');
+
+    state.currentTab = tab;
+    applyFilter();
+}
+
+function deselectConsoleHexes() {
+    $$('.console-hex-wrap').forEach(h => h.classList.remove('active'));
+}
+
+function autoShowConsolePanel() {
+    const hasRetro = state.games.some(g => g.source === 'retro');
+    const panel = $('consolePanel');
+    const toggle = $('consolePanelToggle');
+    if (!panel || !toggle) return;
+
+    if (hasRetro && panel.classList.contains('hidden')) {
+        // Auto-open on wide screens
+        if (window.innerWidth > 1200) {
+            panel.classList.remove('hidden');
+            toggle.classList.add('panel-open');
+            $('app').classList.add('console-panel-open');
+        }
+    }
+    // Show/hide the toggle button based on whether retro games exist
+    toggle.style.display = hasRetro ? '' : 'none';
 }
 
 // ── Mood Helpers ──────────────────────────────────────────────────────────
@@ -1141,14 +1240,23 @@ function renderStoreIndicators() {
 // ── Events ─────────────────────────────────────────────────────────────────
 
 function bindEvents() {
-    // Tabs
+    // Tabs (top bar)
     $('tabBar').addEventListener('click', (e) => {
         const tab = e.target.closest('.tab');
         if (!tab) return;
         $$('.tab').forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
+        deselectConsoleHexes();
         state.currentTab = tab.dataset.tab;
         applyFilter();
+    });
+
+    // Console panel toggle + hex clicks
+    $('consolePanelToggle').addEventListener('click', toggleConsolePanel);
+    $('consolePanelScroll').addEventListener('click', (e) => {
+        const hex = e.target.closest('.console-hex-wrap');
+        if (!hex) return;
+        selectConsoleHex(hex.dataset.tab);
     });
 
     // Search

@@ -392,6 +392,20 @@ def api_artwork(game_id, art_type):
     abort(404)
 
 
+@app.route('/api/platform-artwork/<system>')
+def api_platform_artwork(system):
+    """Serve console/platform artwork from LaunchBox Images/Platforms/ folder."""
+    path = artwork_scraper.get_platform_artwork(system)
+    if path and Path(path).exists():
+        try:
+            resp = send_file(path)
+            resp.headers['Cache-Control'] = 'public, max-age=604800'
+            return resp
+        except (FileNotFoundError, OSError):
+            pass
+    abort(404)
+
+
 @app.route('/api/launch/<game_id>', methods=['POST'])
 def api_launch(game_id):
     with _library_lock:

@@ -162,6 +162,7 @@ body::before {
     height: 100vh;
     display: flex;
     flex-direction: column;
+    transition: padding-right 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* ── Top Bar ─────────────────────────────────────────────────────────────── */
@@ -3100,9 +3101,305 @@ body::before {
     bottom: 72px;
 }
 
+
+/* ── Console Panel (right-side hex tabs) ────────────────────────────────── */
+
+.console-panel {
+    position: fixed;
+    right: 0;
+    top: 0;
+    width: 340px;
+    height: 100vh;
+    z-index: 15;
+    display: flex;
+    flex-direction: column;
+    background: linear-gradient(to left,
+        rgba(6, 11, 20, 0.96) 0%,
+        rgba(6, 11, 20, 0.88) 70%,
+        rgba(6, 11, 20, 0.6) 100%);
+    border-left: 1px solid rgba(0, 229, 193, 0.06);
+    transform: translateX(0);
+    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.console-panel.hidden {
+    display: flex !important;
+    transform: translateX(100%);
+    pointer-events: none;
+}
+
+.console-panel-header {
+    padding: 16px 20px 8px;
+    flex-shrink: 0;
+}
+
+.console-panel-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+}
+
+.console-panel-scroll {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 8px 16px 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 229, 193, 0.15) transparent;
+}
+
+.console-panel-scroll::-webkit-scrollbar {
+    width: 4px;
+}
+
+.console-panel-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.console-panel-scroll::-webkit-scrollbar-thumb {
+    background: rgba(0, 229, 193, 0.15);
+    border-radius: 2px;
+}
+
+.console-panel-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 229, 193, 0.3);
+}
+
+/* ── Console Hex Tab ──────────────────────────────────────────────────────── */
+
+.console-hex-wrap {
+    width: 100%;
+    max-width: 308px;
+    filter: drop-shadow(0 0 0 transparent);
+    transition: filter 0.3s ease;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.console-hex-wrap:hover {
+    filter: drop-shadow(0 0 10px rgba(0, 229, 193, 0.25))
+            drop-shadow(0 0 20px rgba(0, 229, 193, 0.1));
+}
+
+.console-hex-wrap.active {
+    filter: drop-shadow(0 0 14px rgba(0, 229, 193, 0.5))
+            drop-shadow(0 0 28px rgba(0, 229, 193, 0.2));
+}
+
+.console-hex {
+    position: relative;
+    width: 100%;
+    /* aspect ratio: game cards are 180:320 = 0.5625. Rotated = 320:180 ≈ 1.778.
+       With hex-point 9%, visible height ratio is ~82%. So: width / 1.778 */
+    aspect-ratio: 1.778;
+    clip-path: polygon(
+        var(--hex-point) 0%,
+        calc(100% - var(--hex-point)) 0%,
+        100% 50%,
+        calc(100% - var(--hex-point)) 100%,
+        var(--hex-point) 100%,
+        0% 50%
+    );
+    overflow: hidden;
+    background: linear-gradient(170deg, rgba(20, 40, 55, 0.95) 0%, rgba(8, 18, 32, 0.98) 50%, rgba(4, 10, 22, 1) 100%);
+    transition: background 0.3s ease;
+}
+
+/* Console artwork (full bleed) */
+.console-hex-art {
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    opacity: 0.5;
+    transition: opacity 0.4s ease;
+}
+
+.console-hex-wrap:hover .console-hex-art {
+    opacity: 0.7;
+}
+
+.console-hex-wrap.active .console-hex-art {
+    opacity: 0.65;
+}
+
+/* Dark gradient overlay for text readability */
+.console-hex-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+        180deg,
+        transparent 20%,
+        rgba(4, 10, 22, 0.5) 50%,
+        rgba(4, 10, 22, 0.85) 80%,
+        rgba(4, 10, 22, 0.95) 100%
+    );
+    z-index: 1;
+}
+
+/* Border layer (slightly larger hex behind) */
+.console-hex-border {
+    position: absolute;
+    inset: -2px;
+    clip-path: polygon(
+        var(--hex-point) 0%,
+        calc(100% - var(--hex-point)) 0%,
+        100% 50%,
+        calc(100% - var(--hex-point)) 100%,
+        var(--hex-point) 100%,
+        0% 50%
+    );
+    background: linear-gradient(170deg,
+        rgba(0, 229, 193, 0.12) 0%,
+        rgba(0, 229, 193, 0.03) 40%,
+        rgba(0, 229, 193, 0.02) 70%,
+        rgba(0, 229, 193, 0.1) 100%);
+    z-index: -1;
+    transition: background 0.3s ease;
+}
+
+.console-hex-wrap.active .console-hex-border {
+    background: linear-gradient(170deg,
+        rgba(0, 229, 193, 0.35) 0%,
+        rgba(0, 229, 193, 0.1) 40%,
+        rgba(0, 229, 193, 0.08) 70%,
+        rgba(0, 229, 193, 0.3) 100%);
+}
+
+/* Glass highlight (top bevel) */
+.console-hex-glass {
+    position: absolute;
+    inset: 0;
+    clip-path: polygon(
+        var(--hex-point) 0%,
+        calc(100% - var(--hex-point)) 0%,
+        100% 50%,
+        calc(100% - var(--hex-point)) 100%,
+        var(--hex-point) 100%,
+        0% 50%
+    );
+    background: linear-gradient(175deg,
+        rgba(200, 240, 255, 0.08) 0%,
+        rgba(0, 229, 193, 0.02) 20%,
+        transparent 45%);
+    pointer-events: none;
+    z-index: 3;
+}
+
+/* Text label area */
+.console-hex-label {
+    position: absolute;
+    bottom: 12%;
+    left: 15%;
+    right: 15%;
+    z-index: 2;
+    text-align: center;
+    pointer-events: none;
+}
+
+.console-hex-name {
+    display: block;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-bright);
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8), 0 0 20px rgba(0, 0, 0, 0.5);
+    letter-spacing: 0.5px;
+    line-height: 1.2;
+    transition: color 0.3s ease;
+}
+
+.console-hex-wrap.active .console-hex-name {
+    color: var(--accent);
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8), 0 0 20px rgba(0, 229, 193, 0.3);
+}
+
+.console-hex-count {
+    display: inline-block;
+    margin-top: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-dim);
+    background: rgba(0, 0, 0, 0.4);
+    padding: 2px 8px;
+    border-radius: 8px;
+    letter-spacing: 0.5px;
+    transition: color 0.3s ease, background 0.3s ease;
+}
+
+.console-hex-wrap.active .console-hex-count {
+    color: var(--accent);
+    background: rgba(0, 229, 193, 0.12);
+}
+
+/* Fallback system icon when no artwork */
+.console-hex-fallback-icon {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -60%);
+    font-size: 36px;
+    opacity: 0.15;
+    z-index: 0;
+    pointer-events: none;
+    filter: drop-shadow(0 2px 8px rgba(0, 229, 193, 0.15));
+}
+
+/* ── Console Panel Toggle Button ──────────────────────────────────────────── */
+
+.console-panel-toggle {
+    position: fixed;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 16;
+    width: 40px;
+    height: 46px;
+    background: rgba(8, 15, 28, 0.9);
+    border: 1px solid rgba(0, 229, 193, 0.15);
+    color: var(--text-dim);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    transition: all 0.3s ease;
+}
+
+.console-panel-toggle:hover {
+    color: var(--accent);
+    background: rgba(0, 229, 193, 0.08);
+    border-color: rgba(0, 229, 193, 0.3);
+}
+
+.console-panel-toggle.panel-open {
+    right: 352px;
+}
+
+/* When panel is open, push main content left */
+.app.console-panel-open {
+    padding-right: 340px;
+    transition: padding-right 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 /* ── Responsive ──────────────────────────────────────────────────────────── */
+
+@media (max-width: 1200px) {
+    .console-panel { width: 300px; }
+    .console-panel-toggle.panel-open { right: 312px; }
+    .app.console-panel-open { padding-right: 300px; }
+}
 
 @media (max-width: 900px) {
     .catbyte-panel { width: 100%; }
     :root { --card-width: 150px; --card-height: 270px; }
+    .console-panel { width: 280px; }
+    .console-panel-toggle.panel-open { right: 292px; }
+    .app.console-panel-open { padding-right: 280px; }
 }

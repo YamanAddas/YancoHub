@@ -152,6 +152,21 @@
                 <button class="empty-settings-btn" onclick="document.getElementById('settingsOverlay').classList.remove('hidden')">Open Settings</button>
             </div>
         </div>
+
+        <!-- Console Panel (right side hex tabs) -->
+        <aside class="console-panel hidden" id="consolePanel">
+            <div class="console-panel-header">
+                <span class="console-panel-title">Consoles</span>
+            </div>
+            <div class="console-panel-scroll" id="consolePanelScroll">
+                <!-- Dynamic hex console tabs injected by JS -->
+            </div>
+        </aside>
+        <button class="console-panel-toggle" id="consolePanelToggle" title="Toggle consoles">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="12 2, 22 8.5, 22 15.5, 12 22, 2 15.5, 2 8.5"/>
+            </svg>
+        </button>
     </div>
 
     <!-- Search Overlay -->

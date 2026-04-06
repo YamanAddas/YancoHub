@@ -240,6 +240,30 @@ class ArtworkScraper:
         # Accept as-is
         return p
 
+    def get_platform_artwork(self, system: str) -> str | None:
+        """Get console/platform artwork from LaunchBox Images/Platforms/ folder.
+
+        Returns path to a Banner or Device image for the given system, or None.
+        """
+        if not self._lb_path:
+            return None
+        platform_name = _LB_PLATFORMS.get(system)
+        if not platform_name:
+            return None
+        platforms_dir = self._lb_path / 'Images' / 'Platforms' / platform_name
+        if not platforms_dir.is_dir():
+            return None
+        # Try image types in priority order
+        for subfolder in ('Banner', 'Device', 'Fanart', 'Clear Logo', 'Default Box'):
+            folder = platforms_dir / subfolder
+            if not folder.is_dir():
+                continue
+            for ext in ('*.jpg', '*.png', '*.webp', '*.gif'):
+                matches = list(folder.glob(ext))
+                if matches:
+                    return str(matches[0])
+        return None
+
     def set_launchbox_path(self, path: str):
         """Update the LaunchBox path at runtime and rebuild all indexes."""
         self._lb_path = self._resolve_lb_root(path)
