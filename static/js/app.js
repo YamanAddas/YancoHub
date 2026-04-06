@@ -400,77 +400,163 @@ const RETRO_SYSTEM_ICONS = {
     mame: '\uD83D\uDC7E', ngp: '\uD83D\uDCDF',
 };
 
+// ── Brand metadata for hex panel tabs ────────────────────────────────────
+
+const BRAND_SVG = {
+    all: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>`,
+    favorites: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.56 5.82 22 7 14.14l-5-4.87 6.91-1.01z"/></svg>`,
+    recent: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg>`,
+    steam: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-9.95 11.08l5.34 2.2a2.85 2.85 0 0 1 1.6-.49h.12l2.39-3.46v-.05a3.8 3.8 0 1 1 3.8 3.8h-.09l-3.4 2.43a2.86 2.86 0 0 1-5.67.42L1.7 16.24A10 10 0 1 0 12 2zm-4.53 15.8a2.15 2.15 0 0 0 2.27-1.08l-1.18-.49a1.58 1.58 0 0 1-2.06.78 1.59 1.59 0 0 1-.83-2.08l-1.1-.45a2.86 2.86 0 0 0 2.9 3.32zm9.16-6.18a2.54 2.54 0 1 0-2.54-2.54 2.54 2.54 0 0 0 2.54 2.54z"/></svg>`,
+    epic: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3.537 0C2.165 0 1.66.506 1.66 1.879V18.12c0 1.374.504 1.88 1.877 1.88h3.965v-1.21H4.283c-.69 0-.943-.252-.943-.942V2.15c0-.69.254-.94.943-.94h11.434c.69 0 .943.25.943.94v15.7c0 .69-.253.943-.943.943h-2.5l-1.51 1.21h4.764c1.373 0 1.877-.506 1.877-1.88V1.88C18.348.506 17.844 0 16.47 0H3.537zM6.1 6.4v7.2h5.2v-1.2H7.4v-1.8h3.2V9.4H7.4V7.6h3.9V6.4H6.1z"/></svg>`,
+    gog: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 17.5c-4.14 0-7.5-3.36-7.5-7.5S7.86 4.5 12 4.5s7.5 3.36 7.5 7.5-3.36 7.5-7.5 7.5zm0-12a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9zm0 6.75a2.25 2.25 0 1 1 0-4.5 2.25 2.25 0 0 1 0 4.5z"/></svg>`,
+    xbox: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6.19 5.18c-.75.75-1.33 1.6-1.75 2.52 1.06-.36 2.44.14 4.16 1.68 1.37 1.23 2.55 2.78 3.4 4.1.85-1.32 2.03-2.87 3.4-4.1 1.72-1.54 3.1-2.04 4.16-1.68-.42-.92-1-1.77-1.75-2.52-1.28.23-2.79 1.1-4.4 2.74-.47.47-.91.97-1.3 1.46l-.11.14-.11-.14c-.39-.49-.83-.99-1.3-1.46-1.61-1.64-3.12-2.51-4.4-2.74zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 1.5c1.83 0 3.51.59 4.89 1.58-1.53-.13-3.2.78-4.89 2.49-1.69-1.71-3.36-2.62-4.89-2.49A8.46 8.46 0 0 1 12 3.5zM3.5 12c0-1.33.32-2.59.88-3.71.01 1.56 1.2 3.32 3.07 5 1.36 1.22 2.82 2.32 3.87 3.07-.3.27-.83.68-1.2.89C7.48 18.98 3.5 16.11 3.5 12zm8.5 8.5c-.56 0-1.1-.06-1.63-.16.59-.33 1.2-.76 1.63-1.17.43.41 1.04.84 1.63 1.17-.53.1-1.07.16-1.63.16zm5.38-3.25c-.37-.21-.9-.62-1.2-.89 1.05-.75 2.51-1.85 3.87-3.07 1.87-1.68 3.06-3.44 3.07-5 .56 1.12.88 2.38.88 3.71 0 4.11-3.98 6.98-6.62 5.25z"/></svg>`,
+    ea: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 5v14h18V5H3zm16.5 12.5h-15V6.5h15v11zM6 9h5.5v1.5h-4V12h3.5v1.5H7.5V15h4v1.5H6V9zm7 0h2.2l1.8 4 1.8-4H21v7.5h-1.5v-5l-1.7 3.5h-1.1L15 11v5.5h-2V9z"/></svg>`,
+    ubisoft: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18.25c-1.41 0-2.73-.36-3.88-1 .49.13 1.01.2 1.54.2 3.39 0 6.14-2.75 6.14-6.14 0-2.27-1.23-4.25-3.07-5.31.33-.06.67-.1 1.01-.1 3.59 0 6.51 2.91 6.51 6.51 0 3.21-2.32 5.88-5.38 6.42-.28.04-.57.06-.87.08-.65.22-1.3.34-2 .34zm-3.43-2.3A5.14 5.14 0 0 1 6.8 13.5c0-2.85 2.3-5.16 5.16-5.16.77 0 1.5.17 2.16.47a5.15 5.15 0 0 1 2.99 4.69c0 1.98-1.12 3.7-2.76 4.55a4.37 4.37 0 0 0 .56-2.14c0-2.43-1.97-4.4-4.4-4.4a4.41 4.41 0 0 0-4.4 4.4c0 .74.19 1.43.52 2.04zm1.87.3a3.19 3.19 0 0 1-1.4-2.64 3.2 3.2 0 0 1 3.2-3.2 3.2 3.2 0 0 1 3.2 3.2c0 .98-.44 1.85-1.13 2.43a3.62 3.62 0 0 0 1.34-2.82c0-2-1.63-3.63-3.63-3.63A3.64 3.64 0 0 0 8.4 15.2c0 1.19.58 2.24 1.47 2.9-.15-.05-.3-.12-.43-.2z"/></svg>`,
+    battlenet: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.73 14.24c-.44.7-1.26 1.05-2.12.87-.48-.1-.91-.36-1.27-.7l-.18.3c.55.67.8 1.54.6 2.4-.12.5-.4.93-.78 1.25A8.46 8.46 0 0 1 12 20.5a8.46 8.46 0 0 1-1.97-.23c.12-.35.15-.73.06-1.12a2.15 2.15 0 0 0-1.32-1.5l.05-.33c-.87.07-1.72-.35-2.17-1.12-.25-.44-.33-.93-.26-1.41l-.28-.16c-.35.77-.99 1.36-1.79 1.59a8.46 8.46 0 0 1-.82-3.22c.37.04.75-.02 1.1-.2a2.15 2.15 0 0 0 1.06-1.73h.34c.32.86 1.1 1.47 2.04 1.54.52.04 1.02-.1 1.43-.37l.28.16c-.2.86-.02 1.77.55 2.45.32.38.74.64 1.2.78v.35c-.87.28-1.72.12-2.38-.36a8.46 8.46 0 0 0 2.86 1c.3-.25.55-.56.71-.93a2.15 2.15 0 0 0-.27-2.02l.23-.26c.72.57 1.66.72 2.52.36.48-.2.87-.55 1.13-.98l.3.12c.04.91-.37 1.79-1.1 2.35a8.46 8.46 0 0 0 1.89-2.47c-.37.02-.75-.07-1.08-.28a2.15 2.15 0 0 0-.8-1.82l-.1-.34z"/></svg>`,
+    local: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`,
+    retro: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.5 2h-11A5.5 5.5 0 0 0 1 7.5v9A5.5 5.5 0 0 0 6.5 22h11a5.5 5.5 0 0 0 5.5-5.5v-9A5.5 5.5 0 0 0 17.5 2zM9 13H7v2a1 1 0 0 1-2 0v-2H3a1 1 0 0 1 0-2h2V9a1 1 0 0 1 2 0v2h2a1 1 0 0 1 0 2zm5 2a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm4-2a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg>`,
+};
+
+const TAB_META = {
+    all:       { name: 'All Games',   colors: ['#0a2a3a', '#060b14'] },
+    favorites: { name: 'Favorites',   colors: ['#4a3a0a', '#2a1f05'] },
+    recent:    { name: 'Recent',      colors: ['#0a2a4a', '#051525'] },
+    steam:     { name: 'Steam',       colors: ['#1b2838', '#0a1520'] },
+    epic:      { name: 'Epic Games',  colors: ['#2d1b69', '#1a1a2e'] },
+    gog:       { name: 'GOG',         colors: ['#4a1942', '#1a0a1a'] },
+    xbox:      { name: 'Xbox',        colors: ['#107c10', '#0e3d0e'] },
+    ea:        { name: 'EA',          colors: ['#4a1a1a', '#1a0a0a'] },
+    ubisoft:   { name: 'Ubisoft',     colors: ['#1a2a4a', '#0a1525'] },
+    battlenet: { name: 'Battle.net',  colors: ['#1a3a4a', '#0a1f25'] },
+    local:     { name: 'Local',       colors: ['#2a2a2a', '#1a1a1a'] },
+    retro:     { name: 'All Retro',   colors: ['#2a1a3a', '#150d1f'] },
+};
+
+// Ordered list of store sources to show in the panel
+const STORE_SOURCES = ['steam', 'epic', 'gog', 'xbox', 'ea', 'ubisoft', 'battlenet', 'local'];
+
 function buildRetroTabs() {
-    // Remove any legacy retro system tabs from the top tab bar
+    // Legacy cleanup
     document.querySelectorAll('.tab-retro-system').forEach(t => t.remove());
 
-    // Count retro games per system (respecting hidden systems)
-    const systemCounts = {};
-    for (const g of state.games) {
-        if (g.source !== 'retro' || !g.system) continue;
-        if (state.hiddenSystems.has(g.system)) continue;
-        systemCounts[g.system] = (systemCounts[g.system] || 0) + 1;
-    }
-
-    const systemKeys = Object.keys(systemCounts).sort((a, b) => {
-        return systemCounts[b] - systemCounts[a]; // most games first
-    });
-
-    // Show/hide divider and All Retro tab
-    const divider = $('retroDivider');
-    const allRetroTab = document.querySelector('[data-tab="retro"]');
-    if (systemKeys.length === 0) {
-        if (divider) divider.classList.add('hidden');
-        if (allRetroTab) allRetroTab.classList.add('hidden');
-    } else {
-        if (divider) divider.classList.remove('hidden');
-        if (allRetroTab) allRetroTab.classList.remove('hidden');
-    }
-
-    // Build the console panel hex tabs
-    buildConsolePanel(systemKeys, systemCounts);
+    // Build the full hex panel with all tabs
+    buildConsolePanel();
 }
 
-function buildConsolePanel(systemKeys, systemCounts) {
+function buildConsolePanel() {
     const scroll = $('consolePanelScroll');
     if (!scroll) return;
     scroll.innerHTML = '';
 
-    if (systemKeys.length === 0) return;
-
-    for (const sys of systemKeys) {
-        const icon = RETRO_SYSTEM_ICONS[sys] || '\uD83C\uDFAE';
-        const name = RETRO_SYSTEM_NAMES[sys] || sys;
-        const count = systemCounts[sys];
-        const colors = SYS_COLORS[sys] || ['#1a2a3a', '#0a1520'];
-
-        const wrap = document.createElement('div');
-        wrap.className = 'console-hex-wrap';
-        wrap.dataset.tab = `retro_${sys}`;
-        wrap.title = `${name} \u2014 ${count} game${count !== 1 ? 's' : ''}`;
-
-        wrap.innerHTML = `
-            <div class="console-hex-border"></div>
-            <div class="console-hex">
-                <div class="console-hex-art" style="background: linear-gradient(135deg, ${colors[0]}, ${colors[1]});"></div>
-                <div class="console-hex-overlay"></div>
-                <span class="console-hex-fallback-icon">${icon}</span>
-                <div class="console-hex-glass"></div>
-                <div class="console-hex-label">
-                    <span class="console-hex-name">${name}</span>
-                    <span class="console-hex-count">${count} game${count !== 1 ? 's' : ''}</span>
-                </div>
-            </div>
-        `;
-
-        scroll.appendChild(wrap);
-
-        // Load platform artwork from LaunchBox
-        loadConsolePlatformArt(wrap, sys);
+    // ── Count games per source & retro system ──
+    const sourceCounts = {};
+    const systemCounts = {};
+    for (const g of state.games) {
+        const src = g.source || 'local';
+        sourceCounts[src] = (sourceCounts[src] || 0) + 1;
+        if (src === 'retro' && g.system && !state.hiddenSystems.has(g.system)) {
+            systemCounts[g.system] = (systemCounts[g.system] || 0) + 1;
+        }
     }
+    const totalGames = state.games.length;
+    const totalFavorites = state.favorites ? state.favorites.size : 0;
+    const totalRecent = state.games.filter(g => g.last_played).length;
+    const totalRetro = sourceCounts['retro'] || 0;
+
+    // ── Utility section: All, Favorites, Recent ──
+    _addHexTab(scroll, 'all', totalGames);
+    if (totalFavorites > 0) _addHexTab(scroll, 'favorites', totalFavorites);
+    if (totalRecent > 0) _addHexTab(scroll, 'recent', totalRecent);
+
+    // ── Divider ──
+    _addHexDivider(scroll, 'Stores');
+
+    // ── Store tabs (only those with games) ──
+    for (const src of STORE_SOURCES) {
+        const count = sourceCounts[src] || 0;
+        if (count === 0) continue;
+        _addHexTab(scroll, src, count);
+    }
+
+    // ── Retro section ──
+    const retroSystems = Object.keys(systemCounts).sort((a, b) => systemCounts[b] - systemCounts[a]);
+    if (totalRetro > 0) {
+        _addHexDivider(scroll, 'Retro');
+        _addHexTab(scroll, 'retro', totalRetro);
+        for (const sys of retroSystems) {
+            _addRetroHexTab(scroll, sys, systemCounts[sys]);
+        }
+    }
+
+    // Mark active tab
+    const activeHex = scroll.querySelector(`.console-hex-wrap[data-tab="${state.currentTab}"]`);
+    if (activeHex) activeHex.classList.add('active');
 }
 
-function loadConsolePlatformArt(wrap, sys) {
+function _addHexTab(container, tab, count) {
+    const meta = TAB_META[tab];
+    if (!meta) return;
+    const svg = BRAND_SVG[tab] || '';
+    const colors = meta.colors;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'console-hex-wrap';
+    wrap.dataset.tab = tab;
+    wrap.title = `${meta.name} \u2014 ${count} game${count !== 1 ? 's' : ''}`;
+
+    wrap.innerHTML = `
+        <div class="console-hex-border"></div>
+        <div class="console-hex">
+            <div class="console-hex-art" style="background: linear-gradient(135deg, ${colors[0]}, ${colors[1]});"></div>
+            <div class="console-hex-overlay"></div>
+            <div class="console-hex-brand-icon">${svg}</div>
+            <div class="console-hex-glass"></div>
+            <div class="console-hex-label">
+                <span class="console-hex-name">${meta.name}</span>
+                <span class="console-hex-count">${count} game${count !== 1 ? 's' : ''}</span>
+            </div>
+        </div>
+    `;
+    container.appendChild(wrap);
+}
+
+function _addRetroHexTab(container, sys, count) {
+    const icon = RETRO_SYSTEM_ICONS[sys] || '\uD83C\uDFAE';
+    const name = RETRO_SYSTEM_NAMES[sys] || sys;
+    const colors = SYS_COLORS[sys] || ['#1a2a3a', '#0a1520'];
+
+    const wrap = document.createElement('div');
+    wrap.className = 'console-hex-wrap';
+    wrap.dataset.tab = `retro_${sys}`;
+    wrap.title = `${name} \u2014 ${count} game${count !== 1 ? 's' : ''}`;
+
+    wrap.innerHTML = `
+        <div class="console-hex-border"></div>
+        <div class="console-hex">
+            <div class="console-hex-art" style="background: linear-gradient(135deg, ${colors[0]}, ${colors[1]});"></div>
+            <div class="console-hex-overlay"></div>
+            <span class="console-hex-fallback-icon">${icon}</span>
+            <div class="console-hex-glass"></div>
+            <div class="console-hex-label">
+                <span class="console-hex-name">${name}</span>
+                <span class="console-hex-count">${count} game${count !== 1 ? 's' : ''}</span>
+            </div>
+        </div>
+    `;
+    container.appendChild(wrap);
+
+    // Load platform artwork from LaunchBox
+    _loadPlatformArt(wrap, sys);
+}
+
+function _addHexDivider(container, label) {
+    const div = document.createElement('div');
+    div.className = 'console-hex-divider';
+    div.innerHTML = `<span>${label}</span>`;
+    container.appendChild(div);
+}
+
+function _loadPlatformArt(wrap, sys) {
     const artEl = wrap.querySelector('.console-hex-art');
     if (!artEl) return;
 
@@ -478,10 +564,10 @@ function loadConsolePlatformArt(wrap, sys) {
     img.onload = () => {
         artEl.style.background = 'none';
         artEl.style.backgroundImage = `url(${img.src})`;
-        artEl.style.backgroundSize = 'cover';
+        artEl.style.backgroundSize = 'contain';
         artEl.style.backgroundPosition = 'center';
+        artEl.style.backgroundRepeat = 'no-repeat';
     };
-    // Silently fail — fallback gradient + icon already in place
     img.onerror = () => {};
     img.src = `/api/platform-artwork/${encodeURIComponent(sys)}`;
 }
@@ -504,11 +590,8 @@ function toggleConsolePanel() {
 }
 
 function selectConsoleHex(tab) {
-    // Deactivate all top bar tabs and console hex tabs
-    $$('.tab').forEach(t => t.classList.remove('active'));
+    // Deactivate all hex tabs, activate selected
     $$('.console-hex-wrap').forEach(h => h.classList.remove('active'));
-
-    // Activate this console hex
     const wrap = document.querySelector(`.console-hex-wrap[data-tab="${tab}"]`);
     if (wrap) wrap.classList.add('active');
 
@@ -516,17 +599,12 @@ function selectConsoleHex(tab) {
     applyFilter();
 }
 
-function deselectConsoleHexes() {
-    $$('.console-hex-wrap').forEach(h => h.classList.remove('active'));
-}
-
 function autoShowConsolePanel() {
-    const hasRetro = state.games.some(g => g.source === 'retro');
     const panel = $('consolePanel');
     const toggle = $('consolePanelToggle');
     if (!panel || !toggle) return;
 
-    if (hasRetro && panel.classList.contains('hidden')) {
+    if (state.games.length > 0 && panel.classList.contains('hidden')) {
         // Auto-open on wide screens
         if (window.innerWidth > 1200) {
             panel.classList.remove('hidden');
@@ -534,8 +612,7 @@ function autoShowConsolePanel() {
             $('app').classList.add('console-panel-open');
         }
     }
-    // Show/hide the toggle button based on whether retro games exist
-    toggle.style.display = hasRetro ? '' : 'none';
+    toggle.style.display = state.games.length > 0 ? '' : 'none';
 }
 
 // ── Mood Helpers ──────────────────────────────────────────────────────────
@@ -1204,9 +1281,9 @@ function updateDetailPanel(game) {
 
 function updateGameCount() {
     const count = state.filteredGames.length;
-    const tabEl = document.querySelector('.tab.active');
-    const tabName = tabEl ? tabEl.textContent : state.currentTab;
-    $('gameCount').textContent = `${tabName} — ${count} game${count !== 1 ? 's' : ''}`;
+    const hexEl = document.querySelector('.console-hex-wrap.active .console-hex-name');
+    const tabName = hexEl ? hexEl.textContent : (TAB_META[state.currentTab] ? TAB_META[state.currentTab].name : state.currentTab);
+    $('gameCount').textContent = `${tabName} \u2014 ${count} game${count !== 1 ? 's' : ''}`;
 }
 
 // ── Navigation ─────────────────────────────────────────────────────────────
@@ -1240,18 +1317,7 @@ function renderStoreIndicators() {
 // ── Events ─────────────────────────────────────────────────────────────────
 
 function bindEvents() {
-    // Tabs (top bar)
-    $('tabBar').addEventListener('click', (e) => {
-        const tab = e.target.closest('.tab');
-        if (!tab) return;
-        $$('.tab').forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
-        deselectConsoleHexes();
-        state.currentTab = tab.dataset.tab;
-        applyFilter();
-    });
-
-    // Console panel toggle + hex clicks
+    // Console panel toggle + hex clicks (primary navigation)
     $('consolePanelToggle').addEventListener('click', toggleConsolePanel);
     $('consolePanelScroll').addEventListener('click', (e) => {
         const hex = e.target.closest('.console-hex-wrap');
@@ -1537,10 +1603,8 @@ async function doSearch() {
             el.addEventListener('click', () => {
                 closeSearch();
                 // Switch to all tab and find game
-                state.currentTab = 'all';
-                $$('.tab').forEach(t => t.classList.remove('active'));
-                $$('.tab')[0].classList.add('active');
-                applyFilter();
+                selectConsoleHex('all');
+
                 // Navigate to the game
                 const idx = state.filteredGames.findIndex(g => g.id === el.dataset.id);
                 if (idx >= 0) {
@@ -3072,16 +3136,13 @@ function pollGamepad() {
                 : (activeIdx - 1 + tabs.length) % tabs.length;
             switchSettingsTab(tabs[next].dataset.stab);
         } else if (!anyOverlay) {
-            // Switch main category tabs
-            const tabs = Array.from(document.querySelectorAll('#tabBar .tab'));
-            const activeIdx = tabs.findIndex(t => t.classList.contains('active'));
+            // Switch hex panel tabs via gamepad bumpers
+            const hexes = Array.from(document.querySelectorAll('.console-hex-wrap'));
+            const activeIdx = hexes.findIndex(h => h.classList.contains('active'));
             const next = btnRB
-                ? (activeIdx + 1) % tabs.length
-                : (activeIdx - 1 + tabs.length) % tabs.length;
-            tabs.forEach(t => t.classList.remove('active'));
-            tabs[next].classList.add('active');
-            state.currentTab = tabs[next].dataset.tab;
-            applyFilter();
+                ? (activeIdx + 1) % hexes.length
+                : (activeIdx - 1 + hexes.length) % hexes.length;
+            selectConsoleHex(hexes[next].dataset.tab);
         }
     }
 
