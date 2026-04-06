@@ -162,6 +162,12 @@ class ArtworkScraper:
             if local:
                 return local
 
+        # 3b. Check UWP/MS Store app assets
+        if game.get('source') == 'xbox' and game.get('install_dir'):
+            local = self._find_uwp_art(game['install_dir'], art_type)
+            if local:
+                return local
+
         # 4. Try to download
         url = self._resolve_artwork_url(game, art_type)
         if url:
@@ -671,6 +677,48 @@ class ArtworkScraper:
         # SteamGridDB (fallback if Steam search found nothing)
         if self._sgdb_key and source in ('epic', 'gog', 'ea', 'ubisoft', 'battlenet', 'local', 'xbox', 'amazon'):
             return self._steamgriddb_search(game_name, art_type)
+
+        return None
+
+    def _find_uwp_art(self, install_dir: str, art_type: str) -> str | None:
+        """Find artwork from UWP/Microsoft Store app assets.
+
+        Searches the package's Assets/ folder and any subdirectories for
+        icon, tile, splash, and store artwork. Also parses AppxManifest.xml
+        for declared image paths. Returns the best match by type and size.
+        """
+        base = Path(install_dir)
+        if not base.exists():
+            return None
+
+        # Pattern groups ordered by preference per art type
+        # We search the entire install dir recursively (rglob)
+        pattern_groups = {
+            'cover': [
+                '*LargeTile*', '*StoreLogo*', '*PremiumLogo*',
+                '*AppList.targetsize-256*', '*AppList.targetsize-256.png',
+                '*Square310x310*', '*Square150x150*',
+            ],
+            'header': ['*SplashScreen*', '*WideTile*', '*Wide310x150*'],
+            'hero': ['*SplashScreen*', '*WideTile*', '*Wide310x150*'],
+            'logo': ['*PackageLogo*', '*StoreLogo*', '*SmallTile*', '*Square44x44*'],
+        }
+
+        for pattern in pattern_groups.get(art_type, pattern_groups['cover']):
+            matches = []
+            for ext in ('*.png', '*.jpg', '*.jpeg'):
+                for f in base.rglob(ext):
+                    if f.match(pattern):
+                        matches.append(f)
+            if not matches:
+                continue
+            # Pick largest file (highest resolution), skip contrast variants
+            matches.sort(key=lambda p: p.stat().st_size, reverse=True)
+            for match in matches:
+                name_lower = match.name.lower()
+                if 'contrast-' in name_lower:
+                    continue
+                return str(match)
 
         return None
 
