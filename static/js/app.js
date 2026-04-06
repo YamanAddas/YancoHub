@@ -312,13 +312,13 @@ async function checkCatbyteStatus() {
 // ── Sort Options ─────────────────────────────────────────────────────────
 
 const SORT_OPTIONS = {
-    az:       { label: 'A \u2192 Z',       icon: '\u2195' },
-    za:       { label: 'Z \u2192 A',       icon: '\u2195' },
-    recent:   { label: 'Recent',            icon: '\u23F0' },
-    playtime: { label: 'Most Played',       icon: '\u23F1' },
-    rating:   { label: 'Top Rated',         icon: '\u2B50' },
-    year:     { label: 'Release Year',      icon: '\uD83D\uDCC5' },
-    random:   { label: 'Random',            icon: '\uD83C\uDFB2' },
+    az:       { label: 'A \u2192 Z',       icon: '<i class="ph ph-sort-ascending"></i>' },
+    za:       { label: 'Z \u2192 A',       icon: '<i class="ph ph-sort-descending"></i>' },
+    recent:   { label: 'Recent',            icon: '<i class="ph ph-clock-counter-clockwise"></i>' },
+    playtime: { label: 'Most Played',       icon: '<i class="ph ph-timer"></i>' },
+    rating:   { label: 'Top Rated',         icon: '<i class="ph ph-star"></i>' },
+    year:     { label: 'Release Year',      icon: '<i class="ph ph-calendar"></i>' },
+    random:   { label: 'Random',            icon: '<i class="ph ph-shuffle"></i>' },
 };
 
 function applySortOrder(games) {
@@ -478,19 +478,19 @@ const RETRO_SYSTEM_ICONS = {
 
 // ── Brand metadata for hex panel tabs ────────────────────────────────────
 
-const BRAND_SVG = {
-    all: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>`,
-    favorites: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.56 5.82 22 7 14.14l-5-4.87 6.91-1.01z"/></svg>`,
-    recent: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg>`,
-    steam: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-9.95 11.08l5.34 2.2a2.85 2.85 0 0 1 1.6-.49h.12l2.39-3.46v-.05a3.8 3.8 0 1 1 3.8 3.8h-.09l-3.4 2.43a2.86 2.86 0 0 1-5.67.42L1.7 16.24A10 10 0 1 0 12 2zm-4.53 15.8a2.15 2.15 0 0 0 2.27-1.08l-1.18-.49a1.58 1.58 0 0 1-2.06.78 1.59 1.59 0 0 1-.83-2.08l-1.1-.45a2.86 2.86 0 0 0 2.9 3.32zm9.16-6.18a2.54 2.54 0 1 0-2.54-2.54 2.54 2.54 0 0 0 2.54 2.54z"/></svg>`,
-    epic: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3.537 0C2.165 0 1.66.506 1.66 1.879V18.12c0 1.374.504 1.88 1.877 1.88h3.965v-1.21H4.283c-.69 0-.943-.252-.943-.942V2.15c0-.69.254-.94.943-.94h11.434c.69 0 .943.25.943.94v15.7c0 .69-.253.943-.943.943h-2.5l-1.51 1.21h4.764c1.373 0 1.877-.506 1.877-1.88V1.88C18.348.506 17.844 0 16.47 0H3.537zM6.1 6.4v7.2h5.2v-1.2H7.4v-1.8h3.2V9.4H7.4V7.6h3.9V6.4H6.1z"/></svg>`,
-    gog: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 17.5c-4.14 0-7.5-3.36-7.5-7.5S7.86 4.5 12 4.5s7.5 3.36 7.5 7.5-3.36 7.5-7.5 7.5zm0-12a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9zm0 6.75a2.25 2.25 0 1 1 0-4.5 2.25 2.25 0 0 1 0 4.5z"/></svg>`,
-    xbox: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6.19 5.18c-.75.75-1.33 1.6-1.75 2.52 1.06-.36 2.44.14 4.16 1.68 1.37 1.23 2.55 2.78 3.4 4.1.85-1.32 2.03-2.87 3.4-4.1 1.72-1.54 3.1-2.04 4.16-1.68-.42-.92-1-1.77-1.75-2.52-1.28.23-2.79 1.1-4.4 2.74-.47.47-.91.97-1.3 1.46l-.11.14-.11-.14c-.39-.49-.83-.99-1.3-1.46-1.61-1.64-3.12-2.51-4.4-2.74zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 1.5c1.83 0 3.51.59 4.89 1.58-1.53-.13-3.2.78-4.89 2.49-1.69-1.71-3.36-2.62-4.89-2.49A8.46 8.46 0 0 1 12 3.5zM3.5 12c0-1.33.32-2.59.88-3.71.01 1.56 1.2 3.32 3.07 5 1.36 1.22 2.82 2.32 3.87 3.07-.3.27-.83.68-1.2.89C7.48 18.98 3.5 16.11 3.5 12zm8.5 8.5c-.56 0-1.1-.06-1.63-.16.59-.33 1.2-.76 1.63-1.17.43.41 1.04.84 1.63 1.17-.53.1-1.07.16-1.63.16zm5.38-3.25c-.37-.21-.9-.62-1.2-.89 1.05-.75 2.51-1.85 3.87-3.07 1.87-1.68 3.06-3.44 3.07-5 .56 1.12.88 2.38.88 3.71 0 4.11-3.98 6.98-6.62 5.25z"/></svg>`,
-    ea: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 5v14h18V5H3zm16.5 12.5h-15V6.5h15v11zM6 9h5.5v1.5h-4V12h3.5v1.5H7.5V15h4v1.5H6V9zm7 0h2.2l1.8 4 1.8-4H21v7.5h-1.5v-5l-1.7 3.5h-1.1L15 11v5.5h-2V9z"/></svg>`,
-    ubisoft: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18.25c-1.41 0-2.73-.36-3.88-1 .49.13 1.01.2 1.54.2 3.39 0 6.14-2.75 6.14-6.14 0-2.27-1.23-4.25-3.07-5.31.33-.06.67-.1 1.01-.1 3.59 0 6.51 2.91 6.51 6.51 0 3.21-2.32 5.88-5.38 6.42-.28.04-.57.06-.87.08-.65.22-1.3.34-2 .34zm-3.43-2.3A5.14 5.14 0 0 1 6.8 13.5c0-2.85 2.3-5.16 5.16-5.16.77 0 1.5.17 2.16.47a5.15 5.15 0 0 1 2.99 4.69c0 1.98-1.12 3.7-2.76 4.55a4.37 4.37 0 0 0 .56-2.14c0-2.43-1.97-4.4-4.4-4.4a4.41 4.41 0 0 0-4.4 4.4c0 .74.19 1.43.52 2.04zm1.87.3a3.19 3.19 0 0 1-1.4-2.64 3.2 3.2 0 0 1 3.2-3.2 3.2 3.2 0 0 1 3.2 3.2c0 .98-.44 1.85-1.13 2.43a3.62 3.62 0 0 0 1.34-2.82c0-2-1.63-3.63-3.63-3.63A3.64 3.64 0 0 0 8.4 15.2c0 1.19.58 2.24 1.47 2.9-.15-.05-.3-.12-.43-.2z"/></svg>`,
-    battlenet: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.73 14.24c-.44.7-1.26 1.05-2.12.87-.48-.1-.91-.36-1.27-.7l-.18.3c.55.67.8 1.54.6 2.4-.12.5-.4.93-.78 1.25A8.46 8.46 0 0 1 12 20.5a8.46 8.46 0 0 1-1.97-.23c.12-.35.15-.73.06-1.12a2.15 2.15 0 0 0-1.32-1.5l.05-.33c-.87.07-1.72-.35-2.17-1.12-.25-.44-.33-.93-.26-1.41l-.28-.16c-.35.77-.99 1.36-1.79 1.59a8.46 8.46 0 0 1-.82-3.22c.37.04.75-.02 1.1-.2a2.15 2.15 0 0 0 1.06-1.73h.34c.32.86 1.1 1.47 2.04 1.54.52.04 1.02-.1 1.43-.37l.28.16c-.2.86-.02 1.77.55 2.45.32.38.74.64 1.2.78v.35c-.87.28-1.72.12-2.38-.36a8.46 8.46 0 0 0 2.86 1c.3-.25.55-.56.71-.93a2.15 2.15 0 0 0-.27-2.02l.23-.26c.72.57 1.66.72 2.52.36.48-.2.87-.55 1.13-.98l.3.12c.04.91-.37 1.79-1.1 2.35a8.46 8.46 0 0 0 1.89-2.47c-.37.02-.75-.07-1.08-.28a2.15 2.15 0 0 0-.8-1.82l-.1-.34z"/></svg>`,
-    local: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`,
-    retro: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.5 2h-11A5.5 5.5 0 0 0 1 7.5v9A5.5 5.5 0 0 0 6.5 22h11a5.5 5.5 0 0 0 5.5-5.5v-9A5.5 5.5 0 0 0 17.5 2zM9 13H7v2a1 1 0 0 1-2 0v-2H3a1 1 0 0 1 0-2h2V9a1 1 0 0 1 2 0v2h2a1 1 0 0 1 0 2zm5 2a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm4-2a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg>`,
+const BRAND_ICON = {
+    all:       '<i class="ph-bold ph-squares-four"></i>',
+    favorites: '<i class="ph-fill ph-star"></i>',
+    recent:    '<i class="ph ph-clock-counter-clockwise"></i>',
+    steam:     '<i class="ph-bold ph-steam-logo"></i>',
+    epic:      '<i class="ph-bold ph-mountain"></i>',
+    gog:       '<i class="ph-bold ph-planet"></i>',
+    xbox:      '<i class="ph-bold ph-x-circle"></i>',
+    ea:        '<i class="ph-bold ph-lightning"></i>',
+    ubisoft:   '<i class="ph-bold ph-spiral"></i>',
+    battlenet: '<i class="ph-bold ph-globe-hemisphere-west"></i>',
+    local:     '<i class="ph ph-folder-open"></i>',
+    retro:     '<i class="ph-fill ph-game-controller"></i>',
 };
 
 const TAB_META = {
@@ -519,11 +519,11 @@ const SMART_META = {
     smart_completed: { name: 'Completed',          colors: ['#0a3a2a', '#051f15'], icon: '\u2714' },
 };
 
-const SMART_SVG = {
-    smart_unplayed:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>`,
-    smart_continue:  `<svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>`,
-    smart_backlog:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`,
-    smart_completed: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
+const SMART_ICON = {
+    smart_unplayed:  '<i class="ph ph-sparkle"></i>',
+    smart_continue:  '<i class="ph-fill ph-play"></i>',
+    smart_backlog:   '<i class="ph ph-books"></i>',
+    smart_completed: '<i class="ph ph-check-circle"></i>',
 };
 
 // Genre color palette (rotating)
@@ -633,7 +633,7 @@ function buildConsolePanel() {
 function _addHexTab(container, tab, count) {
     const meta = TAB_META[tab];
     if (!meta) return;
-    const svg = BRAND_SVG[tab] || '';
+    const svg = BRAND_ICON[tab] || '';
     const colors = meta.colors;
 
     const wrap = document.createElement('div');
@@ -689,7 +689,7 @@ function _addRetroHexTab(container, sys, count) {
 function _addSmartHexTab(container, key, count) {
     const meta = SMART_META[key];
     if (!meta) return;
-    const svg = SMART_SVG[key] || '';
+    const svg = SMART_ICON[key] || '';
 
     const wrap = document.createElement('div');
     wrap.className = 'console-hex-wrap';
@@ -725,12 +725,7 @@ function _addGenreHexTab(container, genre, count, index) {
         <div class="console-hex">
             <div class="console-hex-art" style="background: linear-gradient(135deg, ${colors[0]}, ${colors[1]});"></div>
             <div class="console-hex-overlay"></div>
-            <div class="console-hex-brand-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                    <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
-                    <line x1="7" y1="7" x2="7.01" y2="7"/>
-                </svg>
-            </div>
+            <div class="console-hex-brand-icon"><i class="ph ph-tag"></i></div>
             <div class="console-hex-glass"></div>
             <div class="console-hex-label">
                 <span class="console-hex-name">${genre}</span>
@@ -757,7 +752,7 @@ function buildSortBar() {
         btn.className = `sort-btn${state.sortBy === key ? ' active' : ''}`;
         btn.dataset.sort = key;
         btn.title = opt.label;
-        btn.textContent = opt.icon;
+        btn.innerHTML = opt.icon;
         bar.appendChild(btn);
     }
 }
