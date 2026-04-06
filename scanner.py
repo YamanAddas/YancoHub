@@ -618,50 +618,89 @@ class GameScanner:
 
         logger.info(f"GOG: found {count} games")
 
-    # ── Xbox / Game Pass ────────────────────────────────────────────────────
+    # ── Xbox / Game Pass / Microsoft Store ─────────────────────────────────
+
+    # System/utility packages that are never games
+    _MS_BLOCKLIST = frozenset({
+        'microsoft.xboxtoaster', 'microsoft.xboxspeechtotextoverlay',
+        'microsoft.xbox.tcui', 'microsoft.xboxgameoverlay',
+        'microsoft.xboxidentityprovider', 'microsoft.xboxgamingoverlay',
+        'microsoft.gamingservices', 'microsoft.gamingapp',
+        'microsoft.windowsstore', 'microsoft.storepurchaseapp',
+        'microsoft.desktopappinstaller', 'microsoft.windowsterminal',
+        'microsoft.windowscalculator', 'microsoft.windowsalarms',
+        'microsoft.windowscamera', 'microsoft.windowsmaps',
+        'microsoft.windowsnotepad', 'microsoft.windowssoundrecorder',
+        'microsoft.windowsfeedbackhub', 'microsoft.windows.photos',
+        'microsoft.screensketch', 'microsoft.paint', 'microsoft.gethelp',
+        'microsoft.people', 'microsoft.zunemusic', 'microsoft.zunevideo',
+        'microsoft.bingweather', 'microsoft.bingnews', 'microsoft.copilot',
+        'microsoft.yourphone', 'microsoft.whiteboard', 'microsoft.secui',
+        'microsoft.sechealthui', 'microsoft.mixedreality.portal',
+        'microsoft.powertoys', 'microsoft.powerautomatedesktop',
+        'microsoft.microsoftofficehub', 'microsoft.windows.devhome',
+        'microsoft.startexperiencesapp',
+        # Media extensions / runtimes
+        'microsoft.mpeg2videoextension', 'microsoft.vp9videoextensions',
+        'microsoft.webpimageextension', 'microsoft.webmediaextensions',
+        'microsoft.av1videoextension', 'microsoft.heifimagextension',
+        'microsoft.avcencodervideoextension', 'microsoft.heifimageextension',
+        'microsoft.applicationcompatibilityenhancements',
+        'microsoft.widgetsplatformruntime', 'microsoft.winget.source',
+    })
+
+    # Publisher prefixes that are never game publishers
+    _MS_SKIP_PREFIXES = (
+        'microsoftwindows.', 'windows.', 'microsoft.ink.',
+        'microsoft.language', 'microsoft.net.',
+        'microsoftcorporationii.winappruntime',
+    )
+
+    # Known game publishers on the Microsoft Store
+    _MS_GAME_PUBLISHERS = frozenset({
+        'bethesdasoftworks', 'ea', 'electronicarts', 'ubisoft',
+        'activision', 'riotgames', 'epicgames', 'mojang',
+        'xbox', 'playdead', 'doublefine', 'obsidian',
+        'inxile', 'rareltd', 'playground', 'turn10',
+        '343industries', 'ninjatheoryprod', 'undead',
+        'devaborealispublishing', 'moonprod', 'klei',
+        'supergiantgames', 'coffeestainstudios',
+    })
 
     def _scan_xbox(self):
-        """Scan Xbox/Game Pass for installed games."""
+        """Scan Xbox/Game Pass and Microsoft Store for installed games."""
         count = 0
+        seen_ids = set()
 
-        # Scan XboxGames folder
-        xbox_dirs = [
-            Path("C:/XboxGames"),
-            Path(os.environ.get('LOCALAPPDATA', '')) / "Packages",
-        ]
-
-        for xbox_dir in xbox_dirs:
-            if not xbox_dir.exists():
-                continue
-            for game_dir in xbox_dir.iterdir():
+        # 1. Scan XboxGames folder (Xbox Game Pass installs)
+        xbox_games_dir = Path("C:/XboxGames")
+        if xbox_games_dir.exists():
+            for game_dir in xbox_games_dir.iterdir():
                 if not game_dir.is_dir():
                     continue
-                name = game_dir.name
-                # Skip system packages
-                if name.startswith('Microsoft.') and 'Game' not in name:
-                    continue
-                if name.startswith(('windows.', 'Windows.', 'MicrosoftWindows')):
-                    continue
-
                 content_dir = game_dir / "Content"
                 if content_dir.exists() or (game_dir / "gamelaunchhelper.exe").exists():
-                    self.games.append({
-                        'id': f"xbox_{make_game_id('xbox', name)}",
-                        'name': self._clean_xbox_name(name),
-                        'source': 'xbox',
-                        'install_dir': str(game_dir),
-                        'size': 0,
-                        'artwork': {},
-                        'launch_cmd': f'shell:AppsFolder\\{name}!App',
-                    })
-                    count += 1
+                    name = game_dir.name
+                    gid = f"xbox_{make_game_id('xbox', name)}"
+                    if gid not in seen_ids:
+                        self.games.append({
+                            'id': gid,
+                            'name': self._clean_xbox_name(name),
+                            'source': 'xbox',
+                            'install_dir': str(game_dir),
+                            'size': 0,
+                            'artwork': {},
+                            'launch_cmd': f'shell:AppsFolder\\{name}!App',
+                        })
+                        seen_ids.add(gid)
+                        count += 1
 
-        # Also try PowerShell to get Xbox apps
+        # 2. PowerShell scan — all Store apps, then filter to games
         try:
             result = subprocess.run(
                 ['powershell', '-Command',
                  'Get-AppxPackage | Where-Object {$_.IsFramework -eq $false -and $_.SignatureKind -eq "Store"} | Select-Object Name, PackageFamilyName, InstallLocation | ConvertTo-Json'],
-                capture_output=True, text=True, timeout=15
+                capture_output=True, text=True, timeout=20
             )
             if result.returncode == 0 and result.stdout.strip():
                 packages = json.loads(result.stdout)
@@ -669,24 +708,65 @@ class GameScanner:
                     packages = [packages]
                 for pkg in packages:
                     name = pkg.get('Name', '')
-                    # Filter to likely games (heuristic)
-                    if any(x in name.lower() for x in ['game', 'xbox', 'ea.', 'bethesda', 'minecraft']):
-                        pfn = pkg.get('PackageFamilyName', '')
-                        if not any(g['id'] == f"xbox_{make_game_id('xbox', pfn)}" for g in self.games):
-                            self.games.append({
-                                'id': f"xbox_{make_game_id('xbox', pfn)}",
-                                'name': self._clean_xbox_name(name),
-                                'source': 'xbox',
-                                'install_dir': pkg.get('InstallLocation', ''),
-                                'size': 0,
-                                'artwork': {},
-                                'launch_cmd': f'shell:AppsFolder\\{pfn}!App',
-                            })
-                            count += 1
-        except Exception as e:
-            logger.debug(f"Xbox PowerShell scan failed: {e}")
+                    name_lower = name.lower()
 
-        logger.info(f"Xbox/Game Pass: found {count} games")
+                    # Skip blocklisted system packages
+                    if name_lower in self._MS_BLOCKLIST:
+                        continue
+                    # Skip known non-game prefixes
+                    if name_lower.startswith(self._MS_SKIP_PREFIXES):
+                        continue
+                    # Skip HP, Intel, NVIDIA, DTS, Apple hardware/utility apps
+                    if name_lower.startswith(('ad2f1837.', 'appup.', 'nvidiacorp.',
+                                              'dtsinc.', 'appleinc.', 'clipchamp.')):
+                        continue
+                    # Skip generic store/runtime packages
+                    if 'runtime' in name_lower or 'extension' in name_lower:
+                        continue
+
+                    # Include if: known game publisher, or has game-like name,
+                    # or is a Microsoft game (Solitaire, Jigsaw, etc.)
+                    publisher = name.split('.')[0].lower() if '.' in name else ''
+                    is_game = (
+                        publisher in self._MS_GAME_PUBLISHERS
+                        or any(kw in name_lower for kw in [
+                            'solitaire', 'jigsaw', 'mahjong', 'minesweeper',
+                            'minecraft', 'forza', 'halo', 'gears', 'starfield',
+                            'flightsimulator', 'seaofthieves',
+                        ])
+                        or 'game' in name_lower and 'gaming' not in name_lower
+                            and 'gameoverlay' not in name_lower
+                            and 'gamingservices' not in name_lower
+                            and 'gamingapp' not in name_lower
+                        # Third-party Store apps (but not themes/wallpapers)
+                        or (name_lower.startswith('msstorefast.')
+                            and 'theme' not in name_lower
+                            and 'wallpaper' not in name_lower)
+                    )
+
+                    if not is_game:
+                        continue
+
+                    pfn = pkg.get('PackageFamilyName', '')
+                    gid = f"xbox_{make_game_id('xbox', pfn or name)}"
+                    if gid in seen_ids:
+                        continue
+
+                    self.games.append({
+                        'id': gid,
+                        'name': self._clean_xbox_name(name),
+                        'source': 'xbox',
+                        'install_dir': pkg.get('InstallLocation', ''),
+                        'size': 0,
+                        'artwork': {},
+                        'launch_cmd': f'shell:AppsFolder\\{pfn}!App' if pfn else f'shell:AppsFolder\\{name}!App',
+                    })
+                    seen_ids.add(gid)
+                    count += 1
+        except Exception as e:
+            logger.debug(f"Xbox/MS Store PowerShell scan failed: {e}")
+
+        logger.info(f"Xbox/MS Store: found {count} games")
 
     def _clean_xbox_name(self, raw_name):
         """Clean up Xbox package name to readable title."""
