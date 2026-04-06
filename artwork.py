@@ -202,10 +202,12 @@ class ArtworkScraper:
         ])
 
         art_map = {
-            'cover': [f'{appid}_library_600x900.jpg', f'{appid}_library_600x900_2x.jpg'],
-            'header': [f'{appid}_header.jpg'],
-            'hero': [f'{appid}_library_hero.jpg'],
-            'logo': [f'{appid}_logo.png'],
+            'cover': [f'{appid}/library_600x900.jpg', f'{appid}/library_600x900_2x.jpg',
+                      f'{appid}_library_600x900.jpg', f'{appid}_library_600x900_2x.jpg'],
+            'header': [f'{appid}/library_header.jpg', f'{appid}/header.jpg',
+                       f'{appid}_header.jpg'],
+            'hero': [f'{appid}/library_hero.jpg', f'{appid}_library_hero.jpg'],
+            'logo': [f'{appid}/logo.png', f'{appid}_logo.png'],
         }
 
         patterns = art_map.get(art_type, [])
@@ -654,10 +656,84 @@ class ArtworkScraper:
             url = f'{LIBRETRO_THUMB}/{quote(libretro_system)}/{lt_type}/{quote(clean_name)}.png'
             return url
 
-        # SteamGridDB (PC games from other stores)
-        if self._sgdb_key and source in ('epic', 'gog', 'ea', 'ubisoft', 'battlenet', 'local'):
+        # Non-Steam PC games: search Steam Store by name to find appid, then use CDN
+        if source in ('epic', 'gog', 'ea', 'ubisoft', 'battlenet', 'local', 'xbox', 'amazon'):
+            appid = self._search_steam_appid(game_name)
+            if appid:
+                urls = {
+                    'cover': f'{STEAM_CDN}/{appid}/library_600x900_2x.jpg',
+                    'header': f'{STEAM_CDN}/{appid}/header.jpg',
+                    'hero': f'{STEAM_CDN}/{appid}/library_hero.jpg',
+                    'logo': f'{STEAM_CDN}/{appid}/logo.png',
+                }
+                return urls.get(art_type)
+
+        # SteamGridDB (fallback if Steam search found nothing)
+        if self._sgdb_key and source in ('epic', 'gog', 'ea', 'ubisoft', 'battlenet', 'local', 'xbox', 'amazon'):
             return self._steamgriddb_search(game_name, art_type)
 
+        return None
+
+    # Cache: game name → Steam appid (avoids repeated API calls)
+    _steam_appid_cache: dict[str, str | None] = {}
+
+    # Suffixes to strip when searching for artwork (store bundles, editions)
+    _NAME_STRIP_SUFFIXES = [
+        ' - Amazon Prime', ' - Prime Gaming', ' - Humble Bundle',
+        ' - GOG.com', ' - GOG', ' - Epic', ' (GOG)', ' (Epic)',
+    ]
+
+    def _search_steam_appid(self, game_name: str) -> str | None:
+        """Search Steam Store for a game by name and return its appid.
+
+        Uses the free store search API (no key needed). Results are cached
+        in memory to avoid repeated lookups. Strips common bundle/store
+        suffixes before searching.
+        """
+        name_lower = game_name.lower().strip()
+        if name_lower in self._steam_appid_cache:
+            return self._steam_appid_cache[name_lower]
+
+        # Try the original name first, then stripped versions
+        search_names = [game_name]
+        for suffix in self._NAME_STRIP_SUFFIXES:
+            if game_name.lower().endswith(suffix.lower()):
+                stripped = game_name[:len(game_name) - len(suffix)].strip()
+                if stripped and stripped not in search_names:
+                    search_names.append(stripped)
+
+        for search_name in search_names:
+            try:
+                resp = self._session.get(
+                    'https://store.steampowered.com/api/storesearch/',
+                    params={'term': search_name, 'l': 'english', 'cc': 'US'},
+                    timeout=8,
+                )
+                if resp.status_code != 200:
+                    continue
+
+                data = resp.json()
+                items = data.get('items', [])
+                if not items:
+                    continue
+
+                # Try exact name match first, then take the first result
+                search_lower = search_name.lower()
+                for item in items:
+                    if item.get('name', '').lower() == search_lower:
+                        appid = str(item['id'])
+                        self._steam_appid_cache[name_lower] = appid
+                        return appid
+
+                # First result as fallback
+                appid = str(items[0]['id'])
+                self._steam_appid_cache[name_lower] = appid
+                return appid
+
+            except Exception as e:
+                logger.debug(f"Steam store search failed for '{search_name}': {e}")
+
+        self._steam_appid_cache[name_lower] = None
         return None
 
     def _clean_libretro_name(self, name):
