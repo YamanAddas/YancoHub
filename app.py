@@ -19,6 +19,7 @@ from scanner import GameScanner, discover_launchbox_emulators
 from emusetup import EmulatorSetup
 from userdata import UserData
 from catbyte import CatByte
+from chathistory import ChatHistory
 from accounts import SteamAccount, GogGalaxyDB, EpicCatalogDB, EpicAccount, resolve_steam_vanity_url
 from metadata import MetadataFetcher
 from artwork import ArtworkScraper
@@ -49,6 +50,7 @@ app = Flask(__name__,
 scanner = GameScanner()
 userdata = UserData()
 catbyte = CatByte()
+chat_history = ChatHistory()
 metadata_fetcher = MetadataFetcher()
 artwork_scraper = ArtworkScraper(
     launchbox_path=userdata.get_settings().get('launchbox_path', ''),
@@ -1054,12 +1056,80 @@ def api_catbyte_test():
     return jsonify(catbyte.test_connection())
 
 
+@app.route('/api/catbyte/openclaw-info')
+def api_catbyte_openclaw_info():
+    """Get OpenClaw routing info: primary model and available models."""
+    return jsonify(catbyte.get_openclaw_info())
+
+
+@app.route('/api/catbyte/sessions', methods=['GET'])
+def api_catbyte_sessions():
+    """List all chat sessions (summaries, no messages)."""
+    sessions = chat_history.list_sessions()
+    active_id = chat_history.get_active_session_id()
+    return jsonify({'sessions': sessions, 'active_session_id': active_id})
+
+
+@app.route('/api/catbyte/sessions', methods=['POST'])
+def api_catbyte_session_create():
+    """Create a new chat session."""
+    data = request.get_json() or {}
+    game_context = data.get('game_context', '')
+    model = data.get('model', catbyte.get_model())
+    if not game_context:
+        _, current_game_id = _get_active()
+        if current_game_id:
+            with _library_lock:
+                game = game_index.get(current_game_id, {})
+            game_context = game.get('name', '')
+    session = chat_history.create_session(game_context=game_context, model=model)
+    return jsonify(session)
+
+
+@app.route('/api/catbyte/sessions/<session_id>', methods=['GET'])
+def api_catbyte_session_get(session_id):
+    """Get a full chat session with all messages."""
+    session = chat_history.get_session(session_id)
+    if not session:
+        return jsonify({'error': 'Session not found'}), 404
+    return jsonify(session)
+
+
+@app.route('/api/catbyte/sessions/<session_id>', methods=['DELETE'])
+def api_catbyte_session_delete(session_id):
+    """Delete a chat session."""
+    if chat_history.delete_session(session_id):
+        return jsonify({'status': 'ok'})
+    return jsonify({'error': 'Session not found'}), 404
+
+
+@app.route('/api/catbyte/sessions/<session_id>', methods=['PATCH'])
+def api_catbyte_session_update(session_id):
+    """Rename or toggle pin on a session."""
+    data = request.get_json() or {}
+    if 'title' in data:
+        chat_history.rename_session(session_id, data['title'])
+    if 'pinned' in data:
+        chat_history.toggle_pin(session_id)
+    session = chat_history.get_session(session_id)
+    if not session:
+        return jsonify({'error': 'Session not found'}), 404
+    return jsonify(session)
+
+
+@app.route('/api/catbyte/sessions/<session_id>/active', methods=['POST'])
+def api_catbyte_session_set_active(session_id):
+    """Set a session as the active one."""
+    chat_history.set_active_session(session_id)
+    return jsonify({'status': 'ok'})
+
+
 @app.route('/api/catbyte/chat', methods=['POST'])
 def api_catbyte_chat():
     data = request.get_json() or {}
     message = data.get('message', '')
+    session_id = data.get('session_id', '')
     game_context = data.get('game_context', '')
-    history = data.get('history', [])
 
     if not message:
         return jsonify({'error': 'Message required'}), 400
@@ -1072,8 +1142,24 @@ def api_catbyte_chat():
                 game = game_index.get(current_game_id, {})
             game_context = game.get('name', '')
 
+    # Session-based: persist messages and load history from session
+    history = []
+    if session_id:
+        chat_history.add_message(session_id, 'user', message)
+        history = chat_history.get_messages_for_llm(session_id, limit=20)
+        # Remove last message (it's the current one, sent separately)
+        history = history[:-1]
+
     result = catbyte.chat(message, game_context=game_context, history=history)
-    return jsonify(result)
+
+    if session_id and result.get('status') != 'offline':
+        chat_history.add_message(session_id, 'assistant', result.get('response', ''))
+        # Auto-generate title after first exchange
+        session = chat_history.get_session(session_id)
+        if session and len(session.get('messages', [])) == 2:
+            _auto_title_session(session_id, session.get('messages', []))
+
+    return jsonify({**result, 'session_id': session_id})
 
 
 @app.route('/api/catbyte/chat-vision', methods=['POST'])
@@ -1081,8 +1167,8 @@ def api_catbyte_chat_vision():
     data = request.get_json() or {}
     message = data.get('message', '')
     image = data.get('image', '')
+    session_id = data.get('session_id', '')
     game_context = data.get('game_context', '')
-    history = data.get('history', [])
 
     if not message or not image:
         return jsonify({'error': 'Message and image required'}), 400
@@ -1094,8 +1180,34 @@ def api_catbyte_chat_vision():
                 game = game_index.get(current_game_id, {})
             game_context = game.get('name', '')
 
+    history = []
+    if session_id:
+        chat_history.add_message(session_id, 'user', message)
+        history = chat_history.get_messages_for_llm(session_id, limit=10)
+        history = history[:-1]
+
     result = catbyte.chat_vision(message, image, game_context=game_context, history=history)
-    return jsonify(result)
+
+    if session_id and result.get('status') != 'offline':
+        chat_history.add_message(session_id, 'assistant', result.get('response', ''))
+
+    return jsonify({**result, 'session_id': session_id})
+
+
+def _auto_title_session(session_id: str, messages: list):
+    """Generate a title for a new session in a background thread."""
+    def _generate():
+        try:
+            title_result = catbyte.generate_title(messages)
+            title = title_result.get('title', '').strip()
+            if title and len(title) < 80:
+                chat_history.rename_session(session_id, title)
+                logger.info(f"Auto-titled session {session_id}: {title}")
+        except Exception as e:
+            logger.warning(f"Auto-title failed for {session_id}: {e}")
+
+    thread = threading.Thread(target=_generate, daemon=True)
+    thread.start()
 
 
 # ── Metadata ────────────────────────────────────────────────────────────────

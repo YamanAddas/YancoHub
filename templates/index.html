@@ -176,22 +176,41 @@
     <div class="catbyte-panel hidden" id="catbytePanel">
         <div class="catbyte-header">
             <div class="catbyte-avatar">🐱</div>
+            <div class="catbyte-model-pill" id="catbyteModelPill" title="Click to switch model">
+                <span id="catbyteModelName">model</span>
+                <i class="ph ph-caret-down"></i>
+                <div class="catbyte-model-dropdown hidden" id="catbyteModelDropdown"></div>
+            </div>
             <div class="catbyte-title">
-                <span>CatByte</span>
+                <span id="catbyteSessionTitle">CatByte</span>
                 <span class="catbyte-status" id="catbyteStatus">checking...</span>
             </div>
-            <button class="close-btn" id="closeCatbyte">&times;</button>
-        </div>
-        <div class="catbyte-messages" id="catbyteMessages">
-            <div class="chat-msg bot">
-                <div class="chat-bubble">Hey there! I'm CatByte, your gaming companion. Ask me anything about your games! 😺</div>
+            <div class="catbyte-header-actions">
+                <button class="catbyte-header-btn" id="btnNewChat" title="New conversation"><i class="ph-bold ph-plus"></i></button>
+                <button class="catbyte-header-btn" id="btnToggleSessions" title="Chat history"><i class="ph-bold ph-clock-counter-clockwise"></i></button>
+                <button class="catbyte-header-btn" id="closeCatbyte" title="Close"><i class="ph-bold ph-x"></i></button>
             </div>
         </div>
-        <div class="catbyte-hint">Ctrl+Shift+S to send screenshot</div>
-        <div class="catbyte-input-row">
-            <input type="text" class="catbyte-input" id="catbyteInput" placeholder="Ask CatByte...">
-            <button class="catbyte-screenshot" id="catbyteScreenshot" title="Send screenshot to CatByte">📸</button>
-            <button class="catbyte-send" id="catbyteSend">→</button>
+        <div class="catbyte-body">
+            <!-- Session sidebar (overlay drawer) -->
+            <div class="catbyte-sidebar-backdrop hidden" id="catbyteSidebarBackdrop"></div>
+            <div class="catbyte-sidebar hidden" id="catbyteSidebar">
+                <div class="catbyte-sidebar-header">
+                    <span>Conversations</span>
+                    <button class="catbyte-header-btn" id="closeSidebar"><i class="ph ph-x"></i></button>
+                </div>
+                <div class="catbyte-session-list" id="catbyteSessionList"></div>
+            </div>
+            <!-- Chat area -->
+            <div class="catbyte-chat-area">
+                <div class="catbyte-messages" id="catbyteMessages"></div>
+                <div class="catbyte-hint">Ctrl+Shift+S screenshot &middot; Shift+Enter newline</div>
+                <div class="catbyte-input-wrap">
+                    <textarea class="catbyte-input" id="catbyteInput" placeholder="Ask CatByte..." rows="1"></textarea>
+                    <button class="catbyte-screenshot-btn" id="catbyteScreenshot" title="Send screenshot"><i class="ph ph-camera"></i></button>
+                    <button class="catbyte-send-btn" id="catbyteSend"><i class="ph-bold ph-arrow-right"></i></button>
+                </div>
+            </div>
         </div>
     </div>
 

@@ -21,6 +21,11 @@ const state = {
     playtimes: {},
     stores: {},
     chatHistory: [],
+    chatSessionId: null,
+    chatSessions: [],
+    chatSidebarOpen: false,
+    catbyteModels: [],
+    catbyteCurrentModel: '',
     scanning: false,
     catbyteOnline: false,
     activeMood: null,
@@ -301,8 +306,12 @@ async function checkCatbyteStatus() {
     }
     const on = state.catbyteOnline;
     $('catbyteStatusDot').classList.toggle('online', on);
-    $('catbyteStatus').textContent = on ? (d && d.model ? `Online (${d.model.toUpperCase()})` : 'Online') : 'Offline';
+    $('catbyteStatus').textContent = on ? 'Online' : 'Offline';
     $('catbyteStatus').classList.toggle('online', on);
+    if (on && d && d.model) {
+        state.catbyteCurrentModel = d.model;
+        updateModelPill();
+    }
     $('btnCatbyte').classList.toggle('dimmed', !on);
     $('btnCatbyte').title = on ? 'CatByte AI (F10)' : 'CatByte offline — check Settings (F10)';
 }
@@ -1727,7 +1736,25 @@ function bindEvents() {
     $('closeCatbyte').addEventListener('click', () => $('catbytePanel').classList.add('hidden'));
     $('catbyteSend').addEventListener('click', sendCatbyteMessage);
     $('catbyteScreenshot').addEventListener('click', sendScreenshot);
-    $('catbyteInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendCatbyteMessage(); });
+    $('catbyteInput').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendCatbyteMessage(); }
+    });
+    $('btnNewChat').addEventListener('click', createNewChat);
+    $('btnToggleSessions').addEventListener('click', toggleChatSidebar);
+    $('closeSidebar').addEventListener('click', closeChatSidebar);
+    $('catbyteSidebarBackdrop').addEventListener('click', closeChatSidebar);
+    $('catbyteModelPill').addEventListener('click', toggleModelDropdown);
+    // Close model dropdown on outside click
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.catbyte-model-pill')) {
+            $('catbyteModelDropdown').classList.add('hidden');
+        }
+    });
+    // Esc to close sidebar
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && state.chatSidebarOpen) closeChatSidebar();
+    });
+    setupChatInput();
     $('dismissCatbyteInfo').addEventListener('click', () => $('catbyteInfoOverlay').classList.add('hidden'));
     $('btnOpenCatbyteSettings').addEventListener('click', () => {
         $('catbyteInfoOverlay').classList.add('hidden');
@@ -2011,49 +2038,522 @@ async function doSearch() {
 
 // ── CatByte ────────────────────────────────────────────────────────────────
 
-function toggleCatbyte() {
+// ── CatByte: Panel Toggle ─────────────────────────────────────────────────
+
+async function toggleCatbyte() {
     $('catbytePanel').classList.toggle('hidden');
     if (!$('catbytePanel').classList.contains('hidden')) {
-        $('catbyteInput').focus();
         checkCatbyteStatus();
+        loadChatModels();
+        await loadChatSessions();
+        // Auto-create or load active session
+        if (!state.chatSessionId) {
+            const sessions = state.chatSessions;
+            if (sessions.length > 0) {
+                // Restore last active
+                const resp = await fetch('/api/catbyte/sessions');
+                const data = await resp.json();
+                const activeId = data.active_session_id;
+                if (activeId && sessions.find(s => s.id === activeId)) {
+                    await selectChatSession(activeId);
+                } else {
+                    await selectChatSession(sessions[0].id);
+                }
+            } else {
+                renderEmptyState();
+            }
+        }
+        $('catbyteInput').focus();
     }
 }
 
+// ── CatByte: Session Management ───────────────────────────────────────────
+
+async function loadChatSessions() {
+    try {
+        const r = await fetch('/api/catbyte/sessions');
+        const data = await r.json();
+        state.chatSessions = data.sessions || [];
+    } catch { state.chatSessions = []; }
+    renderChatSidebar();
+}
+
+function renderChatSidebar() {
+    const list = $('catbyteSessionList');
+    if (!list) return;
+    if (state.chatSessions.length === 0) {
+        list.innerHTML = '<div style="padding:16px;text-align:center;font-size:11px;color:var(--text-dim)">No conversations yet</div>';
+        return;
+    }
+    list.innerHTML = state.chatSessions.map(s => {
+        const active = s.id === state.chatSessionId ? ' active' : '';
+        const pinIcon = s.pinned ? '<i class="ph ph-push-pin session-pin"></i>' : '';
+        const timeStr = formatTimeAgo(s.updated_at);
+        const preview = escapeHtml((s.preview || 'New conversation').slice(0, 40));
+        return `<div class="catbyte-session-item${active}" data-session-id="${escapeAttr(s.id)}">
+            ${pinIcon}
+            <div class="session-info">
+                <div class="session-title">${escapeHtml(s.title)}</div>
+                <div class="session-meta">${preview} &middot; ${timeStr}</div>
+            </div>
+            <div class="session-actions">
+                <button class="session-action-btn" data-action="pin" title="${s.pinned ? 'Unpin' : 'Pin'}"><i class="ph ph-push-pin"></i></button>
+                <button class="session-action-btn" data-action="delete" title="Delete"><i class="ph ph-trash"></i></button>
+            </div>
+        </div>`;
+    }).join('');
+
+    // Bind clicks
+    list.querySelectorAll('.catbyte-session-item').forEach(el => {
+        el.addEventListener('click', (e) => {
+            // Don't select if action button clicked
+            if (e.target.closest('.session-action-btn')) return;
+            selectChatSession(el.dataset.sessionId);
+            closeChatSidebar();
+        });
+    });
+    list.querySelectorAll('.session-action-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const sid = btn.closest('.catbyte-session-item').dataset.sessionId;
+            if (btn.dataset.action === 'delete') {
+                await deleteChatSession(sid);
+            } else if (btn.dataset.action === 'pin') {
+                await fetch(`/api/catbyte/sessions/${sid}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pinned: true }),
+                });
+                await loadChatSessions();
+            }
+        });
+    });
+}
+
+async function selectChatSession(sessionId) {
+    try {
+        const r = await fetch(`/api/catbyte/sessions/${sessionId}`);
+        const session = await r.json();
+        if (session.error) return;
+
+        state.chatSessionId = sessionId;
+        state.chatHistory = (session.messages || []).map(m => ({ role: m.role, content: m.content }));
+
+        // Update header title
+        const titleEl = $('catbyteSessionTitle');
+        if (titleEl) titleEl.textContent = session.title || 'CatByte';
+
+        // Render messages
+        const msgContainer = $('catbyteMessages');
+        msgContainer.innerHTML = '';
+
+        if (session.messages && session.messages.length > 0) {
+            renderMessagesWithGrouping(session.messages);
+        } else {
+            renderEmptyState();
+        }
+
+        // Mark active on server
+        fetch(`/api/catbyte/sessions/${sessionId}/active`, { method: 'POST' }).catch(() => {});
+
+        // Update sidebar active state
+        renderChatSidebar();
+    } catch (err) {
+        console.error('Failed to load session:', err);
+    }
+}
+
+function renderMessagesWithGrouping(messages) {
+    const container = $('catbyteMessages');
+    container.innerHTML = '';
+    let lastRole = null;
+    let lastDate = null;
+
+    messages.forEach((m, i) => {
+        const msgDate = formatDateLabel(m.ts);
+        if (msgDate !== lastDate) {
+            const sep = document.createElement('div');
+            sep.className = 'chat-date-sep';
+            sep.textContent = msgDate;
+            container.appendChild(sep);
+            lastDate = msgDate;
+            lastRole = null; // Reset grouping after date separator
+        }
+
+        const isGroupCont = m.role === lastRole;
+        const role = m.role === 'assistant' ? 'bot' : 'user';
+        const div = document.createElement('div');
+        div.className = `chat-msg ${role}${isGroupCont ? ' group-cont' : ''}`;
+        // Staggered entrance animation for session load
+        div.style.animationDelay = `${Math.min(i * 40, 400)}ms`;
+        div.classList.add('animate');
+
+        const bubbleContent = role === 'bot' ? renderMarkdown(m.content) : escapeHtml(m.content);
+        const timeStr = formatMessageTime(m.ts);
+        div.innerHTML = `<div class="chat-bubble">${bubbleContent}</div>
+            <div class="chat-bubble-time">${timeStr}</div>`;
+        container.appendChild(div);
+        lastRole = m.role;
+    });
+
+    // Scroll to bottom
+    requestAnimationFrame(() => {
+        container.scrollTop = container.scrollHeight;
+    });
+}
+
+async function createNewChat() {
+    const game = state.filteredGames[state.selectedIndex];
+    try {
+        const r = await fetch('/api/catbyte/sessions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                game_context: game?.name || '',
+                model: state.catbyteCurrentModel,
+            }),
+        });
+        const session = await r.json();
+        state.chatSessionId = session.id;
+        state.chatHistory = [];
+
+        $('catbyteSessionTitle').textContent = session.title || 'New conversation';
+        renderEmptyState();
+        await loadChatSessions();
+        closeChatSidebar();
+        $('catbyteInput').focus();
+    } catch (err) {
+        console.error('Failed to create session:', err);
+    }
+}
+
+async function deleteChatSession(sessionId) {
+    try {
+        await fetch(`/api/catbyte/sessions/${sessionId}`, { method: 'DELETE' });
+        if (state.chatSessionId === sessionId) {
+            state.chatSessionId = null;
+            state.chatHistory = [];
+            $('catbyteMessages').innerHTML = '';
+        }
+        await loadChatSessions();
+        // If deleted the active session, load another or show empty
+        if (!state.chatSessionId && state.chatSessions.length > 0) {
+            await selectChatSession(state.chatSessions[0].id);
+        } else if (!state.chatSessionId) {
+            renderEmptyState();
+        }
+    } catch (err) {
+        console.error('Failed to delete session:', err);
+    }
+}
+
+// ── CatByte: Sidebar Toggle ──────────────────────────────────────���───────
+
+function toggleChatSidebar() {
+    state.chatSidebarOpen = !state.chatSidebarOpen;
+    $('catbyteSidebar').classList.toggle('hidden', !state.chatSidebarOpen);
+    $('catbyteSidebarBackdrop').classList.toggle('hidden', !state.chatSidebarOpen);
+}
+
+function closeChatSidebar() {
+    state.chatSidebarOpen = false;
+    $('catbyteSidebar').classList.add('hidden');
+    $('catbyteSidebarBackdrop').classList.add('hidden');
+}
+
+// ── CatByte: Model Dropdown ──────────────────────────────────────────────
+
+async function loadChatModels() {
+    try {
+        const [modelsResp, configResp] = await Promise.all([
+            fetch('/api/catbyte/models'),
+            fetch('/api/catbyte/config'),
+        ]);
+        state.catbyteModels = await modelsResp.json();
+        const config = await configResp.json();
+        // Use configured model, or fall back to first available from backend
+        state.catbyteCurrentModel = config.model || (state.catbyteModels[0] || '');
+        updateModelPill();
+    } catch {
+        state.catbyteModels = [];
+    }
+}
+
+function updateModelPill() {
+    const nameEl = $('catbyteModelName');
+    if (!nameEl) return;
+    let display = state.catbyteCurrentModel || 'model';
+    // For OpenClaw aliases, show a cleaner name
+    if (display === 'openclaw' || display === 'openclaw/default') display = 'OpenClaw';
+    else if (display.startsWith('openclaw/')) display = display.replace('openclaw/', 'OC/');
+    nameEl.textContent = display.length > 16 ? display.slice(0, 14) + '\u2026' : display;
+    nameEl.title = state.catbyteCurrentModel;
+}
+
+async function toggleModelDropdown(e) {
+    e.stopPropagation();
+    const dd = $('catbyteModelDropdown');
+    const wasHidden = dd.classList.contains('hidden');
+    dd.classList.toggle('hidden');
+    if (wasHidden) {
+        dd.innerHTML = '<div class="catbyte-model-option" style="color:var(--text-dim);cursor:default">Loading...</div>';
+        try {
+            const [modelsResp, configResp] = await Promise.all([
+                fetch('/api/catbyte/models'),
+                fetch('/api/catbyte/config'),
+            ]);
+            state.catbyteModels = await modelsResp.json();
+            const config = await configResp.json();
+            // For OpenClaw, also fetch the real model info
+            if (config.backend === 'openclaw') {
+                try {
+                    const infoResp = await fetch('/api/catbyte/openclaw-info');
+                    state._openclawInfo = await infoResp.json();
+                } catch { state._openclawInfo = null; }
+            } else {
+                state._openclawInfo = null;
+            }
+        } catch { state.catbyteModels = []; }
+        renderModelDropdown();
+    }
+}
+
+function renderModelDropdown() {
+    const dd = $('catbyteModelDropdown');
+    if (state.catbyteModels.length === 0) {
+        dd.innerHTML = '<div class="catbyte-model-option" style="color:var(--text-dim);cursor:default">No models found</div>';
+        return;
+    }
+
+    const info = state._openclawInfo;
+
+    if (info && info.primary) {
+        // OpenClaw: show what model each alias routes to
+        let html = '';
+        // Show primary model info header
+        html += `<div style="padding:6px 12px 4px;font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px">Routes to: ${escapeHtml(info.primary)}</div>`;
+
+        state.catbyteModels.forEach(m => {
+            const active = m === state.catbyteCurrentModel ? ' active' : '';
+            html += `<div class="catbyte-model-option${active}" data-model="${escapeAttr(m)}">${escapeHtml(m)}</div>`;
+        });
+
+        // Show available models from OpenClaw config
+        if (info.available && info.available.length > 0) {
+            html += `<div style="padding:8px 12px 4px;font-size:10px;color:var(--text-dim);border-top:1px solid var(--border);margin-top:4px;text-transform:uppercase;letter-spacing:0.5px">Available in OpenClaw</div>`;
+            info.available.forEach(m => {
+                html += `<div class="catbyte-model-option" style="cursor:default;opacity:0.6" title="Managed by OpenClaw">${escapeHtml(m.alias || m.id)}</div>`;
+            });
+        }
+        dd.innerHTML = html;
+    } else {
+        // Other backends: show models directly
+        dd.innerHTML = state.catbyteModels.slice(0, 20).map(m => {
+            const active = m === state.catbyteCurrentModel ? ' active' : '';
+            return `<div class="catbyte-model-option${active}" data-model="${escapeAttr(m)}">${escapeHtml(m)}</div>`;
+        }).join('');
+    }
+
+    dd.querySelectorAll('.catbyte-model-option[data-model]').forEach(opt => {
+        opt.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const model = opt.dataset.model;
+            if (!model) return;
+            state.catbyteCurrentModel = model;
+            updateModelPill();
+            dd.classList.add('hidden');
+            await fetch('/api/catbyte/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model }),
+            });
+        });
+    });
+}
+
+// ── CatByte: Send Message ─────────────────────────────────────────────────
+
 async function sendCatbyteMessage() {
-    const msg = $('catbyteInput').value.trim();
+    const input = $('catbyteInput');
+    const msg = input.value.trim();
     if (!msg) return;
 
-    appendChat('user', msg);
-    $('catbyteInput').value = '';
+    // Auto-create session if needed
+    if (!state.chatSessionId) {
+        await createNewChat();
+        // Clear empty state if present
+        const empty = $('catbyteMessages').querySelector('.catbyte-empty');
+        if (empty) empty.remove();
+    }
+
+    appendChat('user', msg, Date.now() / 1000);
+    input.value = '';
+    input.style.height = 'auto';
     state.chatHistory.push({ role: 'user', content: msg });
 
-    const game = state.filteredGames[state.selectedIndex];
+    showTypingIndicator();
 
+    const game = state.filteredGames[state.selectedIndex];
     try {
         const r = await fetch('/api/catbyte/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 message: msg,
-                history: state.chatHistory.slice(-10),
+                session_id: state.chatSessionId,
                 game_context: game?.name || '',
             }),
         });
         const d = await r.json();
-        appendChat('bot', d.response);
+        hideTypingIndicator();
+        appendChat('bot', d.response, Date.now() / 1000);
         state.chatHistory.push({ role: 'assistant', content: d.response });
+
+        // Refresh sidebar for updated title/timestamp
+        loadChatSessions();
     } catch {
-        appendChat('bot', '\uD83D\uDE3F Connection error — check your AI backend in Settings.');
+        hideTypingIndicator();
+        appendChat('bot', '\uD83D\uDE3F Connection error \u2014 check your AI backend in Settings.', Date.now() / 1000);
     }
 }
 
-function appendChat(role, text) {
+function appendChat(role, text, ts) {
+    const container = $('catbyteMessages');
+    // Remove empty state if present
+    const empty = container.querySelector('.catbyte-empty');
+    if (empty) empty.remove();
+
+    // Check for message grouping
+    const lastMsg = container.querySelector('.chat-msg:last-of-type');
+    const lastRole = lastMsg?.classList.contains('bot') ? 'bot' : (lastMsg?.classList.contains('user') ? 'user' : null);
+    const currentRole = role === 'assistant' ? 'bot' : role;
+    const isGroupCont = lastRole === currentRole;
+
     const div = document.createElement('div');
-    div.className = `chat-msg ${role}`;
-    div.innerHTML = `<div class="chat-bubble">${escapeHtml(text)}</div>`;
-    $('catbyteMessages').appendChild(div);
-    $('catbyteMessages').scrollTop = $('catbyteMessages').scrollHeight;
+    div.className = `chat-msg ${currentRole}${isGroupCont ? ' group-cont' : ''} animate`;
+
+    const bubbleContent = currentRole === 'bot' ? renderMarkdown(text) : escapeHtml(text);
+    const timeStr = ts ? formatMessageTime(ts) : '';
+    div.innerHTML = `<div class="chat-bubble">${bubbleContent}</div>
+        <div class="chat-bubble-time">${timeStr}</div>`;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
 }
+
+// ── CatByte: Smart Features ───────────────────────────────────────────────
+
+function showTypingIndicator() {
+    const container = $('catbyteMessages');
+    const existing = container.querySelector('.typing-wrapper');
+    if (existing) return;
+    const div = document.createElement('div');
+    div.className = 'chat-msg bot animate typing-wrapper';
+    div.innerHTML = '<div class="typing-indicator"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></div>';
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+}
+
+function hideTypingIndicator() {
+    const el = $('catbyteMessages').querySelector('.typing-wrapper');
+    if (el) el.remove();
+}
+
+function renderEmptyState() {
+    const container = $('catbyteMessages');
+    container.innerHTML = `<div class="catbyte-empty">
+        <div class="catbyte-empty-avatar">😺</div>
+        <h3>Hey there, gamer!</h3>
+        <p>I'm CatByte, your gaming companion.<br>Ask me anything about your games!</p>
+        <div class="catbyte-quick-actions">
+            <button class="catbyte-quick-btn" data-prompt="Give me tips for the game I'm playing">Game tips</button>
+            <button class="catbyte-quick-btn" data-prompt="Help me optimize my PC for better gaming performance">Performance help</button>
+            <button class="catbyte-quick-btn" data-prompt="Help me set up retro emulation">Retro setup</button>
+        </div>
+    </div>`;
+    container.querySelectorAll('.catbyte-quick-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            $('catbyteInput').value = btn.dataset.prompt;
+            sendCatbyteMessage();
+        });
+    });
+}
+
+function renderMarkdown(text) {
+    let html = text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
+    // Code blocks (``` ... ```)
+    html = html.replace(/```(\w*)\n?([\s\S]*?)```/g,
+        '<pre class="chat-codeblock"><code class="lang-$1">$2</code></pre>');
+    // Inline code
+    html = html.replace(/`([^`]+)`/g, '<code class="chat-code">$1</code>');
+    // Bold + italic
+    html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    // Headers
+    html = html.replace(/^### (.+)$/gm, '<h4 class="chat-heading">$1</h4>');
+    html = html.replace(/^## (.+)$/gm, '<h3 class="chat-heading">$1</h3>');
+    // Unordered lists
+    html = html.replace(/^[*\-] (.+)$/gm, '<li>$1</li>');
+    // Links
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    // Double newline → paragraph break
+    html = html.replace(/\n\n/g, '<br><br>');
+    // Single newline → line break (but not inside pre)
+    html = html.replace(/\n/g, '<br>');
+
+    return html;
+}
+
+// ── CatByte: Time Formatting ──────────────────────────────────────────────
+
+function formatMessageTime(ts) {
+    if (!ts) return '';
+    const d = new Date(ts * 1000);
+    const now = new Date();
+    const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    if (d.toDateString() === now.toDateString()) return time;
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ', ' + time;
+}
+
+function formatDateLabel(ts) {
+    if (!ts) return '';
+    const d = new Date(ts * 1000);
+    const now = new Date();
+    if (d.toDateString() === now.toDateString()) return 'Today';
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+function formatTimeAgo(ts) {
+    if (!ts) return '';
+    const now = Date.now() / 1000;
+    const diff = now - ts;
+    if (diff < 60) return 'now';
+    if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+    if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+    if (diff < 172800) return 'yesterday';
+    if (diff < 604800) return Math.floor(diff / 86400) + 'd ago';
+    return new Date(ts * 1000).toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+// ── CatByte: Textarea Auto-expand ─────────────────────────────────────────
+
+function setupChatInput() {
+    const textarea = $('catbyteInput');
+    if (!textarea) return;
+    textarea.addEventListener('input', () => {
+        textarea.style.height = 'auto';
+        textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+    });
+}
+
+// ── CatByte: Screenshot ───────────────────────────────────────────────────
 
 async function sendScreenshot() {
     if (!state.catbyteOnline) return;
@@ -2064,32 +2564,33 @@ async function sendScreenshot() {
         canvas.height = window.innerHeight;
         const ctx = canvas.getContext('2d');
 
-        // Draw the starfield canvas first
         const starfield = document.getElementById('starfield');
         if (starfield) ctx.drawImage(starfield, 0, 0);
 
-        // For game screenshots during emulator play, grab the emulator canvas
         const emuCanvas = document.querySelector('#emuGame canvas');
         if (emuCanvas) {
             ctx.drawImage(emuCanvas, 0, 0, canvas.width, canvas.height);
         }
 
-        // Convert to base64 JPEG (smaller than PNG)
         const base64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
 
-        // Show a prompt for the user's question
         const question = prompt('What do you want to ask CatByte about this screenshot?');
         if (!question) return;
 
-        // Show in chat — open panel if hidden
         if ($('catbytePanel').classList.contains('hidden')) {
             $('catbytePanel').classList.remove('hidden');
         }
 
-        appendChat('user', '\uD83D\uDCF8 ' + question);
+        // Auto-create session if needed
+        if (!state.chatSessionId) {
+            await createNewChat();
+        }
+
+        appendChat('user', '\uD83D\uDCF8 ' + question, Date.now() / 1000);
         state.chatHistory.push({ role: 'user', content: '[Screenshot] ' + question });
 
-        // Send to vision endpoint
+        showTypingIndicator();
+
         const game = state.filteredGames[state.selectedIndex];
         const r = await fetch('/api/catbyte/chat-vision', {
             method: 'POST',
@@ -2097,16 +2598,19 @@ async function sendScreenshot() {
             body: JSON.stringify({
                 message: question,
                 image: base64,
-                history: state.chatHistory.slice(-6),
+                session_id: state.chatSessionId,
                 game_context: game?.name || '',
             }),
         });
         const d = await r.json();
-        appendChat('bot', d.response);
+        hideTypingIndicator();
+        appendChat('bot', d.response, Date.now() / 1000);
         state.chatHistory.push({ role: 'assistant', content: d.response });
+        loadChatSessions();
     } catch (err) {
+        hideTypingIndicator();
         console.error('Screenshot capture failed:', err);
-        appendChat('bot', '\uD83D\uDE3F Screenshot capture failed. Try again!');
+        appendChat('bot', '\uD83D\uDE3F Screenshot capture failed. Try again!', Date.now() / 1000);
     }
 }
 

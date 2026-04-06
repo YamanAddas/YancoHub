@@ -1,5 +1,6 @@
 # ── Personal data (never commit) ──
 userdata.json
+catbyte_history.json
 config/openclaw/USER.md
 logs/*.log
 logs/

@@ -22,7 +22,7 @@ BACKEND_PRESETS = {
         'name': 'OpenClaw',
         'description': 'Uses your ChatGPT subscription via OpenClaw gateway',
         'base_url': f'http://127.0.0.1:{OPENCLAW_PORT}',
-        'default_model': 'openclaw/default',
+        'default_model': 'openclaw',  # OpenClaw's default routing alias
         'api_key_required': False,
         'local': True,
         'setup_hint': 'Install OpenClaw: npm install -g @openclaw/cli\n'
@@ -83,6 +83,7 @@ class CatByte:
 
     def __init__(self):
         self._offline_until = 0
+        self._auto_model = ''  # Auto-detected first model from backend
         self._settings = {
             'backend': 'openclaw',
             'base_url': '',       # empty = use preset default
@@ -96,7 +97,15 @@ class CatByte:
         """Update CatByte configuration from userdata settings."""
         self._settings.update(settings)
         self._offline_until = 0  # Reset cooldown on config change
-        logger.info(f"CatByte configured: backend={self._settings['backend']}, "
+
+        # Sanitize: clear model if it's invalid for the current backend
+        backend = self._settings.get('backend', 'openclaw')
+        model = self._settings.get('model', '').strip()
+        if backend == 'openclaw' and model and not model.startswith('openclaw'):
+            logger.info(f"Clearing invalid OpenClaw model '{model}' from settings")
+            self._settings['model'] = ''
+
+        logger.info(f"CatByte configured: backend={backend}, "
                     f"model={self.get_model()}")
 
     def get_config(self) -> dict:
@@ -124,13 +133,26 @@ class CatByte:
         return preset['base_url'].rstrip('/')
 
     def get_model(self) -> str:
-        """Resolve the effective model name from settings or preset."""
+        """Resolve the effective model name from settings or preset.
+        For OpenClaw: only its aliases (openclaw, openclaw/*) are valid —
+        any other saved value is ignored to prevent 400 errors."""
         custom_model = self._settings.get('model', '').strip()
-        if custom_model:
-            return custom_model
         backend = self._settings.get('backend', 'openclaw')
+
+        if custom_model:
+            # OpenClaw only accepts 'openclaw' or 'openclaw/<agentId>' as model
+            if backend == 'openclaw' and not custom_model.startswith('openclaw'):
+                logger.info(f"Ignoring invalid OpenClaw model '{custom_model}', using default")
+            else:
+                return custom_model
+
         preset = BACKEND_PRESETS.get(backend, BACKEND_PRESETS['openclaw'])
-        return preset.get('default_model', '')
+        default = preset.get('default_model', '')
+        if default:
+            return default
+        if self._auto_model:
+            return self._auto_model
+        return ''
 
     def _headers(self) -> dict:
         """Build request headers — works for all OpenAI-compatible backends."""
@@ -153,22 +175,57 @@ class CatByte:
 
         return headers
 
+    def _load_openclaw_config(self) -> dict:
+        """Load the full OpenClaw config from its JSON file."""
+        config_path = Path.home() / ".openclaw" / "openclaw.json"
+        if config_path.exists():
+            try:
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception as e:
+                logger.warning(f"Failed to load OpenClaw config: {e}")
+        return {}
+
     def _load_openclaw_token(self) -> str:
         """Load OpenClaw auth token from its config file."""
-        config_paths = [
-            Path.home() / ".openclaw" / "openclaw.json",
-        ]
-        for config_path in config_paths:
-            if config_path.exists():
-                try:
-                    with open(config_path, 'r', encoding='utf-8') as f:
-                        config = json.load(f)
-                    return (config.get('gateway', {})
-                            .get('auth', {})
-                            .get('token', ''))
-                except Exception as e:
-                    logger.warning(f"Failed to load OpenClaw config: {e}")
-        return ''
+        config = self._load_openclaw_config()
+        return config.get('gateway', {}).get('auth', {}).get('token', '')
+
+    def _load_openclaw_models(self) -> list:
+        """Build an enriched model list for OpenClaw.
+        OpenClaw only accepts aliases (openclaw, openclaw/default, openclaw/main)
+        in API calls, but we enrich them with the primary model name from its config
+        so the user knows what's actually being used."""
+        # Get the API aliases (the only values OpenClaw accepts)
+        base_url = self._get_base_url()
+        aliases = []
+        if base_url:
+            try:
+                resp = requests.get(f"{base_url}/v1/models",
+                                    headers=self._headers(), timeout=5)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    aliases = [m['id'] for m in data.get('data', [])]
+            except Exception:
+                pass
+        if not aliases:
+            aliases = ['openclaw']
+
+        return aliases
+
+    def get_openclaw_info(self) -> dict:
+        """Get OpenClaw routing info: primary model and available models from config."""
+        config = self._load_openclaw_config()
+        primary = (config.get('agents', {}).get('defaults', {})
+                   .get('model', {}).get('primary', ''))
+        models_dict = config.get('agents', {}).get('defaults', {}).get('models', {})
+        available = []
+        for model_id, info in models_dict.items():
+            available.append({
+                'id': model_id,
+                'alias': info.get('alias', model_id),
+            })
+        return {'primary': primary, 'available': available}
 
     def _build_system_prompt(self, game_context: str = None) -> str:
         """Build the system prompt with optional personality and context tweaks."""
@@ -224,27 +281,35 @@ class CatByte:
             return {'status': 'offline', 'message': str(e)}
 
     def list_models(self) -> list:
-        """List available models from the configured backend."""
+        """List available models from the configured backend.
+        Always fetches live so added/removed models are reflected."""
         backend = self._settings.get('backend', 'openclaw')
-        base_url = self._get_base_url()
-        if not base_url:
-            return []
 
-        try:
-            if backend == 'ollama':
-                resp = requests.get(f"{base_url}/api/tags", timeout=5)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    return [m['name'] for m in data.get('models', [])]
-            else:
-                resp = requests.get(f"{base_url}/v1/models",
-                                    headers=self._headers(), timeout=5)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    return [m['id'] for m in data.get('data', [])]
-        except Exception as e:
-            logger.warning(f"Failed to list models: {e}")
-        return []
+        models = []
+        if backend == 'openclaw':
+            models = self._load_openclaw_models()
+        else:
+            base_url = self._get_base_url()
+            if not base_url:
+                return []
+            try:
+                if backend == 'ollama':
+                    resp = requests.get(f"{base_url}/api/tags", timeout=5)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        models = [m['name'] for m in data.get('models', [])]
+                else:
+                    resp = requests.get(f"{base_url}/v1/models",
+                                        headers=self._headers(), timeout=5)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        models = [m['id'] for m in data.get('data', [])]
+            except Exception as e:
+                logger.warning(f"Failed to list models: {e}")
+
+        # Cache first model for auto-detection when no model is configured
+        self._auto_model = models[0] if models else ''
+        return models
 
     def chat(self, message: str, game_context: str = None,
              history: list = None) -> dict:
@@ -409,6 +474,40 @@ class CatByte:
                 'response': f"\U0001f63f Vision failed with {backend_name}.",
                 'status': 'error',
             }
+
+    def generate_title(self, messages: list) -> dict:
+        """Generate a short title for a conversation from its first messages."""
+        base_url = self._get_base_url()
+        if not base_url:
+            return {'title': ''}
+
+        try:
+            prompt_messages = [
+                {'role': 'system',
+                 'content': 'Generate a 3-5 word title for this conversation. '
+                            'Reply with ONLY the title, nothing else. No quotes.'},
+            ]
+            for m in messages[:4]:
+                role = m.get('role', 'user')
+                content = m.get('content', '')
+                if role in ('user', 'assistant') and content:
+                    prompt_messages.append({'role': role, 'content': content[:200]})
+
+            resp = requests.post(
+                f"{base_url}/v1/chat/completions",
+                headers=self._headers(),
+                json={'model': self.get_model(), 'messages': prompt_messages, 'stream': False},
+                timeout=15,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                choices = data.get('choices', [])
+                if choices:
+                    title = choices[0].get('message', {}).get('content', '').strip()
+                    return {'title': title}
+        except Exception as e:
+            logger.warning(f"Title generation failed: {e}")
+        return {'title': ''}
 
     def test_connection(self) -> dict:
         """Send a quick test message to verify the backend works end-to-end."""
