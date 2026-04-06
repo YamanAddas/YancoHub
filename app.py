@@ -6,6 +6,7 @@ Unified game launcher for Windows with CatByte AI companion.
 import os
 import json
 import time
+import atexit
 import logging
 import shlex
 import subprocess
@@ -48,6 +49,7 @@ app = Flask(__name__,
 
 scanner = GameScanner()
 userdata = UserData()
+atexit.register(userdata.flush)
 catbyte = CatByte()
 chat_history = ChatHistory()
 metadata_fetcher = MetadataFetcher()
@@ -422,14 +424,27 @@ def api_launch(game_id):
     userdata.session_start(game_id)
 
     try:
-        # Check if direct launch is enabled and game has a direct exe
-        settings = userdata.get_settings()
-        direct_launch = settings.get('direct_launch', True)
+        # Check if direct launch is enabled (per-game override > global setting)
+        override = userdata.get_direct_launch_override(game_id)
+        if override is not None:
+            direct_launch = override
+        else:
+            direct_launch = userdata.get_settings().get('direct_launch', True)
         direct_exe = game.get('direct_exe', '')
         use_direct = direct_launch and direct_exe and Path(direct_exe).exists()
 
         if use_direct:
             # Direct executable launch — bypasses store client
+            # For Steam games, ensure steam_appid.txt exists so Steamworks SDK can init
+            if game.get('source') == 'steam' and game.get('appid'):
+                appid_file = Path(direct_exe).parent / 'steam_appid.txt'
+                if not appid_file.exists():
+                    try:
+                        appid_file.write_text(str(game['appid']), encoding='utf-8')
+                        logger.info(f"Created {appid_file}")
+                    except OSError as e:
+                        logger.debug(f"Could not create steam_appid.txt: {e}")
+
             # Use exe path as-is (not shlex.split) to preserve Windows paths with spaces
             args = [direct_exe]
             direct_args = game.get('direct_args', '')
@@ -441,7 +456,8 @@ def api_launch(game_id):
                 cwd=game.get('install_dir', None) or None,
             )
             _set_active(proc, game_id)
-            _start_process_monitor(game_id, proc)
+            # If process dies within 5s (likely DRM failure), fall back to store URL
+            _start_process_monitor(game_id, proc, fallback_cmd=launch_cmd)
             logger.info(f"Direct launch: {game['name']}")
             return jsonify({'status': 'launched', 'game': game['name'], 'mode': 'direct'})
 
@@ -472,10 +488,33 @@ def api_launch(game_id):
         return jsonify({'error': str(e)}), 500
 
 
-def _start_process_monitor(game_id, proc):
-    """Monitor a subprocess and end session when it exits."""
+def _start_process_monitor(game_id, proc, fallback_cmd=None):
+    """Monitor a subprocess and end session when it exits.
+
+    If fallback_cmd is set and the process dies within 5 seconds (likely DRM
+    rejection), automatically retry via the store protocol URL.
+    """
+    start_time = time.time()
+
     def monitor():
         proc.wait()
+        elapsed = time.time() - start_time
+
+        # If process died very quickly and we have a fallback, retry via store
+        if fallback_cmd and elapsed < 5.0 and proc.returncode != 0:
+            logger.warning(f"Direct launch failed in {elapsed:.1f}s (exit={proc.returncode}), "
+                           f"falling back to store URL for {game_id}")
+            try:
+                if fallback_cmd.startswith(('steam://', 'com.epicgames.launcher://',
+                                            'goggalaxy://', 'uplay://', 'battlenet://',
+                                            'link2ea://', 'origin://', 'shell:')):
+                    os.startfile(fallback_cmd)
+                    _set_active(None, game_id)
+                    _start_url_monitor(game_id)
+                    return
+            except Exception as e:
+                logger.error(f"Fallback launch also failed: {e}")
+
         userdata.session_end(game_id)
         _clear_active(game_id)
         logger.info(f"Game exited: {game_id}")
@@ -906,6 +945,34 @@ def api_toggle_direct_launch():
     new_val = not settings.get('direct_launch', True)
     userdata.update_settings({'direct_launch': new_val})
     return jsonify({'direct_launch': new_val})
+
+
+@app.route('/api/settings/direct-launch/<game_id>', methods=['GET'])
+def api_get_game_direct_launch(game_id):
+    """Get per-game direct launch override."""
+    override = userdata.get_direct_launch_override(game_id)
+    global_val = userdata.get_settings().get('direct_launch', True)
+    return jsonify({
+        'override': override,           # True/False/null
+        'effective': override if override is not None else global_val,
+    })
+
+
+@app.route('/api/settings/direct-launch/<game_id>', methods=['POST'])
+def api_set_game_direct_launch(game_id):
+    """Cycle per-game direct launch: global default → force on → force off → global default."""
+    data = request.get_json(silent=True) or {}
+    value = data.get('value')  # True, False, or null/missing → remove override
+    if value is None:
+        userdata.set_direct_launch_override(game_id, None)
+    else:
+        userdata.set_direct_launch_override(game_id, bool(value))
+    override = userdata.get_direct_launch_override(game_id)
+    global_val = userdata.get_settings().get('direct_launch', True)
+    return jsonify({
+        'override': override,
+        'effective': override if override is not None else global_val,
+    })
 
 
 # ── RetroArch Path ─────────────────────────────────────────────────────────

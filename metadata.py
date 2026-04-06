@@ -15,6 +15,8 @@ import time
 import logging
 import sqlite3
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from pathlib import Path
 
 logger = logging.getLogger('yancohub.metadata')
@@ -89,6 +91,10 @@ class MetadataFetcher:
         self.db = MetadataDB()
         self._session = requests.Session()
         self._session.headers['User-Agent'] = 'YancoHub/1.0'
+        retry = Retry(total=3, backoff_factor=1.0,
+                      status_forcelist=[429, 500, 502, 503, 504])
+        self._session.mount('https://', HTTPAdapter(max_retries=retry))
+        self._session.mount('http://', HTTPAdapter(max_retries=retry))
 
     def get_metadata(self, game_id, game_name, source='', system=''):
         """Get metadata for a game, fetching if not cached."""

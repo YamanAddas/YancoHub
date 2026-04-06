@@ -16,6 +16,8 @@ import re
 import time
 import logging
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from urllib.parse import quote
@@ -114,6 +116,10 @@ class ArtworkScraper:
     def __init__(self, steamgriddb_api_key='', launchbox_path=''):
         self._session = requests.Session()
         self._session.headers['User-Agent'] = 'YancoHub/1.0'
+        retry = Retry(total=3, backoff_factor=1.0,
+                      status_forcelist=[429, 500, 502, 503, 504])
+        self._session.mount('https://', HTTPAdapter(max_retries=retry))
+        self._session.mount('http://', HTTPAdapter(max_retries=retry))
         self._sgdb_key = steamgriddb_api_key
         self._lb_path = self._resolve_lb_root(launchbox_path)
         # ROM filename → LaunchBox title index (built from platform XMLs)

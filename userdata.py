@@ -14,6 +14,7 @@ DATA_FILE = Path(__file__).parent / 'userdata.json'
 
 DEFAULT_DATA = {
     'sessions': {},       # game_id → {total_seconds, last_played, session_count, active_since}
+    'direct_launch_overrides': {},  # game_id → True/False (per-game override for direct launch)
     'collections': {},    # name → [game_id, ...]
     'favorites': [],      # [game_id, ...]
     'hidden_systems': [], # [system_id, ...]
@@ -49,9 +50,13 @@ DEFAULT_DATA = {
 
 
 class UserData:
+    _DEBOUNCE_SECONDS = 2.0
+
     def __init__(self, data_file=None):
         self.data_file = data_file or DATA_FILE
         self._lock = threading.Lock()
+        self._save_timer: threading.Timer | None = None
+        self._dirty = False
         self.data = self._load()
         self._cleanup_stale_sessions()
 
@@ -69,13 +74,44 @@ class UserData:
                 logger.error(f"Failed to load userdata: {e}")
         return json.loads(json.dumps(DEFAULT_DATA))
 
-    def _save(self):
-        """Write data to disk. Caller must hold self._lock."""
+    def _write_disk(self):
+        """Actually write data to disk. Caller must hold self._lock."""
         try:
             with open(self.data_file, 'w', encoding='utf-8') as f:
                 json.dump(self.data, f, indent=2)
+            self._dirty = False
         except Exception as e:
             logger.error(f"Failed to save userdata: {e}")
+
+    def _save(self):
+        """Schedule a debounced write. Caller must hold self._lock.
+
+        Resets the timer on each call — actual disk write happens after
+        _DEBOUNCE_SECONDS of inactivity. This prevents disk thrash from
+        rapid clicks (e.g. toggling settings, cycling through favorites).
+        """
+        self._dirty = True
+        if self._save_timer is not None:
+            self._save_timer.cancel()
+        # Capture current data snapshot for the timer callback
+        self._save_timer = threading.Timer(self._DEBOUNCE_SECONDS, self._flush_unlocked)
+        self._save_timer.daemon = True
+        self._save_timer.start()
+
+    def _flush_unlocked(self):
+        """Flush from timer thread — acquires lock itself."""
+        with self._lock:
+            if self._dirty:
+                self._write_disk()
+
+    def flush(self):
+        """Force an immediate write. Call on app shutdown."""
+        with self._lock:
+            if self._save_timer is not None:
+                self._save_timer.cancel()
+                self._save_timer = None
+            if self._dirty:
+                self._write_disk()
 
     def _cleanup_stale_sessions(self):
         """Clear any sessions that were active from a previous crash."""
@@ -86,7 +122,7 @@ class UserData:
                     session['total_seconds'] = session.get('total_seconds', 0) + elapsed
                     session['active_since'] = None
                     logger.info(f"Cleaned stale session for {game_id} ({elapsed:.0f}s)")
-            self._save()
+            self._write_disk()  # Critical — write immediately on crash recovery
 
     # ── Play Sessions ───────────────────────────────────────────────────────
 
@@ -113,7 +149,7 @@ class UserData:
             self.data['sessions'][game_id]['active_since'] = time.time()
             self.data['sessions'][game_id]['last_played'] = time.time()
             self.data['sessions'][game_id]['session_count'] += 1
-            self._save()
+            self._write_disk()  # Critical — session state must persist for crash recovery
 
     def session_end(self, game_id):
         """End a play session."""
@@ -126,7 +162,7 @@ class UserData:
             session['total_seconds'] += elapsed
             session['active_since'] = None
             session['last_played'] = time.time()
-            self._save()
+            self._write_disk()  # Critical — finalize playtime immediately
             logger.info(f"Session ended for {game_id}: {elapsed:.0f}s")
 
     def get_playtime(self, game_id=None):
@@ -304,6 +340,22 @@ class UserData:
                 'enabled': enabled,
                 'db_path': db_path,
             }
+            self._save()
+
+    # ── Direct Launch Overrides ────────────────────────────────────────────
+
+    def get_direct_launch_override(self, game_id: str) -> bool | None:
+        """Get per-game direct launch override. Returns True/False or None (use global)."""
+        return self.data.get('direct_launch_overrides', {}).get(game_id)
+
+    def set_direct_launch_override(self, game_id: str, value: bool | None):
+        """Set per-game direct launch override. None removes the override."""
+        with self._lock:
+            overrides = self.data.setdefault('direct_launch_overrides', {})
+            if value is None:
+                overrides.pop(game_id, None)
+            else:
+                overrides[game_id] = value
             self._save()
 
     # ── Settings ────────────────────────────────────────────────────────────

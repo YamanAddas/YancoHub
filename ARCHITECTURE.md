@@ -106,6 +106,24 @@ Merge priority:
 2. Match by name (case-insensitive) → skip the account duplicate
 3. No match → add as uninstalled (if `show_uninstalled` setting is on)
 
+## Direct Launch
+
+When the `direct_launch` setting is on (default: true), games launch via their executable directly instead of through store protocol URLs (`steam://`, `com.epicgames.launcher://`, etc.).
+
+**Exe detection at scan time** — each scanner populates `direct_exe` and `direct_args` fields:
+
+| Store | Detection method | Reliability |
+|-------|-----------------|-------------|
+| Steam | Heuristic exe search in install dir (name match → largest file) | Good — most games found, Steamworks DRM may still block |
+| Epic | `LaunchExecutable` field from `.item` manifest | High — direct from Epic's own metadata |
+| GOG (registry) | `EXE` registry value, fallback to `goggame-*.info` parsing | High — all GOG games are DRM-free |
+| GOG (Galaxy DB) | `InstalledBaseProducts` table → `goggame-*.info` | High for installed games |
+
+**Launch flow** (`api_launch`):
+1. If `direct_launch` ON and `direct_exe` exists on disk → `subprocess.Popen([exe, *args])` with process monitoring
+2. Else if `launch_cmd` is a protocol URL → `os.startfile()` with PID-snapshot monitoring
+3. Else → `subprocess.Popen(shlex.split(launch_cmd))` (local games, ROMs)
+
 ## Scanner Architecture
 
 Each `_scan_*` method appends to `self.games`. They run sequentially in `scan_all()`:
@@ -237,5 +255,8 @@ D:\yancohub\                    Project root (development)
 | POST | `/api/catbyte/chat-vision` | Chat with screenshot |
 | GET | `/api/catbyte/status` | CatByte online/offline |
 | POST | `/api/settings/show-uninstalled` | Toggle uninstalled games visibility |
+| GET/POST | `/api/settings/direct-launch` | Toggle direct game launching (bypass store clients) |
+| GET/POST | `/api/settings/retroarch-path` | Get/set RetroArch path |
+| GET/POST | `/api/settings/launchbox-path` | Get/set LaunchBox path |
 | GET | `/api/hidden-systems` | Hidden retro systems |
 | POST | `/api/hidden-systems/toggle` | Toggle system visibility |

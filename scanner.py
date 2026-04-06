@@ -183,6 +183,7 @@ class GameScanner:
         self._scan_ea()
         self._scan_ubisoft()
         self._scan_battlenet()
+        self._scan_amazon()
 
         if local_dirs:
             for d in local_dirs:
@@ -873,6 +874,66 @@ class GameScanner:
 
         logger.info(f"Battle.net: found {count} games")
 
+    # ── Amazon Games ───────────────────────────────────────────────────────
+
+    def _scan_amazon(self):
+        """Scan Amazon Games for installed games.
+
+        Amazon Games stores install metadata in fuel.json files within each
+        game directory. The Main.Command field gives the exe path.
+        """
+        count = 0
+
+        # Amazon Games default install locations
+        amazon_dirs = [
+            Path("C:/Amazon Games/Library"),
+            Path(os.environ.get('LOCALAPPDATA', '')) / "Amazon Games" / "Library",
+        ]
+
+        for amazon_dir in amazon_dirs:
+            if not amazon_dir.exists():
+                continue
+
+            for game_dir in amazon_dir.iterdir():
+                if not game_dir.is_dir():
+                    continue
+
+                fuel = game_dir / 'fuel.json'
+                if not fuel.exists():
+                    continue
+
+                try:
+                    with open(fuel, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+
+                    name = data.get('Main', {}).get('DisplayName', '') or game_dir.name
+                    command = data.get('Main', {}).get('Command', '')
+                    product_id = data.get('SchemaVersion', '') or make_game_id('amazon', name)
+
+                    direct_exe = ''
+                    if command:
+                        exe_path = game_dir / command
+                        if exe_path.exists():
+                            direct_exe = str(exe_path)
+                        elif Path(command).exists():
+                            direct_exe = command
+
+                    self.games.append({
+                        'id': f"amazon_{make_game_id('amazon', name)}",
+                        'name': name,
+                        'source': 'amazon',
+                        'install_dir': str(game_dir),
+                        'size': 0,
+                        'artwork': {},
+                        'launch_cmd': direct_exe if direct_exe else str(game_dir),
+                        'direct_exe': direct_exe,
+                    })
+                    count += 1
+                except Exception as e:
+                    logger.debug(f"Amazon fuel.json parse error in {game_dir.name}: {e}")
+
+        logger.info(f"Amazon Games: found {count} games")
+
     # ── Local Games ─────────────────────────────────────────────────────────
 
     def _scan_local_dir(self, directory):
@@ -1165,6 +1226,10 @@ class GameScanner:
 
         bnet_config = Path(os.environ.get('APPDATA', '')) / "Battle.net"
         stores['battlenet'] = bnet_config.exists()
+
+        amazon_lib = Path("C:/Amazon Games/Library")
+        amazon_lib2 = Path(os.environ.get('LOCALAPPDATA', '')) / "Amazon Games" / "Library"
+        stores['amazon'] = amazon_lib.exists() or amazon_lib2.exists()
 
         stores['retroarch'] = self._find_retroarch() is not None
 

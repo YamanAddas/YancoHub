@@ -577,6 +577,17 @@ body::before {
     background: rgba(255, 193, 7, 0.08);
 }
 
+.detail-btn.dl-force-on {
+    color: var(--accent);
+    border-color: rgba(0, 229, 193, 0.3);
+}
+
+.detail-btn.dl-force-off {
+    color: var(--text);
+    border-color: rgba(138, 155, 176, 0.2);
+    opacity: 0.6;
+}
+
 /* Collection dropdown */
 .detail-collection-wrap {
     position: relative;

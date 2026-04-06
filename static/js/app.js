@@ -1611,11 +1611,62 @@ function updateDetailPanel(game) {
     const favBtn = $('detailFavorite');
     favBtn.classList.toggle('fav-active', isFav);
 
+    // Direct launch button — only show for store games that have a direct exe
+    const dlBtn = $('detailDirectLaunch');
+    if (dlBtn) {
+        const hasDirectExe = game.direct_exe && game.source !== 'retro' && game.source !== 'local';
+        dlBtn.classList.toggle('hidden', !hasDirectExe);
+        if (hasDirectExe) updateDirectLaunchButton(game.id);
+    }
+
     // Close any open dropdown
     $('collectionDropdown').classList.add('hidden');
 
     // Show the panel with slide-up animation
     panel.classList.add('visible');
+}
+
+async function updateDirectLaunchButton(gameId) {
+    const btn = $('detailDirectLaunch');
+    const label = $('detailDirectLabel');
+    if (!btn || !label) return;
+    try {
+        const r = await fetch(`/api/settings/direct-launch/${gameId}`);
+        const d = await r.json();
+        if (d.override === true) {
+            label.textContent = 'Direct: ON';
+            btn.classList.add('dl-force-on');
+            btn.classList.remove('dl-force-off');
+        } else if (d.override === false) {
+            label.textContent = 'Direct: OFF';
+            btn.classList.remove('dl-force-on');
+            btn.classList.add('dl-force-off');
+        } else {
+            label.textContent = d.effective ? 'Direct' : 'Via Store';
+            btn.classList.remove('dl-force-on', 'dl-force-off');
+        }
+    } catch {}
+}
+
+async function cycleDirectLaunch() {
+    const game = state.filteredGames[state.selectedIndex];
+    if (!game) return;
+    try {
+        // Get current state
+        const r = await fetch(`/api/settings/direct-launch/${game.id}`);
+        const d = await r.json();
+        // Cycle: null → true → false → null
+        let next;
+        if (d.override === null || d.override === undefined) next = true;
+        else if (d.override === true) next = false;
+        else next = null;
+        await fetch(`/api/settings/direct-launch/${game.id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ value: next }),
+        });
+        updateDirectLaunchButton(game.id);
+    } catch {}
 }
 
 function updateGameCount() {
@@ -1646,7 +1697,8 @@ function launchSelected() {
 function renderStoreIndicators() {
     const names = {
         steam: 'Steam', epic: 'Epic', gog: 'GOG', xbox: 'Xbox',
-        ea: 'EA', ubisoft: 'Ubisoft', battlenet: 'Battle.net', retroarch: 'RetroArch'
+        ea: 'EA', ubisoft: 'Ubisoft', battlenet: 'Battle.net',
+        amazon: 'Amazon', retroarch: 'RetroArch'
     };
     $('storeIndicators').innerHTML = Object.entries(state.stores)
         .map(([k, v]) => `<div class="store-dot ${v ? 'active' : ''}" data-label="${names[k] || k}" title="${names[k]}: ${v ? 'Detected' : 'Not found'}"></div>`)
@@ -1764,6 +1816,7 @@ function bindEvents() {
 
     // Detail panel actions
     $('detailLaunch').addEventListener('click', launchSelected);
+    $('detailDirectLaunch').addEventListener('click', cycleDirectLaunch);
     $('detailFavorite').addEventListener('click', () => {
         const game = state.filteredGames[state.selectedIndex];
         if (game) toggleFavorite(game.id);
@@ -3037,7 +3090,8 @@ async function renderAccountsTab() {
     // ── Detected Stores ──
     const storeNames = {
         steam: 'Steam', epic: 'Epic Games', gog: 'GOG Galaxy', xbox: 'Xbox/Game Pass',
-        ea: 'EA Desktop', ubisoft: 'Ubisoft Connect', battlenet: 'Battle.net', retroarch: 'RetroArch'
+        ea: 'EA Desktop', ubisoft: 'Ubisoft Connect', battlenet: 'Battle.net',
+        amazon: 'Amazon Games', retroarch: 'RetroArch'
     };
     $('settingsStores').innerHTML = Object.entries(state.stores)
         .map(([k, v]) => `<div class="store-badge"><span class="store-status ${v ? 'detected' : 'missing'}"></span>${storeNames[k] || k}</div>`)

@@ -108,6 +108,8 @@ Every change must meet ALL of these:
 - **Windows registry keys vary by bitness** — use `KEY_READ | KEY_WOW64_32KEY` or `KEY_WOW64_64KEY`
 - **`userdata.json` is single source of truth** for user prefs — never split config across files
 - **Process monitoring** — `pid.is_running()` can return True briefly after exit; poll with status check
+- **Direct launch** — `direct_exe` paths are Windows paths; never `shlex.split()` them (spaces break). Use `[exe_path]` as a list. `direct_args` can be split with `shlex.split(args, posix=False)`
+- **GOG `goggame-*.info`** — JSON files in install dir with `playTasks` array; `isPrimary` + `type: "FileTask"` gives the main exe. All GOG games are DRM-free
 
 ## What Not To Do
 
