@@ -9,9 +9,11 @@ import logging
 import threading
 from pathlib import Path
 
+from paths import get_data_dir
+
 logger = logging.getLogger('yancohub.chathistory')
 
-DATA_FILE = Path(__file__).parent / 'catbyte_history.json'
+DATA_FILE = get_data_dir() / 'catbyte_history.json'
 MAX_SESSIONS = 50
 
 

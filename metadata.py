@@ -18,11 +18,13 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from pathlib import Path
-from constants import VERSION
+from constants import VERSION, HTTP_TIMEOUT_DEFAULT, HTTP_TIMEOUT_SHORT
 
 logger = logging.getLogger('yancohub.metadata')
 
-DB_PATH = Path(__file__).parent / 'cache' / 'metadata.db'
+from paths import get_cache_dir
+
+DB_PATH = get_cache_dir() / 'metadata.db'
 
 # ── IGDB (via public proxy or direct) ───────────────────────────────────────
 
@@ -126,7 +128,7 @@ class MetadataFetcher:
         try:
             resp = self._session.get(
                 f'https://store.steampowered.com/api/appdetails?appids={appid}&l=english',
-                timeout=10,
+                timeout=HTTP_TIMEOUT_DEFAULT,
             )
             if resp.status_code != 200:
                 return None
@@ -177,7 +179,7 @@ class MetadataFetcher:
             resp = self._session.get(
                 'https://en.wikipedia.org/api/rest_v1/page/summary/' +
                 requests.utils.quote(search_name.replace(' ', '_')),
-                timeout=8,
+                timeout=HTTP_TIMEOUT_SHORT,
             )
 
             if resp.status_code != 200:
@@ -185,7 +187,7 @@ class MetadataFetcher:
                 resp = self._session.get(
                     'https://en.wikipedia.org/api/rest_v1/page/summary/' +
                     requests.utils.quote(game_name.replace(' ', '_')),
-                    timeout=8,
+                    timeout=HTTP_TIMEOUT_SHORT,
                 )
 
             if resp.status_code != 200:

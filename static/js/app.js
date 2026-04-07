@@ -97,6 +97,29 @@ function showToast(message, type = 'info', duration = 3500) {
     return toast;
 }
 
+// ── Connection Error Helpers (called by pywebview health watchdog) ────────
+
+function showConnectionError() {
+    const el = $('connectionError');
+    if (el) el.classList.remove('hidden');
+}
+
+function hideConnectionError() {
+    const el = $('connectionError');
+    if (el) el.classList.add('hidden');
+}
+
+function showFatalError(msg) {
+    const el = $('fatalError');
+    if (el) {
+        if (msg) {
+            const txt = document.getElementById('fatalErrorMessage');
+            if (txt) txt.textContent = msg;
+        }
+        el.classList.remove('hidden');
+    }
+}
+
 // ── Per-system fallback color gradients ────────────────────────────────────
 
 const SYS_COLORS = {
@@ -199,6 +222,44 @@ async function init() {
     } catch (e) { console.warn('Game mode setting check failed:', e); }
 
     bindEvents();
+
+    // Check for updates 3s after load
+    setTimeout(async () => {
+        try {
+            const ud = await fetchJSON('/api/update-available');
+            if (ud.available) {
+                const banner = $('updateBanner');
+                const ver = $('updateBannerVersion');
+                const link = $('updateBannerLink');
+                if (banner && ver) {
+                    ver.textContent = 'v' + ud.latest_version;
+                    if (link && ud.url) link.href = ud.url;
+                    banner.classList.remove('hidden');
+                }
+            }
+        } catch { /* silent */ }
+    }, 3000);
+
+    // Dismiss update banner
+    const dismissBtn = $('updateBannerDismiss');
+    if (dismissBtn) {
+        dismissBtn.onclick = () => {
+            const banner = $('updateBanner');
+            if (banner) banner.classList.add('hidden');
+        };
+    }
+
+    // First-run onboarding check
+    try {
+        const onbStatus = await fetchJSON('/api/onboarding/status');
+        if (!onbStatus.complete) {
+            const onb = $('onboardingOverlay');
+            if (onb) {
+                onb.classList.remove('hidden');
+                initOnboarding();
+            }
+        }
+    } catch { /* silent */ }
 }
 
 async function waitForBackend() {
@@ -206,7 +267,7 @@ async function waitForBackend() {
         try {
             const r = await fetch('/health');
             if (r.ok) return;
-        } catch (e) { console.debug('Waiting for backend:', e.message); }
+        } catch (e) { console.warn('Waiting for backend:', e.message); }
         await new Promise(r => setTimeout(r, 500));
     }
 }
@@ -1933,6 +1994,120 @@ function launchSelected() {
 
 // ── Store Indicators (removed from top bar — info lives in Settings) ──────
 
+// ── Onboarding ────────────────────────────────────────────────────────────
+
+function initOnboarding() {
+    const overlay = $('onboardingOverlay');
+    if (!overlay) return;
+
+    const storeNames = {
+        steam: 'Steam', epic: 'Epic Games', gog: 'GOG Galaxy', xbox: 'Xbox',
+        ea: 'EA Desktop', ubisoft: 'Ubisoft', battlenet: 'Battle.net',
+    };
+
+    function closeOnboarding() {
+        overlay.classList.add('hidden');
+        fetch('/api/onboarding/complete', { method: 'POST' });
+    }
+
+    function showStep(n) {
+        for (let i = 1; i <= 3; i++) {
+            const s = $('onbStep' + i);
+            if (s) s.classList.toggle('hidden', i !== n);
+        }
+    }
+
+    // Step 1 → 2
+    const getStarted = $('onbGetStarted');
+    if (getStarted) getStarted.onclick = () => {
+        showStep(2);
+        // Populate detected stores
+        const container = $('onbStores');
+        if (container && state.stores) {
+            container.innerHTML = Object.entries(storeNames)
+                .map(([k, v]) => {
+                    const detected = state.stores[k];
+                    return `<div class="onboarding-store-badge ${detected ? 'detected' : ''}">
+                        <span class="store-dot"></span>${v}
+                    </div>`;
+                }).join('');
+        }
+    };
+
+    // Step 2 → 3
+    const cont2 = $('onbContinue2');
+    if (cont2) cont2.onclick = () => {
+        showStep(3);
+        // Trigger rescan and watch for completion
+        fetch('/api/rescan', { method: 'POST' });
+        const pollId = setInterval(async () => {
+            try {
+                const r = await fetchJSON('/api/games');
+                const count = r.length || 0;
+                const countEl = $('onbGameCount');
+                if (countEl) countEl.textContent = `Found ${count} game${count !== 1 ? 's' : ''} so far...`;
+                if (count > 0) {
+                    clearInterval(pollId);
+                    if (countEl) countEl.textContent = `Found ${count} game${count !== 1 ? 's' : ''}!`;
+                    const spinner = overlay.querySelector('.onboarding-spinner');
+                    if (spinner) spinner.style.display = 'none';
+                    const finish = $('onbFinish');
+                    if (finish) finish.classList.remove('hidden');
+                }
+            } catch { /* keep polling */ }
+        }, 1500);
+        // Auto-complete after 15s even if no games found
+        setTimeout(() => {
+            clearInterval(pollId);
+            const finish = $('onbFinish');
+            if (finish) finish.classList.remove('hidden');
+            const spinner = overlay.querySelector('.onboarding-spinner');
+            if (spinner) spinner.style.display = 'none';
+        }, 15000);
+    };
+
+    // Add folder buttons
+    const addRom = $('onbAddRomFolder');
+    if (addRom) addRom.onclick = async () => {
+        if (window.pywebview && window.pywebview.api) {
+            const path = await window.pywebview.api.browse_folder('Select ROM Folder');
+            if (path) {
+                await fetch('/api/rom-dirs', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path }),
+                });
+                showToast('ROM folder added');
+            }
+        }
+    };
+
+    const addLocal = $('onbAddLocalFolder');
+    if (addLocal) addLocal.onclick = async () => {
+        if (window.pywebview && window.pywebview.api) {
+            const path = await window.pywebview.api.browse_folder('Select Games Folder');
+            if (path) {
+                await fetch('/api/local-dirs', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path }),
+                });
+                showToast('Games folder added');
+            }
+        }
+    };
+
+    // Finish
+    const finish = $('onbFinish');
+    if (finish) finish.onclick = closeOnboarding;
+
+    // Skip buttons
+    const skip1 = $('onbSkip1');
+    if (skip1) skip1.onclick = closeOnboarding;
+    const skip2 = $('onbSkip2');
+    if (skip2) skip2.onclick = closeOnboarding;
+}
+
 // ── Events ─────────────────────────────────────────────────────────────────
 
 function bindEvents() {
@@ -2094,7 +2269,7 @@ function bindEvents() {
     $('addBiosDir').addEventListener('click', addBiosDir);
     $('btnRescan').addEventListener('click', rescanLibrary);
     $('btnConnectSteam').addEventListener('click', connectSteam);
-    $('btnToggleUninstalled').addEventListener('click', toggleShowUninstalled);
+    // toggleShowUninstalled is now wired in renderAccountsTab as a toggle switch
 
     // Browse buttons — native folder dialogs via pywebview bridge
     $('browseRomDir').addEventListener('click', () => browseFolder('romDirInput'));
@@ -3016,11 +3191,10 @@ function validateDirInput(inputId) {
 }
 
 async function toggleShowUninstalled() {
+    const toggle = $('toggleShowUninstalled');
     try {
         const d = await fetchJSON('/api/settings/show-uninstalled', { method: 'POST' });
-        $('btnToggleUninstalled').textContent = d.show_uninstalled
-            ? 'Hide Uninstalled Games'
-            : 'Show Uninstalled Games';
+        if (toggle) toggle.setAttribute('aria-checked', d.show_uninstalled ? 'true' : 'false');
         setTimeout(async () => { await loadGames(); applyFilter(); }, 3000);
     } catch (e) { console.warn('toggleShowUninstalled failed:', e); }
 }
@@ -3325,13 +3499,15 @@ async function renderAccountsTab() {
     } catch (e) { console.warn('renderAccountsTab failed:', e); }
 
     // ── Show/Hide Uninstalled toggle ──
-    try {
-        const uData = await fetchJSON('/api/settings/show-uninstalled');
-        $('btnToggleUninstalled').textContent = uData.show_uninstalled
-            ? 'Hide Uninstalled Games'
-            : 'Show Uninstalled Games';
-    } catch {
-        $('btnToggleUninstalled').textContent = 'Toggle Show Uninstalled Games';
+    const uToggle = $('toggleShowUninstalled');
+    if (uToggle) {
+        try {
+            const uData = await fetchJSON('/api/settings/show-uninstalled');
+            uToggle.setAttribute('aria-checked', uData.show_uninstalled ? 'true' : 'false');
+        } catch {
+            uToggle.setAttribute('aria-checked', 'true');
+        }
+        uToggle.onclick = toggleShowUninstalled;
     }
 
     // ── Direct Launch toggle ──
@@ -3365,6 +3541,46 @@ async function renderAccountsTab() {
                 const d = await fetchJSON('/api/settings/start-in-game-mode', { method: 'POST' });
                 gmToggle.setAttribute('aria-checked', d.start_in_game_mode ? 'true' : 'false');
             } catch (e) { console.warn('toggleStartGameMode failed:', e); }
+        };
+    }
+
+    // ── Minimize to Tray toggle ──
+    const trayToggle = $('toggleMinimizeToTray');
+    if (trayToggle) {
+        try {
+            const trayData = await fetchJSON('/api/settings/minimize-to-tray');
+            trayToggle.setAttribute('aria-checked', trayData.enabled ? 'true' : 'false');
+        } catch {
+            trayToggle.setAttribute('aria-checked', 'true');
+        }
+        trayToggle.onclick = async () => {
+            try {
+                const s = await fetchJSON('/api/settings/minimize-to-tray', { method: 'POST' });
+                trayToggle.setAttribute('aria-checked', s.enabled ? 'true' : 'false');
+                showToast(s.enabled ? 'Minimize to tray enabled' : 'Minimize to tray disabled — app will quit on close');
+            } catch (e) { console.warn('toggleMinimizeToTray failed:', e); }
+        };
+    }
+
+    // ── Launch on Startup toggle ──
+    const startupToggle = $('toggleLaunchOnStartup');
+    if (startupToggle) {
+        try {
+            const startupData = await fetchJSON('/api/settings/launch-on-startup');
+            startupToggle.setAttribute('aria-checked', startupData.enabled ? 'true' : 'false');
+        } catch {
+            startupToggle.setAttribute('aria-checked', 'false');
+        }
+        startupToggle.onclick = async () => {
+            const current = startupToggle.getAttribute('aria-checked') === 'true';
+            try {
+                const d = await fetchJSON('/api/settings/launch-on-startup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: !current }),
+                });
+                startupToggle.setAttribute('aria-checked', d.enabled ? 'true' : 'false');
+            } catch (e) { console.warn('toggleLaunchOnStartup failed:', e); }
         };
     }
 

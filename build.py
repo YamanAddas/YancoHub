@@ -14,6 +14,7 @@ Output:
 """
 
 import argparse
+import re
 import shutil
 import subprocess
 import sys
@@ -76,6 +77,11 @@ def run_pyinstaller():
     if icon_arg:
         cmd.append(icon_arg)
 
+    # DPI manifest for crisp rendering on high-DPI displays
+    manifest_path = PROJECT_DIR / 'assets' / 'YancoHub.manifest'
+    if manifest_path.exists():
+        cmd.extend(['--manifest', str(manifest_path)])
+
     # Entry point
     cmd.append(str(PROJECT_DIR / 'launch.py'))
 
@@ -135,6 +141,9 @@ def build_portable_zip():
             if file.is_file():
                 arcname = f'{APP_NAME}/{file.relative_to(app_dir)}'
                 zf.write(file, arcname)
+        # Add portable marker so the app runs in portable mode
+        zf.writestr(f'{APP_NAME}/portable.txt',
+                     'Portable mode — data stored in app directory\n')
 
     size_mb = zip_path.stat().st_size / (1024 * 1024)
     print(f"[BUILD] Portable zip created: {zip_path} ({size_mb:.1f} MB)")
@@ -154,6 +163,19 @@ def build_nsis_installer():
         print("[BUILD] installer.nsi not found — skipping installer build")
         return None
 
+    # Sync version from constants.py into installer.nsi
+    sys.path.insert(0, str(PROJECT_DIR))
+    from constants import VERSION
+    nsi_text = nsis_script.read_text(encoding='utf-8')
+    nsi_text_patched = re.sub(
+        r'!define APP_VERSION ".*?"',
+        f'!define APP_VERSION "{VERSION}"',
+        nsi_text,
+    )
+    if nsi_text_patched != nsi_text:
+        nsis_script.write_text(nsi_text_patched, encoding='utf-8')
+        print(f"  [OK] Synced installer.nsi version to {VERSION}")
+
     print("[BUILD] Building NSIS installer...")
     subprocess.check_call([makensis, str(nsis_script)])
 
@@ -167,6 +189,47 @@ def build_nsis_installer():
 
     print("[BUILD] Installer may have been created with a different name in dist/")
     return None
+
+
+def sign_executable(path: Path) -> bool:
+    """Sign an executable with signtool if available.
+
+    Requires:
+      - signtool on PATH (Windows SDK)
+      - YANCOHUB_SIGN_CERT environment variable set
+
+    Options for open-source projects:
+      - SignPath Foundation (free for open source)
+      - Azure Trusted Signing ($9.99/mo)
+      - EV code signing certificate ($300-700/yr)
+
+    Skips silently if signtool or cert env var is not available.
+    """
+    import os
+    signtool = shutil.which('signtool')
+    cert = os.environ.get('YANCOHUB_SIGN_CERT', '')
+
+    if not signtool or not cert:
+        return False
+
+    if not path.exists():
+        return False
+
+    try:
+        cmd = [
+            signtool, 'sign',
+            '/tr', 'http://timestamp.digicert.com',
+            '/td', 'sha256',
+            '/fd', 'sha256',
+            '/a',
+            str(path),
+        ]
+        subprocess.check_call(cmd)
+        print(f"  [OK] Signed: {path.name}")
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"  [WARN] Signing failed for {path.name}: {e}")
+        return False
 
 
 def main():
@@ -183,11 +246,16 @@ def main():
     run_pyinstaller()
     copy_extras()
 
+    # Sign the main exe
+    sign_executable(DIST_DIR / APP_NAME / f'{APP_NAME}.exe')
+
     if build_all or args.portable:
         build_portable_zip()
 
     if build_all or args.installer:
-        build_nsis_installer()
+        installer_path = build_nsis_installer()
+        if installer_path:
+            sign_executable(installer_path)
 
     print("\n[BUILD] Done!")
     print(f"  App directory: dist/{APP_NAME}/")

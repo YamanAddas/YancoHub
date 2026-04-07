@@ -6,6 +6,9 @@ Single source of truth for values used across multiple modules.
 # App version — used in User-Agent, About screen, packaging
 VERSION = '1.0.0'
 
+# GitHub repository (for update checking)
+GITHUB_REPO = 'YamanAddas/YancoHub'
+
 # Flask backend port
 FLASK_PORT = 8745
 
@@ -60,6 +63,20 @@ LIBRETRO_SYSTEMS = {
     'intellivision':'Mattel - Intellivision',
     '3do':          'The 3DO Company - 3DO',
 }
+
+# HTTP request timeouts (seconds) — used across all modules
+HTTP_TIMEOUT_PROBE = 2       # quick reachability checks (backend probes)
+HTTP_TIMEOUT_SHORT = 8       # lightweight API calls (store search, metadata)
+HTTP_TIMEOUT_DEFAULT = 10    # standard API requests (Steam, Wikipedia)
+HTTP_TIMEOUT_LONG = 30       # heavier downloads (app lists, game data)
+HTTP_TIMEOUT_EXTENDED = 120  # long-running operations (auth, legendary)
+
+# Process timeouts (seconds)
+FLASK_STARTUP_TIMEOUT = 15   # max wait for Flask to become ready
+PROCESS_CLEANUP_TIMEOUT = 3  # max wait for child process to terminate
+
+# Batch operation timeouts (seconds)
+BATCH_ARTWORK_TIMEOUT = 600  # max time for batch artwork download (10 min)
 
 # Valid artwork types for API validation
 VALID_ART_TYPES = {'cover', 'header', 'hero', 'logo', 'screenshot'}

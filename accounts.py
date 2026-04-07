@@ -14,7 +14,7 @@ import logging
 import sqlite3
 import requests
 from pathlib import Path
-from constants import STEAM_CDN
+from constants import STEAM_CDN, HTTP_TIMEOUT_DEFAULT, HTTP_TIMEOUT_LONG, HTTP_TIMEOUT_EXTENDED
 
 logger = logging.getLogger('yancohub.accounts')
 
@@ -36,7 +36,7 @@ class SteamAccount:
             resp = requests.get(
                 f"{STEAM_API_BASE}/ISteamUser/GetPlayerSummaries/v2/",
                 params={'key': self.api_key, 'steamids': self.steam_id},
-                timeout=10,
+                timeout=HTTP_TIMEOUT_DEFAULT,
             )
             if resp.status_code == 403:
                 return {'valid': False, 'error': 'Invalid API key'}
@@ -72,7 +72,7 @@ class SteamAccount:
                     'include_played_free_games': 'true',
                     'format': 'json',
                 },
-                timeout=30,
+                timeout=HTTP_TIMEOUT_LONG,
             )
 
             if resp.status_code == 403:
@@ -167,7 +167,8 @@ def _find_steam_path() -> Path | None:
         steam_path, _ = winreg.QueryValueEx(key, "SteamPath")
         winreg.CloseKey(key)
         return Path(steam_path)
-    except Exception:
+    except Exception as e:
+        logger.debug(f"Steam registry lookup failed: {e}")
         for p in [Path("C:/Program Files (x86)/Steam"), Path("C:/Program Files/Steam")]:
             if p.exists():
                 return p
@@ -182,7 +183,7 @@ def resolve_steam_vanity_url(api_key, vanity_name):
         resp = requests.get(
             f"{STEAM_API_BASE}/ISteamUser/ResolveVanityURL/v1/",
             params={'key': api_key, 'vanityurl': vanity_name},
-            timeout=10,
+            timeout=HTTP_TIMEOUT_DEFAULT,
         )
         if resp.status_code != 200:
             return None
@@ -490,13 +491,13 @@ class EpicAccount:
             import subprocess
             result = subprocess.run(
                 ['legendary', 'status', '--json'],
-                capture_output=True, text=True, timeout=10,
+                capture_output=True, text=True, timeout=HTTP_TIMEOUT_DEFAULT,
             )
             if result.returncode == 0:
                 data = json.loads(result.stdout)
                 return data.get('account', '') != ''
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"legendary status check failed: {e}")
 
         # Fallback: check if user.json exists
         user_json = Path.home() / '.config' / 'legendary' / 'user.json'
@@ -515,7 +516,7 @@ class EpicAccount:
             import subprocess
             result = subprocess.run(
                 ['legendary', 'list', '--json'],
-                capture_output=True, text=True, timeout=60,
+                capture_output=True, text=True, timeout=HTTP_TIMEOUT_LONG * 2,
             )
 
             if result.returncode != 0:
@@ -591,7 +592,7 @@ class EpicAccount:
             # This opens a browser for Epic login
             result = subprocess.run(
                 ['legendary', 'auth'],
-                capture_output=True, text=True, timeout=120,
+                capture_output=True, text=True, timeout=HTTP_TIMEOUT_EXTENDED,
             )
             if result.returncode == 0:
                 return {'status': 'ok', 'message': 'Epic account connected!'}

@@ -4,15 +4,47 @@
 
 ```
 User opens app
-  → launch.py starts Flask subprocess on port 8745
-  → launch.py waits for /health to return 200
-  → launch.py opens pywebview window pointing at http://127.0.0.1:8745
+  → launch.py: enable DPI awareness (ctypes)
+  → launch.py: acquire single-instance mutex (kernel32.CreateMutexW)
+  → launch.py: migrate legacy data from app dir to %APPDATA% (one-time)
+  → launch.py: start Flask subprocess on port 8745
+  → launch.py: wait for /health to return 200
+  → launch.py: start health watchdog daemon thread (pings /health every 5s)
+  → launch.py: open pywebview window (or hidden if --minimized)
   → Flask fires _initial_scan() in daemon thread
     → scanner.scan_all() reads registries, manifests, DBs, directories
     → accounts module fetches Steam API / GOG Galaxy DB / Epic catalog cache
     → _build_library() merges local + account games by ID then by name
     → enrichment thread fetches metadata (Steam Store + Wikipedia) and artwork (CDN cascade)
+    → start_update_check() fires GitHub API check in background thread
   → Frontend polls /api/games → renders carousel
+  → Frontend checks /api/onboarding/status → shows onboarding if first run
+  → Frontend checks /api/update-available (3s delay) → shows update banner if newer
+  → System tray icon started (pystray) if minimize_to_tray enabled
+```
+
+### Health Watchdog
+
+```
+launch.py health_watchdog thread:
+  loop every 5s:
+    GET /health → 200? → reset failure count
+    failure? → increment count
+    3 consecutive failures → notify frontend (showConnectionError)
+                           → restart Flask subprocess
+                           → max 5 restarts → showFatalError, stop
+```
+
+### Protocol Handler
+
+```
+yancohub://launch/{game_id}  → launches a specific game
+yancohub://settings           → opens settings panel
+
+Second instance with protocol URL:
+  → mutex already exists → POST url to /api/protocol-action → exit
+First instance with protocol URL:
+  → store URL → pass to Flask after startup
 ```
 
 ## Thread Safety Pattern
@@ -213,17 +245,39 @@ Uses process-snapshot diffing: snapshots PIDs before launch, identifies new larg
 
 ## File Paths (Windows)
 
+All paths managed by `paths.py`. Portable mode (detected via `portable.txt` marker) keeps everything in the app directory.
+
+### Normal Mode (installed)
 ```
-C:\YancoHub\                    Project root (example)
-  app.py, scanner.py, ...       Python modules
-  static\                       Frontend assets
-  templates\index.html          SPA template
-  cache\artwork\                Downloaded art (gitignored)
-  cache\metadata.db             SQLite metadata cache (gitignored)
-  userdata.json                 User settings (gitignored)
-  logs\yancohub.log             App log (gitignored)
+%APPDATA%\YancoHub\
+  userdata.json                 User settings, favorites, playtime
+  catbyte_history.json          CatByte conversation history
+
+%LOCALAPPDATA%\YancoHub\
+  cache\artwork\                Downloaded artwork
+  cache\metadata.db             SQLite metadata cache
+  logs\yancohub.log             App log (5MB rotating, 3 backups)
+```
+
+### Portable Mode (`portable.txt` next to exe)
+```
+YancoHub\
+  portable.txt                  Marker file (presence enables portable mode)
+  userdata.json                 User settings
+  catbyte_history.json          CatByte history
+  cache\artwork\                Downloaded artwork
+  cache\metadata.db             Metadata cache
+  logs\yancohub.log             App log
   bios\                         Open-source BIOS files
-  bios\user\                    User-provided BIOS (gitignored)
+  bios\user\                    User-provided BIOS
+```
+
+### Registry Keys (installer only)
+```
+HKCU\Software\YancoHub                                        InstallDir
+HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\...  Add/Remove Programs
+HKCU\Software\Classes\yancohub                                Protocol handler (yancohub://)
+HKCU\Software\Microsoft\Windows\CurrentVersion\Run             Startup toggle (optional)
 ```
 
 ## Test Architecture
@@ -282,3 +336,9 @@ tests/
 | GET/POST | `/api/settings/launchbox-path` | Get/set LaunchBox path |
 | GET | `/api/hidden-systems` | Hidden retro systems |
 | POST | `/api/hidden-systems/toggle` | Toggle system visibility |
+| GET | `/api/update-available` | Check for newer GitHub release |
+| GET/POST | `/api/settings/launch-on-startup` | Windows startup toggle |
+| GET/POST | `/api/settings/minimize-to-tray` | Minimize-to-tray toggle |
+| GET | `/api/onboarding/status` | First-run onboarding status |
+| POST | `/api/onboarding/complete` | Mark onboarding complete |
+| POST | `/api/protocol-action` | Handle yancohub:// protocol URLs |

@@ -8,9 +8,11 @@ import logging
 import threading
 from pathlib import Path
 
+from paths import get_data_dir
+
 logger = logging.getLogger('yancohub.userdata')
 
-DATA_FILE = Path(__file__).parent / 'userdata.json'
+DATA_FILE = get_data_dir() / 'userdata.json'
 
 DEFAULT_DATA = {
     'sessions': {},       # game_id → {total_seconds, last_played, session_count, active_since}
@@ -37,6 +39,9 @@ DEFAULT_DATA = {
         'launchbox_path': '',      # Path to LaunchBox install dir (artwork source)
         'show_uninstalled': True,  # Show games from accounts even if not installed
         'direct_launch': True,     # Launch games directly without store client when possible
+        'minimize_to_tray': True,  # Minimize to system tray on close
+        'launch_on_startup': False,  # Launch YancoHub on Windows startup
+        'onboarding_complete': False,  # First-run onboarding completed
     },
     'catbyte': {
         'backend': 'ollama',       # ollama, openclaw, lmstudio, openai, custom

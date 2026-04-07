@@ -30,18 +30,46 @@
         </div>
     </div>
 
+    <!-- Connection Error Overlay -->
+    <div id="connectionError" class="connection-error-overlay hidden">
+        <div class="connection-error-content">
+            <div class="connection-error-spinner"></div>
+            <div class="connection-error-title">Connection Lost</div>
+            <div class="connection-error-text">Reconnecting to backend...</div>
+        </div>
+    </div>
+
+    <!-- Fatal Error Overlay -->
+    <div id="fatalError" class="connection-error-overlay fatal hidden">
+        <div class="connection-error-content">
+            <div class="connection-error-icon">&#x26A0;</div>
+            <div class="connection-error-title">Fatal Error</div>
+            <div class="connection-error-text" id="fatalErrorMessage">Backend crashed and could not recover.</div>
+        </div>
+    </div>
+
     <!-- Main App -->
     <div id="app" class="app hidden">
+        <!-- Update Banner -->
+        <div id="updateBanner" class="update-banner hidden">
+            <span class="update-banner-text">
+                A new version of YancoHub is available: <strong id="updateBannerVersion"></strong>
+            </span>
+            <a id="updateBannerLink" href="#" target="_blank" class="update-banner-btn">Download</a>
+            <button class="update-banner-dismiss" id="updateBannerDismiss" aria-label="Dismiss">&times;</button>
+        </div>
+
         <!-- Top Bar -->
         <header class="top-bar">
-            <div class="logo">
-                <img class="logo-icon" src="/static/img/logo-360.png" alt="YancoHub" draggable="false">
-            </div>
-            <div class="top-bar-center"></div>
-            <div class="top-bar-right">
+            <div class="top-bar-left">
                 <button class="icon-btn" id="consolePanelToggle" title="Toggle library panel">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
                 </button>
+            </div>
+            <div class="logo">
+                <img class="logo-icon" src="/static/img/logo-360.png" alt="YancoHub" draggable="false">
+            </div>
+            <div class="top-bar-right">
                 <button class="icon-btn" id="btnSearch" title="Search (Ctrl+F)">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                 </button>
@@ -62,7 +90,7 @@
             </div>
         </header>
 
-        <!-- Category tabs now live in the console hex panel (right side) -->
+        <!-- Category tabs now live in the console panel (left side) -->
 
         <!-- Hero Backdrop (blurred art behind carousel) -->
         <div class="hero-backdrop" id="heroBackdrop"></div>
@@ -147,7 +175,7 @@
             </div>
         </div>
 
-        <!-- Console Panel (right side hex tabs) -->
+        <!-- Console Panel (left side library panel) -->
         <aside class="console-panel hidden" id="consolePanel">
             <div class="console-panel-header">
                 <span class="console-panel-title">Library</span>
@@ -356,8 +384,17 @@
                     <section class="settings-card">
                         <div class="settings-card-header">
                             <h4>Display</h4>
+                            <p class="settings-card-hint">Control which games appear in your library.</p>
                         </div>
-                        <button class="btn-action" id="btnToggleUninstalled">Loading...</button>
+                        <div class="settings-toggle-row">
+                            <label class="settings-toggle-label">
+                                <span>Show uninstalled games</span>
+                                <span class="settings-toggle-hint">Display owned games from connected accounts even if they're not currently installed</span>
+                            </label>
+                            <button class="toggle-switch" id="toggleShowUninstalled" role="switch" aria-checked="true">
+                                <span class="toggle-knob"></span>
+                            </button>
+                        </div>
                     </section>
 
                     <section class="settings-card">
@@ -365,10 +402,10 @@
                             <h4>Launch</h4>
                             <p class="settings-card-hint">Control how games start when you click Play.</p>
                         </div>
-                        <div class="catbyte-toggle-row">
-                            <label class="catbyte-toggle-label">
+                        <div class="settings-toggle-row">
+                            <label class="settings-toggle-label">
                                 <span>Direct launch</span>
-                                <span class="catbyte-toggle-hint">Run games directly without opening the store client. Works best for GOG (DRM-free) and Epic. Some Steam games may still require Steam.</span>
+                                <span class="settings-toggle-hint">Run games directly without opening the store client. Works best for GOG (DRM-free) and Epic. Some Steam games may still require Steam.</span>
                             </label>
                             <button class="toggle-switch" id="toggleDirectLaunch" role="switch" aria-checked="true">
                                 <span class="toggle-knob"></span>
@@ -539,19 +576,19 @@
                             <h4>Personality</h4>
                             <p class="settings-card-hint">Customize how CatByte talks to you.</p>
                         </div>
-                        <div class="catbyte-toggle-row">
-                            <label class="catbyte-toggle-label">
+                        <div class="settings-toggle-row">
+                            <label class="settings-toggle-label">
                                 <span>Cat puns &amp; personality</span>
-                                <span class="catbyte-toggle-hint">When off, CatByte uses a professional tone</span>
+                                <span class="settings-toggle-hint">When off, CatByte uses a professional tone</span>
                             </label>
                             <button class="toggle-switch" id="toggleCatPuns" role="switch" aria-checked="true">
                                 <span class="toggle-knob"></span>
                             </button>
                         </div>
-                        <div class="catbyte-toggle-row">
-                            <label class="catbyte-toggle-label">
+                        <div class="settings-toggle-row">
+                            <label class="settings-toggle-label">
                                 <span>Game awareness</span>
-                                <span class="catbyte-toggle-hint">Send current game context for better answers</span>
+                                <span class="settings-toggle-hint">Send current game context for better answers</span>
                             </label>
                             <button class="toggle-switch" id="toggleGameAwareness" role="switch" aria-checked="true">
                                 <span class="toggle-knob"></span>
@@ -575,12 +612,36 @@
                             <h4>Game Mode</h4>
                             <p class="settings-card-hint">Fullscreen cinematic interface for couch gaming — navigate with keyboard or gamepad.</p>
                         </div>
-                        <div class="catbyte-toggle-row">
-                            <label class="catbyte-toggle-label">
-                                <strong>Start in Game Mode</strong>
-                                <span class="catbyte-toggle-hint">Launch YancoHub directly into fullscreen Game Mode</span>
+                        <div class="settings-toggle-row">
+                            <label class="settings-toggle-label">
+                                <span>Start in Game Mode</span>
+                                <span class="settings-toggle-hint">Launch YancoHub directly into fullscreen Game Mode</span>
                             </label>
                             <button class="toggle-switch" id="toggleStartGameMode" role="switch" aria-checked="false">
+                                <span class="toggle-knob"></span>
+                            </button>
+                        </div>
+                    </section>
+                    <section class="settings-card">
+                        <div class="settings-card-header">
+                            <h4>System</h4>
+                            <p class="settings-card-hint">Control how YancoHub behaves on your system.</p>
+                        </div>
+                        <div class="settings-toggle-row">
+                            <label class="settings-toggle-label">
+                                <span>Minimize to tray on close</span>
+                                <span class="settings-toggle-hint">Hide to the system tray instead of quitting when you close the window</span>
+                            </label>
+                            <button class="toggle-switch" id="toggleMinimizeToTray" role="switch" aria-checked="true">
+                                <span class="toggle-knob"></span>
+                            </button>
+                        </div>
+                        <div class="settings-toggle-row">
+                            <label class="settings-toggle-label">
+                                <span>Launch on Windows startup</span>
+                                <span class="settings-toggle-hint">Automatically start YancoHub when you sign in to Windows</span>
+                            </label>
+                            <button class="toggle-switch" id="toggleLaunchOnStartup" role="switch" aria-checked="false">
                                 <span class="toggle-knob"></span>
                             </button>
                         </div>
@@ -678,7 +739,7 @@
                                 <button class="gp-remap-btn" data-action="dright">Button <span class="gp-remap-current">15</span></button>
                             </div>
                         </div>
-                        <button class="settings-action-btn" id="gpResetMapping" style="margin-top:12px">Reset to Defaults</button>
+                        <button class="btn-action" id="gpResetMapping">Reset to Defaults</button>
                     </section>
 
                     <section class="settings-card">
@@ -717,61 +778,53 @@
 
                 <div class="settings-pane" id="settingsPane-about">
                     <section class="settings-card settings-about-hero">
-                        <img class="about-logo-img" src="/static/img/logo-120.png" alt="YancoHub" draggable="false">
-                        <div class="about-logo">
-                            <span class="about-logo-text">YANCO</span><span class="about-logo-accent">HUB</span>
-                        </div>
-                        <div class="about-version">v1.0.0</div>
+                        <div class="about-hero-glow"></div>
+                        <img class="about-logo-img" src="/static/img/logo-420.png" alt="YancoHub" draggable="false">
+                        <div class="about-version">v{{ version }}</div>
                         <div class="about-tagline">All your games. One place.</div>
+                        <div class="about-divider"></div>
+                        <p class="about-desc">A unified game launcher that brings Steam, Epic, GOG, Xbox, EA, Ubisoft, Battle.net, local games, and retro ROMs into one cinematic interface. Free and open-source.</p>
                     </section>
 
-                    <section class="settings-card">
-                        <div class="settings-card-header">
-                            <h4>About</h4>
-                        </div>
-                        <p class="about-text">YancoHub is a unified game launcher that aggregates Steam, Epic, GOG, Xbox, EA, Ubisoft, Battle.net, local games, and retro ROMs into one cinematic interface.</p>
-                        <p class="about-text">Free, open-source, and built for gamers who want everything in one place.</p>
-                    </section>
-
-                    <section class="settings-card">
-                        <div class="settings-card-header">
-                            <h4>Credits</h4>
-                        </div>
-                        <div class="about-credits">
-                            <div class="about-credit-row">
-                                <span class="about-credit-role">Design &amp; Development</span>
-                                <span class="about-credit-name">Yaman Addas</span>
+                    <section class="settings-card about-info-card">
+                        <div class="about-info-grid">
+                            <div class="about-info-col">
+                                <h4 class="about-section-title">Credits</h4>
+                                <div class="about-credits">
+                                    <div class="about-credit-row">
+                                        <span class="about-credit-role">Design &amp; Development</span>
+                                        <span class="about-credit-name">Yaman Addas</span>
+                                    </div>
+                                    <div class="about-credit-row">
+                                        <span class="about-credit-role">AI Companion</span>
+                                        <span class="about-credit-name">CatByte</span>
+                                    </div>
+                                    <div class="about-credit-row">
+                                        <span class="about-credit-role">Emulation</span>
+                                        <span class="about-credit-name">EmulatorJS</span>
+                                    </div>
+                                    <div class="about-credit-row">
+                                        <span class="about-credit-role">Metadata</span>
+                                        <span class="about-credit-name">Steam Store, Wikipedia</span>
+                                    </div>
+                                    <div class="about-credit-row">
+                                        <span class="about-credit-role">Artwork</span>
+                                        <span class="about-credit-name">Steam CDN, LibRetro, SteamGridDB</span>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="about-credit-row">
-                                <span class="about-credit-role">AI Companion</span>
-                                <span class="about-credit-name">CatByte (multi-backend AI)</span>
+                            <div class="about-info-col">
+                                <h4 class="about-section-title">Built With</h4>
+                                <div class="about-tech">
+                                    <span class="about-tech-tag">Python</span>
+                                    <span class="about-tech-tag">Flask</span>
+                                    <span class="about-tech-tag">pywebview</span>
+                                    <span class="about-tech-tag">Vanilla JS</span>
+                                    <span class="about-tech-tag">SQLite</span>
+                                    <span class="about-tech-tag">EmulatorJS</span>
+                                    <span class="about-tech-tag">pystray</span>
+                                </div>
                             </div>
-                            <div class="about-credit-row">
-                                <span class="about-credit-role">Emulation</span>
-                                <span class="about-credit-name">EmulatorJS</span>
-                            </div>
-                            <div class="about-credit-row">
-                                <span class="about-credit-role">Metadata</span>
-                                <span class="about-credit-name">Steam Store API, Wikipedia</span>
-                            </div>
-                            <div class="about-credit-row">
-                                <span class="about-credit-role">Artwork</span>
-                                <span class="about-credit-name">Steam CDN, LibRetro, SteamGridDB</span>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section class="settings-card">
-                        <div class="settings-card-header">
-                            <h4>Tech Stack</h4>
-                        </div>
-                        <div class="about-tech">
-                            <span class="about-tech-tag">Python</span>
-                            <span class="about-tech-tag">Flask</span>
-                            <span class="about-tech-tag">pywebview</span>
-                            <span class="about-tech-tag">Vanilla JS</span>
-                            <span class="about-tech-tag">SQLite</span>
-                            <span class="about-tech-tag">EmulatorJS</span>
                         </div>
                     </section>
 
@@ -907,6 +960,46 @@
             <span class="gaming-hint gaming-hint-gp"><span class="gp-btn gp-b">B</span> Exit</span>
             <span class="gaming-hint gaming-hint-gp"><span class="gp-btn gp-stick">L</span> Navigate</span>
             <span class="gaming-hint gaming-hint-gp"><span class="gp-btn gp-bumper">LB/RB</span> Category</span>
+        </div>
+    </div>
+
+    <!-- Onboarding Overlay -->
+    <div id="onboardingOverlay" class="onboarding-overlay hidden">
+        <div class="onboarding-backdrop"></div>
+        <div class="onboarding-card">
+            <!-- Step 1: Welcome -->
+            <div class="onboarding-step" id="onbStep1">
+                <img class="onboarding-logo" src="/static/img/logo-420.png" alt="YancoHub" draggable="false">
+                <h2 class="onboarding-title">Welcome to YancoHub</h2>
+                <p class="onboarding-text">All your games. One place. No clutter.</p>
+                <div class="onboarding-actions">
+                    <button class="btn-action" id="onbGetStarted">Get Started</button>
+                    <button class="onboarding-skip" id="onbSkip1">Skip setup</button>
+                </div>
+            </div>
+            <!-- Step 2: Add Sources -->
+            <div class="onboarding-step hidden" id="onbStep2">
+                <h2 class="onboarding-title">Add Your Game Sources</h2>
+                <p class="onboarding-text">YancoHub automatically detects installed stores. You can also add ROM and local game folders.</p>
+                <div class="onboarding-stores" id="onbStores"></div>
+                <div class="onboarding-folder-btns">
+                    <button class="btn-action" id="onbAddRomFolder">Add ROM Folder</button>
+                    <button class="btn-action" id="onbAddLocalFolder">Add Games Folder</button>
+                </div>
+                <div class="onboarding-actions">
+                    <button class="btn-action" id="onbContinue2">Continue</button>
+                    <button class="onboarding-skip" id="onbSkip2">Skip</button>
+                </div>
+            </div>
+            <!-- Step 3: Building Library -->
+            <div class="onboarding-step hidden" id="onbStep3">
+                <h2 class="onboarding-title">Building Your Library</h2>
+                <p class="onboarding-text" id="onbGameCount">Scanning for games...</p>
+                <div class="onboarding-spinner"></div>
+                <div class="onboarding-actions">
+                    <button class="btn-action hidden" id="onbFinish">Your library is ready!</button>
+                </div>
+            </div>
         </div>
     </div>
 

@@ -33,7 +33,8 @@ def read_rom_header_name(file_path: str, system: str) -> str | None:
         return None
     try:
         return reader(file_path)
-    except Exception:
+    except Exception as e:
+        logger.debug(f"ROM header read failed for {file_path} ({system}): {e}")
         return None
 
 

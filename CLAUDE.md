@@ -16,7 +16,7 @@ python -m venv venv && venv\Scripts\activate && pip install -r requirements.txt 
 python build.py                     # Build installer + portable zip (needs PyInstaller)
 python build.py --portable          # Portable zip only
 python build.py --installer         # NSIS installer only (needs makensis on PATH)
-python -m pytest tests/ -v          # Run all tests (211 tests)
+python -m pytest tests/ -v          # Run all tests (328 tests)
 python -m pytest tests/test_app.py  # Run Flask route tests only
 python -m pytest tests/ -k fuzzy    # Run tests matching keyword
 ```
@@ -47,9 +47,15 @@ Storage:  userdata.json (settings/favorites/playtime) + cache/metadata.db (SQLit
 | `emusetup.py` | RetroArch + core auto-download and configuration |
 | `launch.py` | App entry point — starts Flask subprocess + pywebview window |
 | `romident.py` | ROM header parsing, fuzzy name matching, format priority |
-| `window.py` | pywebview window API (folder/file browse dialogs, native menu bar) |
-| `build.py` | PyInstaller + NSIS packaging for installer and portable zip |
-| `installer.nsi` | NSIS installer script for Windows setup.exe |
+| `window.py` | pywebview window API (folder/file browse dialogs, native menu bar, tray integration) |
+| `paths.py` | Centralized data paths (%APPDATA%, %LOCALAPPDATA%), portable mode, migration |
+| `singleinstance.py` | Windows named mutex for single-instance enforcement |
+| `dpi.py` | Per-Monitor V2 DPI awareness via ctypes fallback chain |
+| `updatecheck.py` | GitHub Releases API update checker (background thread) |
+| `startup.py` | Windows startup registry (HKCU\...\Run) toggle |
+| `tray.py` | System tray icon via pystray (minimize-to-tray behavior) |
+| `build.py` | PyInstaller + NSIS packaging, code signing hooks, portable zip |
+| `installer.nsi` | NSIS installer script with protocol handler registration |
 | `static/js/app.js` | 3D hexagonal carousel, starfield, tabs, search, settings UI |
 | `static/js/emulator.js` | EmulatorJS integration (19 retro systems in-browser via WASM) |
 
@@ -64,6 +70,10 @@ Storage:  userdata.json (settings/favorites/playtime) + cache/metadata.db (SQLit
 | `tests/test_chathistory.py` | Session CRUD, pinning, messages, LLM formatting, pruning |
 | `tests/test_metadata.py` | SQLite cache CRUD, Steam/Wikipedia fetching (mocked HTTP), enrichment |
 | `tests/test_app.py` | Flask routes: health, games, search, collections, favorites, CSRF, artwork |
+| `tests/test_paths.py` | Portable detection, APPDATA/LOCALAPPDATA paths, migration |
+| `tests/test_singleinstance.py` | Mutex acquisition/release, already-running detection |
+| `tests/test_updatecheck.py` | Version parsing, newer/same/older comparison, mocked HTTP |
+| `tests/test_startup.py` | Mock winreg read/write/delete for startup registry |
 
 ## Code Conventions
 
@@ -105,8 +115,10 @@ Every change must meet ALL of these:
 5. **No `shell=True`** — all subprocess calls use argument lists
 6. **Visual consistency** — all UI uses CSS variables from `:root`, never hardcoded colors
 7. **Verify visual changes** — describe what changed and confirm it matches the YancoHub aesthetic
-8. **Tests pass** — run `python -m pytest tests/ -v` before considering a change complete; all 211 tests must pass
+8. **Tests pass** — run `python -m pytest tests/ -v` before considering a change complete; all 328 tests must pass
 9. **New logic gets tests** — any new module, function, or route should have corresponding tests in `tests/`; use existing fixtures from `conftest.py` (temp dirs, synthetic ROMs, mocked HTTP)
+10. **Data paths use `paths.py`** — never hardcode `userdata.json`, `cache/`, or `logs/` paths; always use `get_data_dir()`, `get_cache_dir()`, `get_log_dir()`
+11. **New settings get DEFAULT_DATA entry** — add new user-facing settings to `userdata.py:DEFAULT_DATA['settings']` with a sensible default
 
 ## Gotchas
 
@@ -120,13 +132,17 @@ Every change must meet ALL of these:
 - **Process monitoring** — `pid.is_running()` can return True briefly after exit; poll with status check
 - **Direct launch** — `direct_exe` paths are Windows paths; never `shlex.split()` them (spaces break). Use `[exe_path]` as a list. `direct_args` can be split with `shlex.split(args, posix=False)`
 - **GOG `goggame-*.info`** — JSON files in install dir with `playTasks` array; `isPrimary` + `type: "FileTask"` gives the main exe. All GOG games are DRM-free
+- **pystray threading** — pystray runs its own message loop in a daemon thread; callbacks execute on that thread, use `window.evaluate_js()` to talk to the UI
+- **Named mutex auto-release** — Windows automatically releases the mutex when the process exits (even on crash), so no stale lock files
+- **Portable mode detection** — `paths.is_portable()` checks for `portable.txt` next to the exe; portable zip includes this file, installer does not
+- **%APPDATA% migration** — `migrate_legacy_data()` runs once at startup; copies files then renames originals to `.migrated` suffix to prevent double-migration
 
 ## Testing
 
 Tests use `pytest` with temp files and mocks — no network or filesystem side effects.
 
 ```bash
-python -m pytest tests/ -v          # Full suite (211 tests, ~4s)
+python -m pytest tests/ -v          # Full suite (328 tests, ~4s)
 python -m pytest tests/ -k "rom"    # Run only ROM-related tests
 python -m pytest tests/test_app.py  # Flask routes only
 ```

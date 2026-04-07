@@ -8,6 +8,7 @@ import json
 import time
 import atexit
 import logging
+import logging.handlers
 import shlex
 import subprocess
 import threading
@@ -24,18 +25,26 @@ from accounts import SteamAccount, GogGalaxyDB, EpicCatalogDB, EpicAccount, reso
 from metadata import MetadataFetcher
 from artwork import ArtworkScraper
 from biosmanager import BIOSManager
-from constants import VALID_ART_TYPES, FLASK_PORT, HTTP_TIMEOUT_SHORT
+from constants import VALID_ART_TYPES, FLASK_PORT, HTTP_TIMEOUT_SHORT, VERSION
+from paths import get_log_dir
+from updatecheck import start_update_check, get_update_info
+from startup import is_startup_enabled, set_startup_enabled
 
 # ── Logging ─────────────────────────────────────────────────────────────────
 
-LOG_DIR = Path(__file__).parent / 'logs'
-LOG_DIR.mkdir(exist_ok=True)
+LOG_DIR = get_log_dir()
 
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(name)s] %(levelname)s: %(message)s',
     handlers=[
-        logging.FileHandler(LOG_DIR / 'yancohub.log', encoding='utf-8'),
+        logging.handlers.RotatingFileHandler(
+            LOG_DIR / 'yancohub.log',
+            maxBytes=5 * 1024 * 1024,  # 5 MB per file
+            backupCount=3,             # 3 backups = 20 MB max total
+            encoding='utf-8',
+            delay=True,
+        ),
         logging.StreamHandler(),
     ]
 )
@@ -82,6 +91,9 @@ _catbyte_config = userdata.get_catbyte_config()
 if _catbyte_config:
     catbyte.configure(_catbyte_config)
 
+# Fire background update check
+start_update_check()
+
 # In-memory game library (refreshed on scan)
 game_library = []
 game_index = {}  # id → game dict
@@ -101,6 +113,12 @@ _ALLOWED_ORIGINS = {
     f'http://127.0.0.1:{FLASK_PORT}',
     f'http://localhost:{FLASK_PORT}',
 }
+
+
+@app.errorhandler(500)
+def _handle_500(error):
+    logger.error(f"Internal server error: {error}")
+    return jsonify({'error': 'Internal server error'}), 500
 
 
 @app.before_request
@@ -314,7 +332,7 @@ scan_thread.start()
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('index.html', version=VERSION)
 
 
 @app.route('/health')
@@ -1652,6 +1670,82 @@ def api_epic_manifest_count():
         'launcher_installed': launcher_installed,
         'catalog_available': epic_catalog.is_available(),
     })
+
+
+# ── Update & Startup API ─────────────────────────────────────────────────────
+
+@app.route('/api/onboarding/status')
+def api_onboarding_status():
+    return jsonify({'complete': userdata.get_settings().get('onboarding_complete', False)})
+
+
+@app.route('/api/onboarding/complete', methods=['POST'])
+def api_onboarding_complete():
+    userdata.update_settings({'onboarding_complete': True})
+    return jsonify({'status': 'ok'})
+
+
+@app.route('/api/update-available')
+def api_update_available():
+    info = get_update_info()
+    if info:
+        return jsonify({'available': True, **info})
+    return jsonify({'available': False, 'current_version': VERSION})
+
+
+@app.route('/api/settings/minimize-to-tray', methods=['GET'])
+def api_get_minimize_to_tray():
+    return jsonify({'enabled': userdata.get_settings().get('minimize_to_tray', True)})
+
+
+@app.route('/api/settings/minimize-to-tray', methods=['POST'])
+def api_set_minimize_to_tray():
+    current = userdata.get_settings().get('minimize_to_tray', True)
+    new_val = not current
+    userdata.update_settings({'minimize_to_tray': new_val})
+    return jsonify({'status': 'ok', 'enabled': new_val})
+
+
+@app.route('/api/settings/launch-on-startup', methods=['GET'])
+def api_get_startup():
+    return jsonify({'enabled': is_startup_enabled()})
+
+
+@app.route('/api/settings/launch-on-startup', methods=['POST'])
+def api_set_startup():
+    data = request.get_json(silent=True) or {}
+    enabled = bool(data.get('enabled', False))
+    success = set_startup_enabled(enabled)
+    if success:
+        return jsonify({'status': 'ok', 'enabled': enabled})
+    return jsonify({'error': 'Failed to update startup setting'}), 500
+
+
+@app.route('/api/protocol-action', methods=['POST'])
+def api_protocol_action():
+    """Handle yancohub:// protocol URLs forwarded from a second instance."""
+    data = request.get_json(silent=True) or {}
+    url = data.get('url', '')
+    if not url.startswith('yancohub://'):
+        return jsonify({'error': 'Invalid protocol URL'}), 400
+
+    # Parse action: yancohub://launch/{game_id}, yancohub://settings
+    path = url[len('yancohub://'):].strip('/')
+    parts = path.split('/', 1)
+    action = parts[0] if parts else ''
+
+    if action == 'launch' and len(parts) > 1:
+        game_id = parts[1]
+        with _library_lock:
+            game = game_index.get(game_id)
+        if game:
+            return jsonify({'status': 'ok', 'action': 'launch', 'game_id': game_id})
+        return jsonify({'error': f'Game not found: {game_id}'}), 404
+
+    if action == 'settings':
+        return jsonify({'status': 'ok', 'action': 'settings'})
+
+    return jsonify({'error': f'Unknown action: {action}'}), 400
 
 
 # ── Main ────────────────────────────────────────────────────────────────────

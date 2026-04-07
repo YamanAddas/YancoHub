@@ -204,18 +204,71 @@ Features that make YancoHub unique — things no competitor does.
 - ~~MSI/NSIS installer with YancoHub branding~~
 
 ### 6.2 — Test suite (COMPLETE)
-- ~~183 pytest tests covering constants, ROM parsing, user data, BIOS scanning, chat history, metadata, and Flask routes~~
+- ~~328 pytest tests covering constants, ROM parsing, user data, BIOS scanning, chat history, metadata, Flask routes, paths, singleinstance, updatecheck, startup~~
 - ~~Synthetic ROM fixtures, mocked HTTP, temp file isolation — no side effects~~
 - ~~Run: `python -m pytest tests/ -v`~~
 
-### 6.3 — Auto-update mechanism
-- Check GitHub releases for new versions
-- Download and apply updates (or prompt user)
+### 6.3 — Auto-update mechanism (COMPLETE)
+- ~~Check GitHub releases for new versions (updatecheck.py, background thread)~~
+- ~~Update banner in frontend + "Check for Updates" in Help menu~~
+- ~~Download link directs to GitHub Releases page~~
 
 ### 6.4 — GitHub release pipeline
 - GitHub Actions: lint → test → build → release
 - Run `pytest` in CI on every push/PR
 - Auto-generate changelog from commit messages
+
+---
+
+## Phase 7 — Production Quality (COMPLETE)
+
+Turns YancoHub from a developer tool into a proper Windows application.
+
+### 7.1 — Data path management (COMPLETE)
+- ~~`paths.py`: %APPDATA% for user data, %LOCALAPPDATA% for cache/logs~~
+- ~~Portable mode via `portable.txt` marker file~~
+- ~~One-time migration from app dir to APPDATA~~
+
+### 7.2 — Single instance enforcement (COMPLETE)
+- ~~`singleinstance.py`: Windows named mutex (auto-released on crash)~~
+- ~~Native MessageBox when already running~~
+
+### 7.3 — DPI awareness (COMPLETE)
+- ~~`dpi.py`: Per-Monitor V2 → V1 → System fallback chain~~
+- ~~`assets/YancoHub.manifest` for PyInstaller builds~~
+
+### 7.4 — Log rotation (COMPLETE)
+- ~~RotatingFileHandler: 5MB per file, 3 backups (20MB max)~~
+
+### 7.5 — Flask crash recovery (COMPLETE)
+- ~~Health watchdog daemon thread in launch.py~~
+- ~~Auto-restart Flask on 3 consecutive health check failures~~
+- ~~Connection error / fatal error overlays in frontend~~
+
+### 7.6 — System tray (COMPLETE)
+- ~~`tray.py`: pystray icon in daemon thread~~
+- ~~Minimize to tray on close (configurable)~~
+- ~~`--minimized` flag for startup~~
+
+### 7.7 — Windows startup (COMPLETE)
+- ~~`startup.py`: HKCU\...\Run registry toggle~~
+- ~~Settings UI toggle in Display tab~~
+
+### 7.8 — Update checking (COMPLETE)
+- ~~`updatecheck.py`: GitHub Releases API in background thread~~
+- ~~Update banner + Help menu "Check for Updates"~~
+
+### 7.9 — Protocol handler (COMPLETE)
+- ~~`yancohub://` URL scheme registered by NSIS installer~~
+- ~~Second instance forwards URL to running instance via POST~~
+
+### 7.10 — First-run onboarding (COMPLETE)
+- ~~3-step glassmorphism overlay: Welcome → Add Sources → Building Library~~
+- ~~Skippable, marks onboarding_complete in settings~~
+
+### 7.11 — Code signing hooks (COMPLETE)
+- ~~`build.py:sign_executable()` — calls signtool if available~~
+- ~~Portable zip includes `portable.txt` marker~~
 
 ---
 

@@ -22,7 +22,8 @@ from pathlib import Path
 import requests
 
 from scanner import ROM_SYSTEMS
-from constants import BUILTIN_SYSTEMS, VERSION
+from constants import (BUILTIN_SYSTEMS, VERSION, HTTP_TIMEOUT_LONG,
+                       HTTP_TIMEOUT_EXTENDED, HTTP_TIMEOUT_SHORT)
 
 logger = logging.getLogger('yancohub.emusetup')
 
@@ -219,7 +220,7 @@ class EmulatorSetup:
         try:
             # Step 1: Download the 7z archive
             logger.info(f"Downloading RetroArch from {RETROARCH_URL}")
-            resp = self._session.get(RETROARCH_URL, stream=True, timeout=30)
+            resp = self._session.get(RETROARCH_URL, stream=True, timeout=HTTP_TIMEOUT_LONG)
             resp.raise_for_status()
 
             total_bytes = int(resp.headers.get('Content-Length', 0))
@@ -253,7 +254,7 @@ class EmulatorSetup:
 
             result = subprocess.run(
                 [sz_exe, 'x', str(archive_path), f'-o{self._ra_dir}', '-y'],
-                capture_output=True, text=True, timeout=120,
+                capture_output=True, text=True, timeout=HTTP_TIMEOUT_EXTENDED,
             )
             if result.returncode != 0:
                 logger.error(f"7z extraction failed: {result.stderr[:500]}")
@@ -275,8 +276,8 @@ class EmulatorSetup:
                             item.rename(dest)
                     try:
                         shutil.rmtree(str(nested))
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"Failed to remove nested dir {nested}: {e}")
                     break
 
             # Verify
@@ -304,8 +305,8 @@ class EmulatorSetup:
             for f in [BASE_DIR / 'RetroArch.7z.tmp', archive_path]:
                 try:
                     f.unlink(missing_ok=True)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Failed to clean up {f}: {e}")
 
     def _download_7za(self) -> str | None:
         """Download standalone 7za.exe from 7-zip.org (LGPL, ~1.1MB zip).
@@ -335,13 +336,13 @@ class EmulatorSetup:
         try:
             # Try getting 7zr.exe (LZMA-only standalone, ~600KB)
             # Won't work for BCJ2 but let's check if it's enough
-            resp = self._session.get(_7ZA_PLAIN_URL, timeout=15)
+            resp = self._session.get(_7ZA_PLAIN_URL, timeout=HTTP_TIMEOUT_SHORT)
             resp.raise_for_status()
             _7zr_path = tools_dir / '7zr.exe'
             _7zr_path.write_bytes(resp.content)
 
             # Now download the Extra package (which IS 7z format, but LZMA only)
-            resp2 = self._session.get(_7ZA_URL, timeout=15)
+            resp2 = self._session.get(_7ZA_URL, timeout=HTTP_TIMEOUT_SHORT)
             resp2.raise_for_status()
             extra_7z = tools_dir / 'extra.7z'
             extra_7z.write_bytes(resp2.content)
@@ -349,7 +350,7 @@ class EmulatorSetup:
             # Extract 7za.exe from the extras using 7zr
             result = subprocess.run(
                 [str(_7zr_path), 'e', str(extra_7z), f'-o{tools_dir}', '7za.exe', '-y'],
-                capture_output=True, timeout=30,
+                capture_output=True, timeout=HTTP_TIMEOUT_LONG,
             )
             extra_7z.unlink(missing_ok=True)
 
@@ -376,7 +377,7 @@ class EmulatorSetup:
 
         tmp_path = cores_dir / f'{core_name}.zip.tmp'
         try:
-            resp = self._session.get(url, stream=True, timeout=20)
+            resp = self._session.get(url, stream=True, timeout=HTTP_TIMEOUT_LONG)
             resp.raise_for_status()
 
             self.progress['bytes_total'] = int(resp.headers.get('Content-Length', 0))
@@ -413,8 +414,8 @@ class EmulatorSetup:
         finally:
             try:
                 tmp_path.unlink(missing_ok=True)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Failed to clean up {tmp_path}: {e}")
 
     # ── Configuration ──────────────────────────────────────────────────────
 

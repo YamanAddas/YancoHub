@@ -90,6 +90,15 @@ Section "Install"
     WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" \
         "NoRepair" 1
 
+    ; Protocol handler — yancohub:// URLs
+    WriteRegStr HKCU "Software\Classes\yancohub" "" "URL:YancoHub Protocol"
+    WriteRegStr HKCU "Software\Classes\yancohub" "URL Protocol" ""
+    WriteRegStr HKCU "Software\Classes\yancohub\DefaultIcon" "" "$INSTDIR\${APP_EXE},0"
+    WriteRegStr HKCU "Software\Classes\yancohub\shell\open\command" "" '"$INSTDIR\${APP_EXE}" "%1"'
+
+    ; Launch on startup — removed by uninstaller
+    ; (Actual toggle is managed by the app via winreg)
+
     ; Calculate installed size
     ${GetSize} "$INSTDIR" "/S=0K" $0 $1 $2
     IntFmt $0 "0x%08X" $0
@@ -117,6 +126,8 @@ Section "Uninstall"
     ; Remove registry entries
     DeleteRegKey HKCU "Software\${APP_NAME}"
     DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}"
+    DeleteRegKey HKCU "Software\Classes\yancohub"
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${APP_NAME}"
 
     ; Only remove install dir if empty (preserves user data)
     RMDir "$INSTDIR"

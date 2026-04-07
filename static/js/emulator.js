@@ -66,7 +66,7 @@ async function launchBuiltinEmulator(game) {
     emuPaused = false;
 
     // Notify backend
-    fetch(`/api/launch/${game.id}`, { method: 'POST' });
+    fetch(`/api/launch/${game.id}`, { method: 'POST' }).catch(e => console.warn('Emulator launch notify failed:', e));
 
     // Show boot sequence
     await showBootSequence(game, sys);
@@ -90,7 +90,7 @@ function exitEmulator() {
 
     // Reset EJS globals
     if (window.EJS_emulator) {
-        try { window.EJS_emulator.callEvent('exit'); } catch {}
+        try { window.EJS_emulator.callEvent('exit'); } catch (e) { console.warn('EJS exit cleanup failed:', e); }
     }
     window.EJS_player = undefined;
     window.EJS_core = undefined;
@@ -108,7 +108,7 @@ function exitEmulator() {
 
     // Notify backend that emulator session ended
     if (emuGameId) {
-        fetch(`/api/session/end/${emuGameId}`, { method: 'POST' });
+        fetch(`/api/session/end/${emuGameId}`, { method: 'POST' }).catch(e => console.warn('Session end notify failed:', e));
     }
 
     emuActive = false;
@@ -194,7 +194,8 @@ async function loadEmulatorJS(game, sys) {
         window.EJS_biosUrl = sys.bios;
     }
 
-    // Disable default EJS UI elements we're replacing
+    // Disable default EJS UI elements we're replacing — keep gamepad settings
+    // so users can remap controller buttons for emulated games
     window.EJS_Buttons = {
         playPause: false,
         restart: false,
@@ -204,7 +205,7 @@ async function loadEmulatorJS(game, sys) {
         saveState: false,
         loadState: false,
         screenRecord: false,
-        gamepad: false,
+        gamepad: true,
         cheat: false,
         volume: false,
         saveSavFiles: false,
@@ -244,7 +245,7 @@ function togglePauseMenu() {
         try {
             if (emuPaused) window.EJS_emulator.pause();
             else window.EJS_emulator.play();
-        } catch {}
+        } catch (e) { console.warn('Emulator pause/play failed:', e); }
     }
 }
 
@@ -275,7 +276,7 @@ function emuRestart() {
         window.EJS_emulator.restart();
         togglePauseMenu();
         showEmuToast('Restarted');
-    } catch {}
+    } catch (e) { console.warn('Emulator restart failed:', e); }
 }
 
 function emuScreenshot() {
@@ -283,7 +284,7 @@ function emuScreenshot() {
     try {
         window.EJS_emulator.screenshot();
         showEmuToast('Screenshot saved');
-    } catch {}
+    } catch (e) { console.warn('Emulator screenshot failed:', e); }
 }
 
 function showEmuToast(msg) {

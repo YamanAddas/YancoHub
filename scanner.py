@@ -13,6 +13,8 @@ import sqlite3
 import subprocess
 from pathlib import Path
 
+from constants import HTTP_TIMEOUT_LONG
+
 logger = logging.getLogger('yancohub.scanner')
 
 # ── ROM system definitions ──────────────────────────────────────────────────
@@ -309,8 +311,10 @@ class GameScanner:
         try:
             import winreg
             key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam")
-            steam_path, _ = winreg.QueryValueEx(key, "SteamPath")
-            winreg.CloseKey(key)
+            try:
+                steam_path, _ = winreg.QueryValueEx(key, "SteamPath")
+            finally:
+                winreg.CloseKey(key)
             return Path(steam_path)
         except Exception as e:
             logger.debug(f"Steam registry lookup failed: {e}")
@@ -501,46 +505,48 @@ class GameScanner:
             import winreg
             gog_key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
                                      r"SOFTWARE\WOW6432Node\GOG.com\Games")
-            i = 0
-            while True:
-                try:
-                    subkey_name = winreg.EnumKey(gog_key, i)
-                    subkey = winreg.OpenKey(gog_key, subkey_name)
+            try:
+                i = 0
+                while True:
                     try:
-                        name = winreg.QueryValueEx(subkey, "GAMENAME")[0]
-                        path = winreg.QueryValueEx(subkey, "PATH")[0]
-                        game_id = str(winreg.QueryValueEx(subkey, "GAMEID")[0])
-                        exe = ''
+                        subkey_name = winreg.EnumKey(gog_key, i)
+                        subkey = winreg.OpenKey(gog_key, subkey_name)
                         try:
-                            exe = winreg.QueryValueEx(subkey, "EXE")[0]
-                        except FileNotFoundError:
-                            pass
+                            name = winreg.QueryValueEx(subkey, "GAMENAME")[0]
+                            path = winreg.QueryValueEx(subkey, "PATH")[0]
+                            game_id = str(winreg.QueryValueEx(subkey, "GAMEID")[0])
+                            exe = ''
+                            try:
+                                exe = winreg.QueryValueEx(subkey, "EXE")[0]
+                            except FileNotFoundError:
+                                pass
 
-                        # GOG games are DRM-free — always detect direct exe
-                        direct_exe = exe  # Registry exe is already direct
-                        direct_args = ''
-                        if not direct_exe and path:
-                            # Try goggame-*.info for the exe path
-                            direct_exe, direct_args = self._parse_gog_gameinfo(path)
+                            # GOG games are DRM-free — always detect direct exe
+                            direct_exe = exe  # Registry exe is already direct
+                            direct_args = ''
+                            if not direct_exe and path:
+                                # Try goggame-*.info for the exe path
+                                direct_exe, direct_args = self._parse_gog_gameinfo(path)
 
-                        self.games.append({
-                            'id': f"gog_{game_id}",
-                            'name': name,
-                            'source': 'gog',
-                            'install_dir': path,
-                            'size': 0,
-                            'artwork': {},
-                            'launch_cmd': f'goggalaxy://openGameView/{game_id}',
-                            'direct_exe': direct_exe,
-                            'direct_args': direct_args,
-                        })
-                        count += 1
-                    finally:
-                        winreg.CloseKey(subkey)
-                    i += 1
-                except OSError:
-                    break
-            winreg.CloseKey(gog_key)
+                            self.games.append({
+                                'id': f"gog_{game_id}",
+                                'name': name,
+                                'source': 'gog',
+                                'install_dir': path,
+                                'size': 0,
+                                'artwork': {},
+                                'launch_cmd': f'goggalaxy://openGameView/{game_id}',
+                                'direct_exe': direct_exe,
+                                'direct_args': direct_args,
+                            })
+                            count += 1
+                        finally:
+                            winreg.CloseKey(subkey)
+                        i += 1
+                    except OSError:
+                        break
+            finally:
+                winreg.CloseKey(gog_key)
         except Exception as e:
             logger.debug(f"GOG registry scan failed: {e}")
 
@@ -552,49 +558,63 @@ class GameScanner:
             try:
                 conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
                 cursor = conn.cursor()
-                cursor.execute("SELECT DISTINCT releaseKey FROM LibraryReleases")
+
+                # Batch: fetch all GOG release keys
+                cursor.execute("""
+                    SELECT DISTINCT releaseKey FROM LibraryReleases
+                    WHERE releaseKey LIKE 'gog_%'
+                """)
+                release_keys = [r[0] for r in cursor.fetchall()]
+
+                # Batch: fetch all titles in one query (JOIN instead of N+1)
+                titles = {}
+                try:
+                    cursor.execute("""
+                        SELECT gp.releaseKey, gp.value
+                        FROM GamePieces gp
+                        JOIN GamePieceTypes gpt ON gp.gamePieceTypeId = gpt.id
+                        WHERE gpt.type = 'title'
+                          AND gp.releaseKey LIKE 'gog_%'
+                    """)
+                    for rk, val in cursor.fetchall():
+                        if rk in titles:
+                            continue
+                        try:
+                            data = json.loads(val)
+                            title = data if isinstance(data, str) else data.get('title', '')
+                            if title:
+                                titles[rk] = title
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+                except Exception as e:
+                    logger.debug(f"GOG GamePieces batch query failed: {e}")
+
+                # Batch: fetch all install paths in one query
+                install_paths = {}
+                try:
+                    cursor.execute("SELECT productId, installationPath FROM InstalledBaseProducts")
+                    for pid, ipath in cursor.fetchall():
+                        if ipath:
+                            install_paths[pid] = ipath
+                except Exception as e:
+                    logger.debug(f"GOG InstalledBaseProducts batch query failed: {e}")
+
                 existing_ids = {g['id'] for g in self.games if g['source'] == 'gog'}
-                for (release_key,) in cursor.fetchall():
-                    if '_' not in release_key:
-                        continue
-                    platform, game_id_raw = release_key.split('_', 1)
-                    if platform != 'gog':
-                        continue
+                for release_key in release_keys:
+                    game_id_raw = release_key.split('_', 1)[1]
                     gid = f"gog_{game_id_raw}"
                     if gid in existing_ids:
                         continue
-                    # Try to get title from GamePieces
-                    title = None
-                    try:
-                        cursor.execute("""
-                            SELECT value FROM GamePieces
-                            WHERE releaseKey = ? AND gamePieceTypeId IN (
-                                SELECT id FROM GamePieceTypes WHERE type = 'title'
-                            )
-                        """, (release_key,))
-                        row = cursor.fetchone()
-                        if row:
-                            data = json.loads(row[0])
-                            title = data if isinstance(data, str) else data.get('title', '')
-                    except Exception as e:
-                        logger.debug(f"GOG GamePieces parse failed for {release_key}: {e}")
+
+                    title = titles.get(release_key, '')
                     if not title:
                         title = game_id_raw.replace('_', ' ').title()
 
-                    # Try to find install path from InstalledBaseProducts
-                    install_dir = ''
+                    install_dir = install_paths.get(game_id_raw, '')
                     direct_exe = ''
                     direct_args = ''
-                    try:
-                        cursor.execute(
-                            "SELECT installationPath FROM InstalledBaseProducts WHERE productId = ?",
-                            (game_id_raw,))
-                        irow = cursor.fetchone()
-                        if irow and irow[0]:
-                            install_dir = irow[0]
-                            direct_exe, direct_args = self._parse_gog_gameinfo(install_dir)
-                    except Exception:
-                        pass  # Table may not exist in all Galaxy DB versions
+                    if install_dir:
+                        direct_exe, direct_args = self._parse_gog_gameinfo(install_dir)
 
                     self.games.append({
                         'id': gid,
@@ -700,7 +720,7 @@ class GameScanner:
             result = subprocess.run(
                 ['powershell', '-Command',
                  'Get-AppxPackage | Where-Object {$_.IsFramework -eq $false -and $_.SignatureKind -eq "Store"} | Select-Object Name, PackageFamilyName, InstallLocation | ConvertTo-Json'],
-                capture_output=True, text=True, timeout=20
+                capture_output=True, text=True, timeout=HTTP_TIMEOUT_LONG
             )
             if result.returncode == 0 and result.stdout.strip():
                 packages = json.loads(result.stdout)
@@ -830,34 +850,36 @@ class GameScanner:
             ]:
                 try:
                     ea_key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, base_key)
-                    i = 0
-                    while True:
-                        try:
-                            subkey_name = winreg.EnumKey(ea_key, i)
-                            subkey = winreg.OpenKey(ea_key, subkey_name)
+                    try:
+                        i = 0
+                        while True:
                             try:
-                                install_dir = winreg.QueryValueEx(subkey, "Install Dir")[0]
-                                if Path(install_dir).exists():
-                                    game_id = make_game_id('ea', subkey_name)
-                                    if not any(g['id'] == f"ea_{game_id}" for g in self.games):
-                                        self.games.append({
-                                            'id': f"ea_{game_id}",
-                                            'name': subkey_name,
-                                            'source': 'ea',
-                                            'install_dir': install_dir,
-                                            'size': 0,
-                                            'artwork': {},
-                                            'launch_cmd': install_dir,
-                                        })
-                                        count += 1
-                            except FileNotFoundError:
-                                pass
-                            finally:
-                                winreg.CloseKey(subkey)
-                            i += 1
-                        except OSError:
-                            break
-                    winreg.CloseKey(ea_key)
+                                subkey_name = winreg.EnumKey(ea_key, i)
+                                subkey = winreg.OpenKey(ea_key, subkey_name)
+                                try:
+                                    install_dir = winreg.QueryValueEx(subkey, "Install Dir")[0]
+                                    if Path(install_dir).exists():
+                                        game_id = make_game_id('ea', subkey_name)
+                                        if not any(g['id'] == f"ea_{game_id}" for g in self.games):
+                                            self.games.append({
+                                                'id': f"ea_{game_id}",
+                                                'name': subkey_name,
+                                                'source': 'ea',
+                                                'install_dir': install_dir,
+                                                'size': 0,
+                                                'artwork': {},
+                                                'launch_cmd': install_dir,
+                                            })
+                                            count += 1
+                                except FileNotFoundError:
+                                    pass
+                                finally:
+                                    winreg.CloseKey(subkey)
+                                i += 1
+                            except OSError:
+                                break
+                    finally:
+                        winreg.CloseKey(ea_key)
                 except FileNotFoundError:
                     pass
         except Exception as e:
@@ -875,34 +897,36 @@ class GameScanner:
             import winreg
             ubi_key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
                                      r"SOFTWARE\WOW6432Node\Ubisoft\Launcher\Installs")
-            i = 0
-            while True:
-                try:
-                    subkey_name = winreg.EnumKey(ubi_key, i)
-                    subkey = winreg.OpenKey(ubi_key, subkey_name)
+            try:
+                i = 0
+                while True:
                     try:
-                        install_dir = winreg.QueryValueEx(subkey, "InstallDir")[0]
-                        # Use folder name as game name
-                        name = Path(install_dir).name if install_dir else subkey_name
+                        subkey_name = winreg.EnumKey(ubi_key, i)
+                        subkey = winreg.OpenKey(ubi_key, subkey_name)
+                        try:
+                            install_dir = winreg.QueryValueEx(subkey, "InstallDir")[0]
+                            # Use folder name as game name
+                            name = Path(install_dir).name if install_dir else subkey_name
 
-                        self.games.append({
-                            'id': f"ubisoft_{subkey_name}",
-                            'name': name,
-                            'source': 'ubisoft',
-                            'install_dir': install_dir,
-                            'size': 0,
-                            'artwork': {},
-                            'launch_cmd': f'uplay://launch/{subkey_name}/0',
-                        })
-                        count += 1
-                    except FileNotFoundError:
-                        pass
-                    finally:
-                        winreg.CloseKey(subkey)
-                    i += 1
-                except OSError:
-                    break
-            winreg.CloseKey(ubi_key)
+                            self.games.append({
+                                'id': f"ubisoft_{subkey_name}",
+                                'name': name,
+                                'source': 'ubisoft',
+                                'install_dir': install_dir,
+                                'size': 0,
+                                'artwork': {},
+                                'launch_cmd': f'uplay://launch/{subkey_name}/0',
+                            })
+                            count += 1
+                        except FileNotFoundError:
+                            pass
+                        finally:
+                            winreg.CloseKey(subkey)
+                        i += 1
+                    except OSError:
+                        break
+            finally:
+                winreg.CloseKey(ubi_key)
         except Exception as e:
             logger.debug(f"Ubisoft registry scan failed: {e}")
 

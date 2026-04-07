@@ -25,17 +25,23 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from urllib.parse import quote
 
-from constants import LIBRETRO_SYSTEMS, STEAM_CDN, LIBRETRO_THUMB, VERSION
+from constants import (LIBRETRO_SYSTEMS, STEAM_CDN, LIBRETRO_THUMB, VERSION,
+                       HTTP_TIMEOUT_SHORT, HTTP_TIMEOUT_LONG, BATCH_ARTWORK_TIMEOUT)
 from romident import read_rom_header_name, fuzzy_match, strip_numbering
+
+from paths import get_cache_dir
 
 logger = logging.getLogger('yancohub.artwork')
 
-CACHE_DIR = Path(__file__).parent / 'cache' / 'artwork'
+CACHE_DIR = get_cache_dir() / 'artwork'
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 # Negative cache: don't re-attempt failed artwork lookups within this window
 MISS_TTL = 86400  # 24 hours
 MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024  # 20 MB — reject anything larger
+
+# Max entries for in-memory lookup caches (prevents unbounded growth)
+_MAX_CACHE_ENTRIES = 10000
 
 
 # YancoHub system ID → LaunchBox platform folder name
@@ -115,6 +121,14 @@ _LB_ART_FOLDERS_PC = {
 def _strip_num_prefix(name: str) -> str:
     """Remove leading number prefixes like '001 ', '000 ' from ROM names."""
     return re.sub(r'^\d{2,4}[\s._-]+', '', name)
+
+
+def _trim_cache(cache: dict, max_size: int = _MAX_CACHE_ENTRIES) -> None:
+    """Evict oldest entries from a dict cache to stay within max_size."""
+    overflow = len(cache) - max_size
+    if overflow > 0:
+        for key in list(cache)[:overflow]:
+            del cache[key]
 
 
 class ArtworkScraper:
@@ -270,11 +284,13 @@ class ArtworkScraper:
         try:
             import winreg
             key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam")
-            steam_path = winreg.QueryValueEx(key, "SteamPath")[0]
-            winreg.CloseKey(key)
+            try:
+                steam_path = winreg.QueryValueEx(key, "SteamPath")[0]
+            finally:
+                winreg.CloseKey(key)
             steam_paths.append(Path(steam_path))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Steam registry lookup failed: {e}")
 
         steam_paths.extend([
             Path("C:/Program Files (x86)/Steam"),
@@ -489,6 +505,7 @@ class ArtworkScraper:
         resolved = self._resolve_lb_title_inner(game)
         if game_id:
             self._resolved_cache[game_id] = resolved
+            _trim_cache(self._resolved_cache)
         return resolved
 
     def _resolve_lb_title_inner(self, game: dict) -> str:
@@ -547,6 +564,7 @@ class ArtworkScraper:
         result = self._find_launchbox_art_inner(game, art_type)
         if cache_key:
             self._art_match_cache[cache_key] = result
+            _trim_cache(self._art_match_cache)
         return result
 
     def _find_launchbox_art_inner(self, game, art_type: str):
@@ -821,15 +839,15 @@ class ArtworkScraper:
                     logger.info(f"Steam app list loaded from cache: "
                                 f"{len(self._steam_app_list)} apps")
                     return
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Steam app list cache read failed: {e}")
 
         # Download fresh list
         try:
             logger.info("Downloading Steam app list for bulk lookups...")
             resp = self._session.get(
                 'https://api.steampowered.com/ISteamApps/GetAppList/v2/',
-                timeout=30,
+                timeout=HTTP_TIMEOUT_LONG,
             )
             if resp.status_code != 200:
                 logger.warning(f"Steam app list download failed: HTTP {resp.status_code}")
@@ -899,7 +917,7 @@ class ArtworkScraper:
                 resp = self._session.get(
                     'https://store.steampowered.com/api/storesearch/',
                     params={'term': search_name, 'l': 'english', 'cc': 'US'},
-                    timeout=8,
+                    timeout=HTTP_TIMEOUT_SHORT,
                 )
                 if resp.status_code != 200:
                     continue
@@ -926,6 +944,7 @@ class ArtworkScraper:
                 logger.debug(f"Steam store search failed for '{search_name}': {e}")
 
         self._steam_appid_cache[name_lower] = None
+        _trim_cache(self._steam_appid_cache)
         return None
 
     def _clean_libretro_name(self, name):
@@ -1024,7 +1043,7 @@ class ArtworkScraper:
             resp = self._session.get(
                 f'https://www.steamgriddb.com/api/v2/search/autocomplete/{quote(game_name)}',
                 headers={'Authorization': f'Bearer {self._sgdb_key}'},
-                timeout=8,
+                timeout=HTTP_TIMEOUT_SHORT,
             )
             if resp.status_code != 200:
                 return None
@@ -1048,7 +1067,7 @@ class ArtworkScraper:
             resp = self._session.get(
                 f'https://www.steamgriddb.com/api/v2/{endpoint}',
                 headers={'Authorization': f'Bearer {self._sgdb_key}'},
-                timeout=8,
+                timeout=HTTP_TIMEOUT_SHORT,
             )
             if resp.status_code != 200:
                 return None
@@ -1066,7 +1085,7 @@ class ArtworkScraper:
     def _download_and_cache(self, game_id, art_type, url):
         """Download artwork from URL and save to cache."""
         try:
-            resp = self._session.get(url, timeout=15, stream=True)
+            resp = self._session.get(url, timeout=HTTP_TIMEOUT_LONG, stream=True)
             if resp.status_code != 200:
                 return None
 
@@ -1134,7 +1153,7 @@ class ArtworkScraper:
         logger.info(f"Pre-warmed artwork cache: {count} retro games resolved")
 
     def fetch_for_games(self, games, art_types=('cover',), max_workers=8,
-                        timeout=600):
+                        timeout=BATCH_ARTWORK_TIMEOUT):
         """Batch fetch artwork for games using concurrent downloads.
 
         Args:

@@ -13,6 +13,8 @@ from webview.menu import Menu, MenuAction, MenuSeparator
 from pathlib import Path
 
 from constants import FLASK_PORT, VERSION
+from paths import get_cache_dir, get_log_dir
+from tray import start_tray, stop_tray
 
 APP_DIR = Path(__file__).parent
 
@@ -132,6 +134,7 @@ def _menu_settings():
 
 
 def _menu_exit():
+    stop_tray()
     w = _win()
     if w:
         w.destroy()
@@ -201,7 +204,7 @@ def _menu_catbyte():
 
 
 def _menu_clear_art_cache():
-    art_dir = APP_DIR / 'cache' / 'artwork'
+    art_dir = get_cache_dir() / 'artwork'
     if art_dir.is_dir():
         count = sum(1 for f in art_dir.iterdir() if f.is_file())
         shutil.rmtree(art_dir, ignore_errors=True)
@@ -222,15 +225,29 @@ def _menu_report_issue():
 
 
 def _menu_open_logs():
-    logs_dir = APP_DIR / 'logs'
-    logs_dir.mkdir(exist_ok=True)
+    logs_dir = get_log_dir()
     os.startfile(str(logs_dir))
 
 
 def _menu_open_data():
-    cache_dir = APP_DIR / 'cache'
-    cache_dir.mkdir(exist_ok=True)
-    os.startfile(str(cache_dir))
+    data_dir = get_cache_dir()
+    os.startfile(str(data_dir))
+
+
+def _menu_check_updates():
+    _js("""
+        (async () => {
+            try {
+                const r = await fetch('/api/update-available');
+                const d = await r.json();
+                if (d.available) {
+                    showToast('Update available: v' + d.latest_version, 'info', 6000);
+                } else {
+                    showToast('You are on the latest version', 'success');
+                }
+            } catch(e) { showToast('Could not check for updates', 'error'); }
+        })()
+    """)
 
 
 def _menu_about():
@@ -283,6 +300,7 @@ def _build_menu():
             MenuAction('Open Logs Folder', _menu_open_logs),
             MenuAction('Open Data Folder', _menu_open_data),
             MenuSeparator(),
+            MenuAction('Check for Updates', _menu_check_updates),
             MenuAction(f'About YancoHub v{VERSION}', _menu_about),
         ]),
     ]
@@ -290,8 +308,13 @@ def _build_menu():
 
 # ── Window Entry Point ───────────────────────────────────────────────────────
 
+_tray_enabled = False
+
+
 def main():
+    global _tray_enabled
     menu = _build_menu()
+    start_minimized = '--minimized' in sys.argv
 
     window = webview.create_window(
         'YancoHub',
@@ -302,11 +325,45 @@ def main():
         background_color='#060b14',
         text_select=False,
         js_api=api,
+        hidden=start_minimized,
     )
     api.set_window(window)
 
+    # Tray callbacks
+    def _tray_show():
+        if window:
+            window.show()
+            window.restore()
+
+    def _tray_exit():
+        stop_tray()
+        if window:
+            window.destroy()
+
+    # Closing handler — minimize to tray instead of quitting
+    def _on_closing():
+        if _tray_enabled:
+            window.hide()
+            return False  # Prevent actual close
+        return True
+
     def _on_start():
-        """Start the native gamepad bridge after the window is ready."""
+        """Start tray icon and gamepad bridge after window is ready."""
+        global _tray_enabled
+        # Start system tray
+        try:
+            from userdata import UserData
+            ud = UserData()
+            if ud.get_settings().get('minimize_to_tray', True):
+                start_tray(_tray_show, _tray_exit)
+                _tray_enabled = True
+                window.events.closing += _on_closing
+        except Exception as e:
+            import logging
+            logging.getLogger('yancohub.window').debug(
+                "Tray setup failed: %s", e)
+
+        # Start gamepad bridge
         try:
             from gamepad import GamepadBridge
             bridge = GamepadBridge(window)
@@ -317,6 +374,7 @@ def main():
                 "Gamepad bridge failed to start: %s", e)
 
     webview.start(func=_on_start, menu=menu, debug='--debug' in sys.argv)
+    stop_tray()  # Ensure tray is cleaned up on exit
 
 
 if __name__ == '__main__':

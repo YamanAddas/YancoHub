@@ -11,6 +11,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 
+from constants import HTTP_TIMEOUT_PROBE, HTTP_TIMEOUT_SHORT, HTTP_TIMEOUT_DEFAULT, HTTP_TIMEOUT_EXTENDED
+
 logger = logging.getLogger('yancohub.catbyte')
 
 # ── Backend Presets ────────────────────────────────────────────────────────────
@@ -219,22 +221,23 @@ class CatByte:
                 return key, {'reachable': False, 'models': 0}
             try:
                 if key == 'ollama':
-                    resp = requests.get(f"{url}/api/tags", timeout=2)
+                    resp = requests.get(f"{url}/api/tags", timeout=HTTP_TIMEOUT_PROBE)
                     if resp.status_code == 200:
                         count = len(resp.json().get('models', []))
                         return key, {'reachable': True, 'models': count}
                 elif key == 'openclaw':
                     # OpenClaw's /v1/* endpoints require auth; use /health instead
-                    resp = requests.get(f"{url}/health", timeout=2)
+                    resp = requests.get(f"{url}/health", timeout=HTTP_TIMEOUT_PROBE)
                     if resp.status_code == 200:
                         return key, {'reachable': True, 'models': 0}
                 else:
-                    resp = requests.get(f"{url}/v1/models", timeout=2)
+                    resp = requests.get(f"{url}/v1/models", timeout=HTTP_TIMEOUT_PROBE)
                     if resp.status_code == 200:
                         count = len(resp.json().get('data', []))
                         return key, {'reachable': True, 'models': count}
                 return key, {'reachable': False, 'models': 0}
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Backend probe failed for {key} at {url}: {e}")
                 return key, {'reachable': False, 'models': 0}
 
         results = {}
@@ -265,11 +268,11 @@ class CatByte:
 
         try:
             if backend == 'ollama':
-                resp = requests.get(f"{base_url}/api/tags", timeout=3)
+                resp = requests.get(f"{base_url}/api/tags", timeout=HTTP_TIMEOUT_PROBE)
             elif backend == 'openclaw':
                 # OpenClaw's /v1/* endpoints require auth; use /health for reachability
                 # then validate auth separately if API key is configured
-                resp = requests.get(f"{base_url}/health", timeout=3)
+                resp = requests.get(f"{base_url}/health", timeout=HTTP_TIMEOUT_PROBE)
                 if resp.status_code == 200:
                     api_key = self._settings.get('api_key', '').strip()
                     if not api_key:
@@ -277,13 +280,13 @@ class CatByte:
                                 'message': 'OpenClaw needs an API key — set one in Settings'}
                     # Verify the key works against /v1/models
                     auth_resp = requests.get(f"{base_url}/v1/models",
-                                             headers=self._headers(), timeout=5)
+                                             headers=self._headers(), timeout=HTTP_TIMEOUT_SHORT)
                     if auth_resp.status_code != 200:
                         return {'status': 'offline',
                                 'message': f'OpenClaw rejected the API key ({auth_resp.status_code})'}
             else:
                 resp = requests.get(f"{base_url}/v1/models",
-                                    headers=self._headers(), timeout=5)
+                                    headers=self._headers(), timeout=HTTP_TIMEOUT_SHORT)
 
             if resp.status_code == 200:
                 model = self.get_model()
@@ -313,13 +316,13 @@ class CatByte:
             return []
         try:
             if backend == 'ollama':
-                resp = requests.get(f"{base_url}/api/tags", timeout=5)
+                resp = requests.get(f"{base_url}/api/tags", timeout=HTTP_TIMEOUT_SHORT)
                 if resp.status_code == 200:
                     data = resp.json()
                     models = [m['name'] for m in data.get('models', [])]
             else:
                 resp = requests.get(f"{base_url}/v1/models",
-                                    headers=self._headers(), timeout=5)
+                                    headers=self._headers(), timeout=HTTP_TIMEOUT_SHORT)
                 if resp.status_code == 200:
                     data = resp.json()
                     models = [m['id'] for m in data.get('data', [])]
@@ -370,7 +373,7 @@ class CatByte:
                 f"{base_url}/v1/chat/completions",
                 headers=self._headers(),
                 json=payload,
-                timeout=120,
+                timeout=HTTP_TIMEOUT_EXTENDED,
             )
 
             if resp.status_code == 200:
@@ -460,7 +463,7 @@ class CatByte:
                 f"{base_url}/v1/chat/completions",
                 headers=self._headers(),
                 json=payload,
-                timeout=120,
+                timeout=HTTP_TIMEOUT_EXTENDED,
             )
 
             if resp.status_code == 200:
@@ -516,7 +519,7 @@ class CatByte:
                 f"{base_url}/v1/chat/completions",
                 headers=self._headers(),
                 json={'model': self.get_model(), 'messages': prompt_messages, 'stream': False},
-                timeout=15,
+                timeout=HTTP_TIMEOUT_DEFAULT,
             )
             if resp.status_code == 200:
                 data = resp.json()
@@ -548,7 +551,7 @@ class CatByte:
                 f"{base_url}/v1/chat/completions",
                 headers=self._headers(),
                 json=payload,
-                timeout=15,
+                timeout=HTTP_TIMEOUT_DEFAULT,
             )
             if resp.status_code == 200:
                 data = resp.json()
