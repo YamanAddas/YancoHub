@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CatByte Overlay</title>
+    <link rel="stylesheet" href="/static/fonts/inter.css">
+    <link rel="stylesheet" href="/static/icons/phosphor-regular.css">
+    <link rel="stylesheet" href="/static/icons/phosphor-fill.css">
+    <link rel="stylesheet" href="/static/icons/phosphor-bold.css">
+    <link rel="stylesheet" href="/static/css/overlay.css">
+</head>
+<body>
+    <div class="overlay-root" id="overlayRoot">
+        <!-- Drag handle -->
+        <div class="overlay-drag" id="overlayDrag">
+            <div class="overlay-drag-dots"></div>
+        </div>
+
+        <!-- Header -->
+        <div class="overlay-header">
+            <div class="overlay-avatar">🐱</div>
+            <div class="overlay-model-pill" id="overlayModelPill" title="Click to switch model">
+                <span id="overlayModelName">model</span>
+                <i class="ph ph-caret-down"></i>
+                <div class="overlay-model-dropdown hidden" id="overlayModelDropdown"></div>
+            </div>
+            <div class="overlay-title">
+                <span id="overlaySessionTitle">CatByte</span>
+                <span class="overlay-status" id="overlayStatus">checking...</span>
+            </div>
+            <div class="overlay-header-actions">
+                <button class="overlay-header-btn" id="btnOverlayNewChat" title="New conversation"><i class="ph-bold ph-plus"></i></button>
+                <button class="overlay-header-btn" id="btnOverlaySessions" title="Chat history"><i class="ph-bold ph-clock-counter-clockwise"></i></button>
+                <button class="overlay-header-btn" id="btnOverlayClose" title="Hide (F10)"><i class="ph-bold ph-x"></i></button>
+            </div>
+        </div>
+
+        <!-- Body -->
+        <div class="overlay-body">
+            <!-- Session sidebar -->
+            <div class="overlay-sidebar-backdrop hidden" id="overlaySidebarBackdrop"></div>
+            <div class="overlay-sidebar hidden" id="overlaySidebar">
+                <div class="overlay-sidebar-header">
+                    <span>Conversations</span>
+                    <button class="overlay-header-btn" id="btnCloseSidebar"><i class="ph ph-x"></i></button>
+                </div>
+                <div class="overlay-session-list" id="overlaySessionList"></div>
+            </div>
+
+            <!-- Chat area -->
+            <div class="overlay-chat-area">
+                <div class="overlay-messages" id="overlayMessages"></div>
+                <div class="overlay-input-wrap">
+                    <textarea class="overlay-input" id="overlayInput" placeholder="Ask CatByte..." rows="1"></textarea>
+                    <button class="overlay-send-btn" id="overlayBtnSend"><i class="ph-bold ph-arrow-right"></i></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/overlay.js"></script>
+</body>
+</html>

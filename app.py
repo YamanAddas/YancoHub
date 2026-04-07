@@ -335,6 +335,11 @@ def index():
     return render_template('index.html', version=VERSION)
 
 
+@app.route('/overlay')
+def overlay():
+    return render_template('catbyte_overlay.html')
+
+
 @app.route('/health')
 def health():
     with _library_lock:

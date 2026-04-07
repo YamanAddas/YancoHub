@@ -15,6 +15,7 @@ from pathlib import Path
 from constants import FLASK_PORT, VERSION
 from paths import get_cache_dir, get_log_dir
 from tray import start_tray, stop_tray
+from overlay import create_overlay_window, start_overlay, stop_overlay
 
 APP_DIR = Path(__file__).parent
 
@@ -70,6 +71,19 @@ class Api:
         if not self._window:
             return False
         self._window.minimize()
+        return True
+
+    def toggle_catbyte_overlay(self) -> bool:
+        """Toggle the CatByte in-game overlay window."""
+        from overlay import toggle_overlay
+        toggle_overlay()
+        return True
+
+    def hide_overlay(self) -> bool:
+        """Hide the CatByte overlay (called from overlay window's close button)."""
+        from overlay import toggle_overlay, _visible
+        if _visible:
+            toggle_overlay()
         return True
 
 
@@ -134,6 +148,7 @@ def _menu_settings():
 
 
 def _menu_exit():
+    stop_overlay()
     stop_tray()
     w = _win()
     if w:
@@ -200,7 +215,8 @@ def _menu_mood_picker():
 
 
 def _menu_catbyte():
-    _js("if(typeof toggleCatbyte==='function') toggleCatbyte()")
+    from overlay import toggle_overlay
+    toggle_overlay()
 
 
 def _menu_clear_art_cache():
@@ -329,6 +345,14 @@ def main():
     )
     api.set_window(window)
 
+    # Create overlay window (hidden, always-on-top, frameless)
+    try:
+        create_overlay_window(js_api=api)
+    except Exception as e:
+        import logging
+        logging.getLogger('yancohub.window').debug(
+            "Overlay window creation failed: %s", e)
+
     # Tray callbacks
     def _tray_show():
         if window:
@@ -363,6 +387,14 @@ def main():
             logging.getLogger('yancohub.window').debug(
                 "Tray setup failed: %s", e)
 
+        # Start CatByte overlay (F10 hotkey)
+        try:
+            start_overlay()
+        except Exception as e:
+            import logging
+            logging.getLogger('yancohub.window').debug(
+                "Overlay startup failed: %s", e)
+
         # Start gamepad bridge
         try:
             from gamepad import GamepadBridge
@@ -374,6 +406,7 @@ def main():
                 "Gamepad bridge failed to start: %s", e)
 
     webview.start(func=_on_start, menu=menu, debug='--debug' in sys.argv)
+    stop_overlay()  # Ensure overlay is cleaned up on exit
     stop_tray()  # Ensure tray is cleaned up on exit
 
 

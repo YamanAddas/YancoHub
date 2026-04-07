@@ -384,7 +384,7 @@ async function checkCatbyteStatus() {
         updateModelPill();
     }
     $('btnCatbyte').classList.toggle('dimmed', !on);
-    $('btnCatbyte').title = on ? 'CatByte AI (F10)' : 'CatByte offline — check Settings (F10)';
+    $('btnCatbyte').title = on ? 'CatByte AI (Ctrl+B)' : 'CatByte offline — check Settings (Ctrl+B)';
 }
 
 // ── Filtering & Carousel ───────────────────────────────────────────────────
@@ -2307,7 +2307,6 @@ function bindEvents() {
         if (e.key === 'Enter')      { e.preventDefault(); launchSelected(); }
 
         if (e.ctrlKey && e.key === 'f') { e.preventDefault(); openSearch(); }
-        if (e.key === 'F10') { e.preventDefault(); toggleCatbyte(); }
         if (e.ctrlKey && e.key === 'b') { e.preventDefault(); toggleCatbyte(); }
         if (e.ctrlKey && e.key === ',') { e.preventDefault(); openSettings(); }
         if (e.ctrlKey && e.shiftKey && e.key === 'S') { e.preventDefault(); sendScreenshot(); }
@@ -2519,28 +2518,32 @@ async function doSearch() {
 // ── CatByte: Panel Toggle ─────────────────────────────────────────────────
 
 async function toggleCatbyte() {
-    $('catbytePanel').classList.toggle('hidden');
-    if (!$('catbytePanel').classList.contains('hidden')) {
-        checkCatbyteStatus();
-        loadChatModels();
-        await loadChatSessions();
-        // Auto-create or load active session
-        if (!state.chatSessionId) {
-            const sessions = state.chatSessions;
-            if (sessions.length > 0) {
-                // Restore last active
-                const data = await fetchJSON('/api/catbyte/sessions');
-                const activeId = data.active_session_id;
-                if (activeId && sessions.find(s => s.id === activeId)) {
-                    await selectChatSession(activeId);
+    // Use the overlay window instead of the in-app panel
+    if (window.pywebview && window.pywebview.api && window.pywebview.api.toggle_catbyte_overlay) {
+        window.pywebview.api.toggle_catbyte_overlay();
+    } else {
+        // Fallback for browser dev mode: open in-app panel
+        $('catbytePanel').classList.toggle('hidden');
+        if (!$('catbytePanel').classList.contains('hidden')) {
+            checkCatbyteStatus();
+            loadChatModels();
+            await loadChatSessions();
+            if (!state.chatSessionId) {
+                const sessions = state.chatSessions;
+                if (sessions.length > 0) {
+                    const data = await fetchJSON('/api/catbyte/sessions');
+                    const activeId = data.active_session_id;
+                    if (activeId && sessions.find(s => s.id === activeId)) {
+                        await selectChatSession(activeId);
+                    } else {
+                        await selectChatSession(sessions[0].id);
+                    }
                 } else {
-                    await selectChatSession(sessions[0].id);
+                    renderEmptyState();
                 }
-            } else {
-                renderEmptyState();
             }
+            $('catbyteInput').focus();
         }
-        $('catbyteInput').focus();
     }
 }
 

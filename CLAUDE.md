@@ -54,9 +54,12 @@ Storage:  userdata.json (settings/favorites/playtime) + cache/metadata.db (SQLit
 | `updatecheck.py` | GitHub Releases API update checker (background thread) |
 | `startup.py` | Windows startup registry (HKCU\...\Run) toggle |
 | `tray.py` | System tray icon via pystray (minimize-to-tray behavior) |
+| `overlay.py` | CatByte in-game overlay — F10 global hotkey, always-on-top pywebview window |
 | `build.py` | PyInstaller + NSIS packaging, code signing hooks, portable zip |
 | `installer.nsi` | NSIS installer script with protocol handler registration |
 | `static/js/app.js` | 3D hexagonal carousel, starfield, tabs, search, settings UI |
+| `static/js/overlay.js` | Standalone CatByte chat JS for in-game overlay window |
+| `static/css/overlay.css` | Overlay-specific styles (glassmorphism, slide-in animation) |
 | `static/js/emulator.js` | EmulatorJS integration (19 retro systems in-browser via WASM) |
 
 **Tests:**
@@ -136,6 +139,7 @@ Every change must meet ALL of these:
 - **Named mutex auto-release** — Windows automatically releases the mutex when the process exits (even on crash), so no stale lock files
 - **Portable mode detection** — `paths.is_portable()` checks for `portable.txt` next to the exe; portable zip includes this file, installer does not
 - **%APPDATA% migration** — `migrate_legacy_data()` runs once at startup; copies files then renames originals to `.migrated` suffix to prevent double-migration
+- **CatByte overlay** — second pywebview window (frameless, on_top); F10 global hotkey via `RegisterHotKey` works even when game has focus; only appears over borderless/windowed games (~95% of modern titles); hidden when not in use to avoid GSync/FreeSync issues
 
 ## Testing
 
