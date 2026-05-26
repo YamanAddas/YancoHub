@@ -32,6 +32,7 @@ const state = {
     gamingMode: false,
     gamingFocusIndex: 0,
     settings: {},
+    settingsSchema: {},
 };
 
 // ── DOM ────────────────────────────────────────────────────────────────────
@@ -52,29 +53,75 @@ async function fetchJSON(url, opts) {
 
 // ── Unified Settings ─────────────────────────────────────────────────────────
 
-/** Load all settings once; caches into state.settings and returns the values map. */
+/** Load all settings once; caches values + schema, applies visual settings. */
 async function loadSettings() {
     try {
         const data = await fetchJSON('/api/settings');
         state.settings = data.values || {};
+        state.settingsSchema = {};
+        if (Array.isArray(data.schema)) {
+            for (const entry of data.schema) state.settingsSchema[entry.key] = entry;
+        }
+        applyVisualSettings();
     } catch (e) {
         console.warn('loadSettings failed:', e);
     }
     return state.settings;
 }
 
+/** Apply settings that affect the visual appearance (live preview targets). */
+function applyVisualSettings() {
+    document.documentElement.dataset.density = state.settings.card_density || 'comfortable';
+}
+
 /**
  * Partial-update one setting via PATCH /api/settings.
  * Returns {values, errors, meta}; updates state.settings with the new values.
+ *
+ * opts.showUndo — if true and the value actually changed, raises a 5s
+ *                 "{Label} updated · Undo" toast that PATCHes back on click.
  */
-async function patchSetting(key, value) {
+async function patchSetting(key, value, opts = {}) {
+    const prev = state.settings[key];
     const data = await fetchJSON('/api/settings', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ [key]: value }),
     });
     if (data.values) state.settings = data.values;
+    const hadError = !!(data.errors && data.errors[key]);
+    if (!hadError) {
+        // Reapply visual settings (cheap and keeps preview in sync with server truth)
+        applyVisualSettings();
+        if (opts.showUndo && prev !== state.settings[key]) {
+            const label = (state.settingsSchema[key] && state.settingsSchema[key].label) || key;
+            showUndoToast(label, key, prev);
+        }
+    }
     return data;
+}
+
+/** Toast with an inline "Undo" action that reverts the setting. */
+function showUndoToast(label, key, prevValue) {
+    const safe = label.replace(/[&<>"']/g, (c) =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const toast = showToast(`<strong>${safe}</strong> updated`, 'success', 5000);
+    if (!toast) return;
+    const body = toast.querySelector('.toast-body');
+    if (!body) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'toast-action';
+    btn.textContent = 'Undo';
+    btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        btn.disabled = true;
+        try { await patchSetting(key, prevValue, { showUndo: false }); }
+        catch (err) { console.warn('undo failed:', err); }
+        toast.classList.add('toast-exit');
+        setTimeout(() => toast.remove(), 260);
+    });
+    body.appendChild(btn);
 }
 
 // Optional post-change hooks for settings with client-side effects.
@@ -92,7 +139,7 @@ function bindSettingToggles() {
             const next = !prev;
             el.setAttribute('aria-checked', next ? 'true' : 'false');  // optimistic
             try {
-                const d = await patchSetting(key, next);
+                const d = await patchSetting(key, next, { showUndo: true });
                 if (d.errors && d.errors[key]) {
                     el.setAttribute('aria-checked', prev ? 'true' : 'false');  // revert
                     showToast(d.errors[key], 'error');
@@ -105,6 +152,34 @@ function bindSettingToggles() {
                 console.warn(`patchSetting ${key} failed:`, e);
             }
         };
+    });
+}
+
+/** Wire every [data-setting] segmented-enum control to the unified API. */
+function bindSettingEnums() {
+    document.querySelectorAll('.settings-segmented[data-setting]').forEach((group) => {
+        const key = group.dataset.setting;
+        const setActive = (val) => group.querySelectorAll('.settings-seg').forEach((b) =>
+            b.classList.toggle('active', b.dataset.value === val));
+        setActive(state.settings[key]);
+        group.querySelectorAll('.settings-seg').forEach((btn) => {
+            btn.onclick = async () => {
+                if (btn.classList.contains('active')) return;
+                const value = btn.dataset.value;
+                setActive(value);
+                // Live preview is applied inside patchSetting (applyVisualSettings)
+                try {
+                    const d = await patchSetting(key, value, { showUndo: true });
+                    if (d.errors && d.errors[key]) {
+                        showToast(d.errors[key], 'error');
+                        setActive(state.settings[key]);
+                    }
+                } catch (e) {
+                    console.warn(`patchSetting ${key} failed:`, e);
+                    setActive(state.settings[key]);
+                }
+            };
+        });
     });
 }
 
@@ -3746,9 +3821,10 @@ async function renderAccountsTab() {
         renderAccountsSummary(accounts);
     } catch (e) { console.warn('renderAccountsTab failed:', e); }
 
-    // ── Settings toggles (unified schema-driven API) ──
+    // ── Settings toggles + enums (unified schema-driven API) ──
     await loadSettings();
     bindSettingToggles();
+    bindSettingEnums();
 
     // ── Detected Stores ──
     const storeNames = {

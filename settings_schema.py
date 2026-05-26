@@ -17,7 +17,7 @@ the dispatch lives in app.py where scanner/artwork/startup are already imported.
 
 from pathlib import Path
 
-# Supported value types: 'bool', 'path_file', 'path_dir', 'int_map'
+# Supported value types: 'bool', 'enum', 'path_file', 'path_dir', 'int_map'
 SETTINGS = {
     'show_uninstalled': {
         'type': 'bool',
@@ -42,6 +42,14 @@ SETTINGS = {
         'tab': 'display',
         'label': 'Start in Game Mode',
         'hint': 'Launch YancoHub directly into fullscreen Game Mode',
+    },
+    'card_density': {
+        'type': 'enum',
+        'choices': ['compact', 'comfortable', 'spacious'],
+        'default': 'comfortable',
+        'tab': 'display',
+        'label': 'Card density',
+        'hint': 'How large game cards appear in the carousel',
     },
     'launch_on_startup': {
         'type': 'bool',
@@ -106,6 +114,12 @@ def validate(key: str, value):
     if t == 'bool':
         return True, bool(value)
 
+    if t == 'enum':
+        choices = spec.get('choices', [])
+        if value in choices:
+            return True, value
+        return False, f'must be one of: {", ".join(choices)}'
+
     if t in ('path_file', 'path_dir'):
         if not isinstance(value, str):
             return False, 'must be a string path'
@@ -139,12 +153,15 @@ def public_schema() -> list:
     for key, spec in SETTINGS.items():
         if spec.get('hidden'):
             continue
-        out.append({
+        entry = {
             'key': key,
             'type': spec['type'],
             'tab': spec.get('tab'),
             'label': spec.get('label'),
             'hint': spec.get('hint'),
             'default': spec['default'],
-        })
+        }
+        if 'choices' in spec:
+            entry['choices'] = list(spec['choices'])
+        out.append(entry)
     return out

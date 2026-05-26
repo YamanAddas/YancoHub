@@ -68,6 +68,15 @@ class TestValidate:
         ok, msg = ss.validate('gamepad_mapping', 'bad')
         assert ok is False
 
+    def test_enum_accepts_choice(self):
+        assert ss.validate('card_density', 'compact') == (True, 'compact')
+        assert ss.validate('card_density', 'spacious') == (True, 'spacious')
+
+    def test_enum_rejects_invalid(self):
+        ok, msg = ss.validate('card_density', 'huge')
+        assert ok is False
+        assert 'compact' in msg  # error lists valid choices
+
 
 class TestPublicSchema:
     def test_excludes_hidden(self):
@@ -83,3 +92,7 @@ class TestPublicSchema:
             # internal fields not leaked
             assert 'side_effect' not in entry
             assert 'backend' not in entry
+
+    def test_enum_entry_exposes_choices(self):
+        density = next(e for e in ss.public_schema() if e['key'] == 'card_density')
+        assert density['choices'] == ['compact', 'comfortable', 'spacious']

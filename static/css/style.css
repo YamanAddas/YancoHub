@@ -27,6 +27,10 @@
     --gold-dim: rgba(255, 200, 0, 0.1);
 }
 
+/* ── Card density (live-previewable via /api/settings card_density) ─────── */
+html[data-density="compact"]  { --card-width: 150px; --card-height: 270px; }
+html[data-density="spacious"] { --card-width: 220px; --card-height: 390px; }
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 html, body {
@@ -5120,6 +5124,51 @@ select.settings-input option {
     border: 1px solid var(--border);
     border-radius: 4px;
 }
+
+/* Segmented control (enum settings) */
+.settings-segmented {
+    display: inline-flex;
+    gap: 4px;
+    padding: 4px;
+    background: var(--bg-glass);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+}
+
+.settings-seg {
+    padding: 7px 16px;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    color: var(--text);
+    font: 500 12.5px/1 inherit;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.settings-seg:hover { color: var(--text-bright); }
+
+.settings-seg.active {
+    background: rgba(0, 229, 193, 0.15);
+    color: var(--accent-bright);
+    box-shadow: inset 0 0 0 1px var(--accent-dim);
+}
+
+/* Undo action button inside a toast */
+.toast-action {
+    margin-left: 12px;
+    padding: 0 4px;
+    background: transparent;
+    border: none;
+    color: var(--accent);
+    font: 600 12px/1 inherit;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+}
+
+.toast-action:hover { color: var(--accent-bright); }
+.toast-action:disabled { opacity: 0.5; cursor: default; }
 
 /* Pulse-highlight a setting after the palette jumps to it. */
 @keyframes settingFlash {
