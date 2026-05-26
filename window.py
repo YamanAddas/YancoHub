@@ -374,7 +374,16 @@ def main():
             logging.getLogger('yancohub.window').debug(
                 "Gamepad bridge failed to start: %s", e)
 
-    webview.start(func=_on_start, menu=menu, debug='--debug' in sys.argv)
+    # Use the YancoHub icon for the taskbar / window title bar in dev mode too.
+    # In a frozen build PyInstaller already embeds it in the exe; this covers
+    # `python launch.py` so the running window doesn't show the Python icon.
+    icon_path = APP_DIR / 'assets' / 'icon.ico'
+    webview.start(
+        func=_on_start,
+        menu=menu,
+        debug='--debug' in sys.argv,
+        icon=str(icon_path) if icon_path.exists() else None,
+    )
 
 
 if __name__ == '__main__':
