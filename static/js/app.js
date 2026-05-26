@@ -721,6 +721,25 @@ function applyFilter() {
                 return g.source === 'retro' ? pt >= 5 : pt >= 10;
             });
             break;
+        case 'smart_aside':
+            // Started but set aside: > 30 min played, last touched >60 days ago,
+            // and not in the "completed" bucket.
+            games = games.filter(g => {
+                if (!g.last_played) return false;
+                const pt = totalPlaytime(g);
+                if (pt < 0.5) return false;
+                if ((now - g.last_played) < 60 * 86400) return false;
+                const completedThreshold = g.source === 'retro' ? 5 : 10;
+                return pt < completedThreshold;
+            });
+            break;
+        case 'smart_gems':
+            // Hidden gems: highly rated but barely played by *you*.
+            games = games.filter(g => {
+                const r = _normalizedRating(g);
+                return r !== null && r >= 75 && totalPlaytime(g) < 1;
+            });
+            break;
         default:
             // Genre tab: "genre_Action"
             if (tab.startsWith('genre_')) {
@@ -843,6 +862,8 @@ const SMART_META = {
     smart_continue:  { name: 'Continue Playing',   colors: ['#2a1a3a', '#150d1f'], icon: '\u25B6' },
     smart_backlog:   { name: 'Backlog',            colors: ['#3a2a1a', '#1f150d'], icon: '\uD83D\uDCDA' },
     smart_completed: { name: 'Completed',          colors: ['#0a3a2a', '#051f15'], icon: '\u2714' },
+    smart_aside:     { name: 'Set Aside',          colors: ['#3a1a1a', '#1f0d0d'], icon: '\u23F8' },
+    smart_gems:      { name: 'Hidden Gems',        colors: ['#3a3a0d', '#1f1f05'], icon: '\u2728' },
 };
 
 const SMART_ICON = {
@@ -850,6 +871,8 @@ const SMART_ICON = {
     smart_continue:  '<i class="ph-fill ph-play"></i>',
     smart_backlog:   '<i class="ph ph-books"></i>',
     smart_completed: '<i class="ph ph-check-circle"></i>',
+    smart_aside:     '<i class="ph ph-pause-circle"></i>',
+    smart_gems:      '<i class="ph-fill ph-diamond"></i>',
 };
 
 // Genre color palette (rotating)
@@ -878,6 +901,7 @@ function buildConsolePanel() {
     const genreCounts = {};
     const now = Date.now() / 1000;
     let smartUnplayed = 0, smartContinue = 0, smartBacklog = 0, smartCompleted = 0;
+    let smartAside = 0, smartGems = 0;
 
     for (const g of state.games) {
         const src = g.source || 'local';
@@ -894,10 +918,14 @@ function buildConsolePanel() {
         }
         // Smart collections
         const pt = totalPlaytime(g);
+        const completedThreshold = src === 'retro' ? 5 : 10;
         if (!g.last_played && pt === 0) smartUnplayed++;
         if (g.last_played && (now - g.last_played) < 30 * 86400 && pt > 0) smartContinue++;
         if (pt > 0 && pt < 0.5) smartBacklog++;
-        if (src === 'retro' ? pt >= 5 : pt >= 10) smartCompleted++;
+        if (pt >= completedThreshold) smartCompleted++;
+        if (g.last_played && pt >= 0.5 && pt < completedThreshold && (now - g.last_played) >= 60 * 86400) smartAside++;
+        const r = _normalizedRating(g);
+        if (r !== null && r >= 75 && pt < 1) smartGems++;
     }
 
     const totalGames = state.games.length;
@@ -911,7 +939,14 @@ function buildConsolePanel() {
     if (totalRecent > 0) _addHexTab(scroll, 'recent', totalRecent);
 
     // ── Smart Collections ──
-    const smartCounts = { smart_unplayed: smartUnplayed, smart_continue: smartContinue, smart_backlog: smartBacklog, smart_completed: smartCompleted };
+    const smartCounts = {
+        smart_unplayed: smartUnplayed,
+        smart_continue: smartContinue,
+        smart_aside: smartAside,
+        smart_gems: smartGems,
+        smart_backlog: smartBacklog,
+        smart_completed: smartCompleted,
+    };
     const hasAnySmart = Object.values(smartCounts).some(c => c > 0);
     if (hasAnySmart) {
         _addHexDivider(scroll, 'Smart');
@@ -1518,6 +1553,16 @@ function totalPlaytime(g) {
     return (g.playtime_hours || 0) + (g.playtime_from_api || 0);
 }
 
+/** Normalize a game's rating to a 0–100 scale, or null if unrated.
+ *  Steam scores are already 0–100 (positive %), Wikipedia/IGDB sometimes 0–10.  */
+function _normalizedRating(g) {
+    const r = g.community_rating;
+    if (r === null || r === undefined || r === '') return null;
+    const n = typeof r === 'string' ? parseFloat(r) : r;
+    if (!isFinite(n) || n <= 0) return null;
+    return n <= 10 ? n * 10 : n;
+}
+
 function hasGenre(g, keywords) {
     if (!g.genre) return false;
     const lower = g.genre.toLowerCase();
@@ -2058,8 +2103,13 @@ function updateGameInfo() {
         badges.push(`<span class="meta-badge">${escapeHtml(game.genre.split(';')[0].trim())}</span>`);
     }
     if (game.community_rating) {
-        const stars = '★'.repeat(Math.round(game.community_rating)) + '☆'.repeat(5 - Math.round(game.community_rating));
-        badges.push(`<span class="meta-badge fav">${stars}</span>`);
+        // Normalize to a 5-star scale: Steam scores are 0–100, Wikipedia 0–10.
+        const n = _normalizedRating(game);  // 0–100 or null
+        if (n !== null) {
+            const filled = Math.max(0, Math.min(5, Math.round(n / 20)));
+            const stars = '★'.repeat(filled) + '☆'.repeat(5 - filled);
+            badges.push(`<span class="meta-badge fav">${stars}</span>`);
+        }
     }
     if (game.installed === false) {
         badges.push(`<span class="meta-badge not-installed">Not Installed</span>`);
