@@ -31,6 +31,7 @@ emulators/
 
 # ── Claude Code ──
 .claude/
+CLAUDE.md
 
 # ── Virtual environment ──
 venv/
