@@ -5170,6 +5170,31 @@ select.settings-input option {
 .toast-action:hover { color: var(--accent-bright); }
 .toast-action:disabled { opacity: 0.5; cursor: default; }
 
+/* Row of action buttons inside a settings card (Backup & Restore, etc.) */
+.settings-actions-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
+/* Cautious-action button — used for Reset to defaults */
+.btn-small.btn-danger {
+    color: var(--danger);
+    border-color: rgba(255, 71, 87, 0.3);
+}
+
+.btn-small.btn-danger:hover {
+    background: rgba(255, 71, 87, 0.08);
+    border-color: var(--danger);
+}
+
+.btn-small.btn-danger-armed {
+    background: rgba(255, 71, 87, 0.18);
+    border-color: var(--danger);
+    color: var(--text-bright);
+}
+
 /* Pulse-highlight a setting after the palette jumps to it. */
 @keyframes settingFlash {
     0%   { box-shadow: 0 0 0 0 rgba(0, 229, 193, 0.55); background-color: rgba(0, 229, 193, 0.08); }

@@ -183,6 +183,118 @@ function bindSettingEnums() {
     });
 }
 
+// ── Settings backup / import / reset ─────────────────────────────────────────
+
+/** Download all current settings as a portable JSON file. */
+function exportSettings() {
+    const payload = {
+        yancohub_settings: '1.0',
+        exported_at: new Date().toISOString(),
+        values: { ...state.settings },
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    a.href = url;
+    a.download = `yancohub-settings-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showToast(`Exported <strong>${Object.keys(payload.values).length}</strong> settings`, 'success');
+}
+
+/** Read a JSON file and PATCH its values via the unified API. */
+async function importSettings(file) {
+    if (!file) return;
+    let parsed;
+    try {
+        parsed = JSON.parse(await file.text());
+    } catch {
+        showToast('Could not parse JSON file', 'error');
+        return;
+    }
+    // Accept either the wrapped export format or a plain {key: value} map.
+    const values = (parsed && typeof parsed === 'object' && parsed.values && typeof parsed.values === 'object')
+        ? parsed.values
+        : (parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null);
+    if (!values) {
+        showToast('Settings file is not in the expected format', 'error');
+        return;
+    }
+    const total = Object.keys(values).length;
+    if (!total) { showToast('No settings to import', 'info'); return; }
+    try {
+        const d = await fetchJSON('/api/settings', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(values),
+        });
+        if (d.values) state.settings = d.values;
+        applyVisualSettings();
+        bindSettingToggles();
+        bindSettingEnums();
+        const failed = Object.keys(d.errors || {}).length;
+        const applied = total - failed;
+        if (failed) {
+            showToast(`Imported ${applied} setting${applied === 1 ? '' : 's'} · ${failed} skipped`, 'info');
+        } else {
+            showToast(`Imported <strong>${applied}</strong> setting${applied === 1 ? '' : 's'}`, 'success');
+        }
+    } catch {
+        showToast('Failed to apply imported settings', 'error');
+    }
+}
+
+let _resetArmed = false;
+let _resetArmTimer = null;
+
+/** Two-step reset: first click arms; second click within 3.5s actually resets. */
+async function resetSettings() {
+    const btn = $('btnResetSettings');
+    if (!btn) return;
+    if (!_resetArmed) {
+        _resetArmed = true;
+        btn.dataset.origText = btn.textContent;
+        btn.textContent = 'Click again to confirm';
+        btn.classList.add('btn-danger-armed');
+        _resetArmTimer = setTimeout(() => {
+            _resetArmed = false;
+            btn.textContent = btn.dataset.origText || 'Reset to defaults';
+            btn.classList.remove('btn-danger-armed');
+        }, 3500);
+        return;
+    }
+    clearTimeout(_resetArmTimer);
+    _resetArmed = false;
+    btn.classList.remove('btn-danger-armed');
+    btn.textContent = btn.dataset.origText || 'Reset to defaults';
+
+    // Build defaults from the cached schema (skips hidden keys; includes
+    // registry-backed keys, which PATCH applies via set_startup_enabled).
+    const defaults = {};
+    Object.values(state.settingsSchema).forEach((entry) => {
+        if (entry && entry.key && entry.default !== undefined) {
+            defaults[entry.key] = entry.default;
+        }
+    });
+    try {
+        const d = await fetchJSON('/api/settings', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(defaults),
+        });
+        if (d.values) state.settings = d.values;
+        applyVisualSettings();
+        bindSettingToggles();
+        bindSettingEnums();
+        showToast(`Reset <strong>${Object.keys(defaults).length}</strong> settings to defaults`, 'success');
+    } catch {
+        showToast('Failed to reset settings', 'error');
+    }
+}
+
 // ── Global Toast Notifications ────────────────────────────────────────────
 
 const TOAST_ICONS = {
@@ -2398,6 +2510,16 @@ function bindEvents() {
         const tab = e.target.closest('.settings-tab');
         if (tab) switchSettingsTab(tab.dataset.stab);
     });
+
+    // Settings backup / import / reset
+    $('btnExportSettings').addEventListener('click', exportSettings);
+    $('btnImportSettings').addEventListener('click', () => $('importSettingsFile').click());
+    $('importSettingsFile').addEventListener('change', (e) => {
+        const file = e.target.files && e.target.files[0];
+        importSettings(file);
+        e.target.value = '';  // allow re-importing the same file
+    });
+    $('btnResetSettings').addEventListener('click', resetSettings);
 
     // Settings command palette
     $('settingsSearchTrigger').addEventListener('click', openSettingsPalette);
