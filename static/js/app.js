@@ -2511,6 +2511,10 @@ function bindEvents() {
         if (tab) switchSettingsTab(tab.dataset.stab);
     });
 
+    // Year in Review (full-screen)
+    $('btnOpenYearOverlay').addEventListener('click', openYearOverlay);
+    $('closeYearOverlay').addEventListener('click', closeYearOverlay);
+
     // Tonight's Pick (CatByte curator)
     $('btnTonightsPick').addEventListener('click', openTonightsPick);
     $('closeTonightsPick').addEventListener('click', closeTonightsPick);
@@ -2598,6 +2602,12 @@ function bindEvents() {
             openSettingsSearch();
             return;
         }
+        // Ctrl+Shift+Y — open Your YancoHub Year
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === 'y') {
+            e.preventDefault();
+            openYearOverlay();
+            return;
+        }
 
         // Don't navigate if a text input is focused
         if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) ||
@@ -2615,6 +2625,7 @@ function bindEvents() {
         if (e.key === 'Escape') {
             // Palette closes before its parent settings overlay
             if (!$('settingsSearchOverlay').classList.contains('hidden')) { closeSettingsPalette(); return; }
+            if (!$('yearOverlay').classList.contains('hidden')) { closeYearOverlay(); return; }
             if (!$('tonightsPickOverlay').classList.contains('hidden')) { closeTonightsPick(); return; }
             if (!$('moodOverlay').classList.contains('hidden')) { $('moodOverlay').classList.add('hidden'); return; }
             if (!$('catbyteInfoOverlay').classList.contains('hidden')) $('catbyteInfoOverlay').classList.add('hidden');
@@ -3720,6 +3731,227 @@ function focusSettingControl(direction) {
 document.addEventListener('mousedown', () => {
     document.querySelectorAll('.gp-focus').forEach((el) => el.classList.remove('gp-focus'));
 }, { capture: true });
+
+// ── Your YancoHub Year (offline-only year-in-review) ─────────────────────────
+
+let _yearObserver = null;
+
+async function openYearOverlay() {
+    const overlay = $('yearOverlay');
+    const scroll = $('yearScroll');
+    overlay.classList.remove('hidden');
+    scroll.scrollTop = 0;
+    scroll.innerHTML = `
+        <section class="year-section year-hero is-visible">
+            <div class="year-hero-eyebrow">Your YancoHub</div>
+            <div class="year-title"><span class="year-tint">Loading your year…</span></div>
+        </section>`;
+    try {
+        const data = await fetchJSON('/api/year-summary');
+        renderYearSummary(data);
+    } catch (e) {
+        scroll.innerHTML = `
+            <section class="year-section year-hero is-visible">
+                <div class="year-title">Couldn't load your year.</div>
+                <div class="year-hero-sub">${escapeHtml(String(e))}</div>
+            </section>`;
+    }
+}
+
+function closeYearOverlay() {
+    $('yearOverlay').classList.add('hidden');
+    if (_yearObserver) { _yearObserver.disconnect(); _yearObserver = null; }
+}
+
+function renderYearSummary(data) {
+    const scroll = $('yearScroll');
+    const year = data.year;
+    const games = data.games_touched || 0;
+    const hours = data.hours_total || 0;
+    const top = (data.top_games && data.top_games[0]) || null;
+    const topGames = data.top_games || [];
+    const months = data.by_month || [];
+    const systems = data.by_system || [];
+    const genres = data.by_genre || [];
+    const allTime = data.all_time || { hours: 0, games: 0 };
+
+    // Empty state
+    if (!games) {
+        scroll.innerHTML = `
+            <section class="year-section year-hero is-visible">
+                <div class="year-hero-eyebrow">Your YancoHub</div>
+                <div class="year-title">
+                    <span class="year-tint">${year}</span>
+                </div>
+                <p class="year-hero-sub">
+                    No play sessions tracked in ${year} yet. Launch a game from YancoHub and we'll
+                    start building your year automatically — entirely on this device.
+                </p>
+            </section>`;
+        return;
+    }
+
+    const maxTopHours = Math.max(1, ...topGames.map(g => g.hours));
+    const maxMonthHours = Math.max(1, ...months.map(m => m.hours));
+    const topMonth = months.reduce((a, b) => (b.hours > (a?.hours || 0) ? b : a), null);
+
+    const topGameSection = top ? `
+        <section class="year-section year-topgame" style="background-image: url('${escapeAttr(top.artwork_url)}');">
+            <div class="year-eyebrow">Your most-played</div>
+            <div class="year-topgame-name">${escapeHtml(top.name)}</div>
+            <div class="year-topgame-hours">${top.hours} hours · ${top.system}</div>
+            <p class="year-caption">You kept coming back. That's what counts.</p>
+        </section>` : '';
+
+    const top5Rows = topGames.map((g, i) => {
+        const pct = Math.max(6, Math.round((g.hours / maxTopHours) * 100));
+        return `
+            <div class="year-list-row">
+                <span class="year-list-rank">#${i + 1}</span>
+                <div class="year-list-cell">
+                    <span class="year-list-name">${escapeHtml(g.name)}</span>
+                    <div class="year-bar"><div class="year-bar-fill" style="--bar-pct: ${pct}%"></div></div>
+                </div>
+                <span class="year-list-hours">${g.hours}h</span>
+            </div>`;
+    }).join('');
+
+    const monthBars = months.map(m => {
+        const pct = m.hours > 0 ? Math.max(4, Math.round((m.hours / maxMonthHours) * 100)) : 0;
+        const isTop = topMonth && m.month === topMonth.month && m.hours > 0;
+        return `
+            <div class="year-month${isTop ? ' is-top' : ''}" title="${escapeAttr(m.label)} — ${m.hours}h${m.top_game ? ' · ' + m.top_game : ''}">
+                <div class="year-month-bar"><div class="year-month-fill" style="--bar-pct: ${pct}%"></div></div>
+                <div class="year-month-label">${escapeHtml(m.label)}</div>
+            </div>`;
+    }).join('');
+
+    const systemChips = systems.slice(0, 8).map(s =>
+        `<span class="year-chip"><span class="year-chip-num">${s.count}</span> ${escapeHtml(s.system)} · ${s.hours}h</span>`
+    ).join('');
+
+    const genreChips = genres.map(g =>
+        `<span class="year-chip">${escapeHtml(g.genre)} <span class="year-chip-num">${g.hours}h</span></span>`
+    ).join('');
+
+    const topMonthLine = topMonth && topMonth.hours > 0
+        ? `Your peak was <strong>${escapeHtml(topMonth.label)}</strong>${topMonth.top_game ? ` with <strong>${escapeHtml(topMonth.top_game)}</strong>` : ''}.`
+        : '';
+
+    scroll.innerHTML = `
+        <section class="year-section year-hero">
+            <div class="year-hero-eyebrow">Your YancoHub</div>
+            <div class="year-title">
+                Your year in
+                <span class="year-tint">${year}</span>
+            </div>
+            <p class="year-hero-sub">
+                Pieced together from your local play history. Nothing left this device.
+            </p>
+            <div class="year-scroll-cue">Scroll to see ↓</div>
+        </section>
+
+        <section class="year-section">
+            <div class="year-eyebrow">The shape of your year</div>
+            <div class="year-row">
+                <div class="year-stat">
+                    <div class="year-bignum" data-countup="${games}">0</div>
+                    <div class="year-bignum-unit">games</div>
+                </div>
+                <div class="year-stat">
+                    <div class="year-bignum" data-countup="${hours}" data-decimals="1">0</div>
+                    <div class="year-bignum-unit">hours</div>
+                </div>
+            </div>
+            <p class="year-caption">
+                Lifetime totals for the games you returned to in ${year} — your library kept ${games}
+                title${games === 1 ? '' : 's'} alive this year.
+            </p>
+        </section>
+
+        ${topGameSection}
+
+        ${topGames.length ? `
+        <section class="year-section">
+            <div class="year-eyebrow">Top ${topGames.length}</div>
+            <div class="year-title" style="font-size: clamp(1.6rem, 3.5vw, 2.4rem);">The games that defined ${year}</div>
+            <div class="year-list">${top5Rows}</div>
+        </section>` : ''}
+
+        ${months.some(m => m.hours > 0) ? `
+        <section class="year-section">
+            <div class="year-eyebrow">Across the months</div>
+            <div class="year-title" style="font-size: clamp(1.6rem, 3.5vw, 2.4rem);">When you played</div>
+            <div class="year-months">${monthBars}</div>
+            ${topMonthLine ? `<p class="year-caption">${topMonthLine}</p>` : ''}
+        </section>` : ''}
+
+        ${systems.length ? `
+        <section class="year-section">
+            <div class="year-eyebrow">By store</div>
+            <div class="year-title" style="font-size: clamp(1.6rem, 3.5vw, 2.4rem);">Where your games live</div>
+            <div class="year-chips">${systemChips}</div>
+        </section>` : ''}
+
+        ${genres.length ? `
+        <section class="year-section">
+            <div class="year-eyebrow">By mood</div>
+            <div class="year-title" style="font-size: clamp(1.6rem, 3.5vw, 2.4rem);">Your favourite flavours</div>
+            <div class="year-chips">${genreChips}</div>
+        </section>` : ''}
+
+        <section class="year-section year-hero">
+            <div class="year-hero-eyebrow">All-time</div>
+            <div class="year-title" style="font-size: clamp(2rem, 4vw, 3rem);">
+                <span class="year-tint">${allTime.games}</span> games · <span class="year-tint">${allTime.hours}</span> hours
+            </div>
+            <p class="year-hero-sub">Since you first launched a game inside YancoHub. Quietly accumulating.</p>
+            <div class="year-outro-actions">
+                <button class="btn-small btn-accent" id="yearOutroClose">Back to library</button>
+            </div>
+        </section>`;
+
+    // Wire outro close
+    const outroClose = document.getElementById('yearOutroClose');
+    if (outroClose) outroClose.addEventListener('click', closeYearOverlay);
+
+    // Observe sections to trigger entrance animations + count-ups
+    if (_yearObserver) _yearObserver.disconnect();
+    _yearObserver = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('is-visible');
+                entry.target.querySelectorAll('[data-countup]').forEach(_runCountUp);
+                _yearObserver.unobserve(entry.target);
+            }
+        });
+    }, { root: $('yearOverlay'), threshold: 0.2 });
+    scroll.querySelectorAll('.year-section:not(.year-hero)').forEach(s => _yearObserver.observe(s));
+    // The first hero is already visible, but count-ups inside it (none) would run anyway.
+    scroll.querySelector('.year-hero')?.classList.add('is-visible');
+}
+
+/** Animate a [data-countup] element from 0 to its target over ~1.2s. */
+function _runCountUp(el) {
+    if (el.dataset.countupDone === '1') return;
+    el.dataset.countupDone = '1';
+    const target = parseFloat(el.dataset.countup) || 0;
+    const decimals = parseInt(el.dataset.decimals || '0', 10);
+    const duration = 1200;
+    const start = performance.now();
+    function frame(now) {
+        const t = Math.min(1, (now - start) / duration);
+        // ease-out cubic
+        const eased = 1 - Math.pow(1 - t, 3);
+        const value = target * eased;
+        el.textContent = decimals
+            ? value.toFixed(decimals)
+            : Math.round(value).toLocaleString();
+        if (t < 1) requestAnimationFrame(frame);
+        else el.textContent = decimals ? target.toFixed(decimals) : Math.round(target).toLocaleString();
+    }
+    requestAnimationFrame(frame);
+}
 
 // ── Tonight's Pick (CatByte curator) ─────────────────────────────────────────
 

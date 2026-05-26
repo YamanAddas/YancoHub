@@ -31,6 +31,7 @@ from paths import get_log_dir
 from updatecheck import start_update_check, get_update_info
 from startup import is_startup_enabled, set_startup_enabled
 import settings_schema
+import yearsummary
 
 # ── Logging ─────────────────────────────────────────────────────────────────
 
@@ -1260,6 +1261,22 @@ def api_catbyte_models():
 def api_catbyte_test():
     """Test the current backend connection end-to-end."""
     return jsonify(catbyte.test_connection())
+
+
+@app.route('/api/year-summary')
+def api_year_summary():
+    """Local year-in-review payload for the requested year (default: current).
+
+    No external calls — built entirely from userdata.json + metadata cache.
+    """
+    import datetime
+    year_arg = request.args.get('year', type=int)
+    year = year_arg or datetime.datetime.now().year
+    playtime = userdata.get_playtime()
+    with _library_lock:
+        snapshot = list(game_library)
+    summary = yearsummary.compute_year_summary(year, playtime, snapshot, metadata_fetcher.db)
+    return jsonify(summary)
 
 
 @app.route('/api/catbyte/tonights-pick', methods=['POST'])
