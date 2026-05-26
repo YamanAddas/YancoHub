@@ -1262,6 +1262,98 @@ def api_catbyte_test():
     return jsonify(catbyte.test_connection())
 
 
+@app.route('/api/catbyte/tonights-pick', methods=['POST'])
+def api_catbyte_tonights_pick():
+    """Ask CatByte to recommend a few games to play tonight.
+
+    Picks from the installed games in the user's library, biased toward
+    favorites and recency. Returns enriched results so the frontend can
+    render hero artwork directly.
+    """
+    import datetime
+    body = request.get_json(silent=True) or {}
+    count = body.get('count', 3)
+
+    playtime = userdata.get_playtime()
+    favorites = set(userdata.get_favorites())
+    now = time.time()
+
+    candidates = []
+    with _library_lock:
+        snapshot = list(game_library)
+    for g in snapshot:
+        # Recommend only installable / launchable games.
+        if g.get('uninstalled') or g.get('is_installed') is False:
+            continue
+        gid = g.get('id')
+        name = g.get('name')
+        if not gid or not name:
+            continue
+        pt = playtime.get(gid, {}) if isinstance(playtime, dict) else {}
+        total_hours = float(pt.get('total_hours') or pt.get('total_seconds', 0) / 3600.0 or 0)
+        last_ts = pt.get('last_played')
+        last_played_days = None
+        if last_ts:
+            try:
+                last_played_days = max(0, (now - float(last_ts)) / 86400.0)
+            except (TypeError, ValueError):
+                last_played_days = None
+        candidates.append({
+            'id': gid,
+            'name': name,
+            'system': g.get('system') or g.get('source'),
+            'source': g.get('source'),
+            'total_hours': round(total_hours, 1),
+            'last_played_days': last_played_days,
+            'is_favorite': gid in favorites,
+            '_sort': (
+                0 if gid in favorites else 1,
+                -(total_hours if total_hours else 0),
+                last_played_days if last_played_days is not None else 9e9,
+            ),
+        })
+
+    # Sort: favorites first, then most-played, then most-recent.
+    candidates.sort(key=lambda c: c['_sort'])
+    for c in candidates:
+        c.pop('_sort', None)
+
+    if not candidates:
+        return jsonify({'picks': [], 'status': 'online',
+                        'message': 'No installed games to recommend yet.'})
+
+    # Time context — helps CatByte pitch genre fit for the moment.
+    now_dt = datetime.datetime.now()
+    hour = now_dt.hour
+    if hour < 5:    time_of_day = 'late night'
+    elif hour < 12: time_of_day = 'morning'
+    elif hour < 17: time_of_day = 'afternoon'
+    elif hour < 21: time_of_day = 'evening'
+    else:           time_of_day = 'late evening'
+    day_of_week = now_dt.strftime('%A')
+
+    result = catbyte.tonights_pick(
+        candidates, count=count,
+        context={'time_of_day': time_of_day, 'day_of_week': day_of_week},
+    )
+
+    # Map each pick back to its game_id + add the artwork URL the frontend needs.
+    name_to_id = {c['name'].lower(): c['id'] for c in candidates}
+    enriched_picks = []
+    for p in result.get('picks', []):
+        gid = name_to_id.get(p['name'].lower())
+        if not gid:
+            continue
+        enriched_picks.append({
+            'game_id': gid,
+            'name': p['name'],
+            'reason': p['reason'],
+            'artwork_url': f'/api/artwork/{gid}/cover',
+        })
+    result['picks'] = enriched_picks
+    return jsonify(result)
+
+
 
 @app.route('/api/catbyte/sessions', methods=['GET'])
 def api_catbyte_sessions():

@@ -2511,6 +2511,17 @@ function bindEvents() {
         if (tab) switchSettingsTab(tab.dataset.stab);
     });
 
+    // Tonight's Pick (CatByte curator)
+    $('btnTonightsPick').addEventListener('click', openTonightsPick);
+    $('closeTonightsPick').addEventListener('click', closeTonightsPick);
+    $('btnRerollTonightsPick').addEventListener('click', () => {
+        _renderTonightsPickLoading();
+        _fetchTonightsPick();
+    });
+    $('tonightsPickOverlay').addEventListener('click', (e) => {
+        if (e.target.id === 'tonightsPickOverlay') closeTonightsPick();
+    });
+
     // Settings backup / import / reset
     $('btnExportSettings').addEventListener('click', exportSettings);
     $('btnImportSettings').addEventListener('click', () => $('importSettingsFile').click());
@@ -2604,6 +2615,7 @@ function bindEvents() {
         if (e.key === 'Escape') {
             // Palette closes before its parent settings overlay
             if (!$('settingsSearchOverlay').classList.contains('hidden')) { closeSettingsPalette(); return; }
+            if (!$('tonightsPickOverlay').classList.contains('hidden')) { closeTonightsPick(); return; }
             if (!$('moodOverlay').classList.contains('hidden')) { $('moodOverlay').classList.add('hidden'); return; }
             if (!$('catbyteInfoOverlay').classList.contains('hidden')) $('catbyteInfoOverlay').classList.add('hidden');
             else if (!$('searchOverlay').classList.contains('hidden')) closeSearch();
@@ -3708,6 +3720,83 @@ function focusSettingControl(direction) {
 document.addEventListener('mousedown', () => {
     document.querySelectorAll('.gp-focus').forEach((el) => el.classList.remove('gp-focus'));
 }, { capture: true });
+
+// ── Tonight's Pick (CatByte curator) ─────────────────────────────────────────
+
+function _renderTonightsPickLoading() {
+    $('tonightsPickSub').textContent = 'CatByte is choosing from your library…';
+    $('tonightsPickBody').innerHTML = `
+        <div class="tonights-pick-loading" style="grid-column: 1 / -1;">
+            Curating your night
+            <span class="tonights-pick-loading-dots"><span></span><span></span><span></span></span>
+        </div>`;
+}
+
+function _renderTonightsPickMessage(text) {
+    $('tonightsPickSub').textContent = '';
+    $('tonightsPickBody').innerHTML = `
+        <div class="tonights-pick-message" style="grid-column: 1 / -1;">${escapeHtml(text)}</div>`;
+}
+
+function _renderTonightsPickResults(picks) {
+    const sub = picks.length === 1
+        ? "CatByte's pick for tonight."
+        : `${picks.length} games CatByte thinks you'll enjoy tonight.`;
+    $('tonightsPickSub').textContent = sub;
+    $('tonightsPickBody').innerHTML = picks.map((p, i) => `
+        <div class="tp-card" data-game-id="${escapeAttr(p.game_id)}" data-idx="${i}" role="button" tabindex="0">
+            <div class="tp-card-art" style="background-image: url('${escapeAttr(p.artwork_url)}')"></div>
+            <div class="tp-card-body">
+                <div class="tp-card-name">${escapeHtml(p.name)}</div>
+                <div class="tp-card-reason">${escapeHtml(p.reason)}</div>
+            </div>
+        </div>
+    `).join('');
+    $('tonightsPickBody').querySelectorAll('.tp-card').forEach((card) => {
+        const gid = card.dataset.gameId;
+        const activate = () => {
+            closeTonightsPick();
+            if (typeof launchGame === 'function') launchGame(gid);
+        };
+        card.addEventListener('click', activate);
+        card.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); }
+        });
+    });
+}
+
+async function openTonightsPick() {
+    const overlay = $('tonightsPickOverlay');
+    overlay.classList.remove('hidden');
+    _renderTonightsPickLoading();
+    await _fetchTonightsPick();
+}
+
+function closeTonightsPick() {
+    $('tonightsPickOverlay').classList.add('hidden');
+}
+
+async function _fetchTonightsPick() {
+    try {
+        const r = await fetch('/api/catbyte/tonights-pick', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ count: 3 }),
+        });
+        if (!r.ok) {
+            _renderTonightsPickMessage(`Backend error (${r.status}). Try again in a moment.`);
+            return;
+        }
+        const data = await r.json();
+        if (!data.picks || data.picks.length === 0) {
+            _renderTonightsPickMessage(data.message || 'CatByte had nothing to recommend right now.');
+            return;
+        }
+        _renderTonightsPickResults(data.picks);
+    } catch (e) {
+        _renderTonightsPickMessage('Could not reach the backend. Is YancoHub still running?');
+    }
+}
 
 // ── Settings Status Summaries ──────────────────────────────────────────────
 

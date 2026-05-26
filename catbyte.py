@@ -531,6 +531,182 @@ class CatByte:
             logger.warning(f"Title generation failed: {e}")
         return {'title': ''}
 
+    def tonights_pick(self, candidates: list, count: int = 3,
+                      context: dict = None) -> dict:
+        """Ask the LLM to curate {count} game recommendations from {candidates}.
+
+        candidates: list of dicts, each with at minimum {name}; optional keys
+                    {system, total_hours, last_played_days, is_favorite}.
+        context:    optional {time_of_day, day_of_week, season}.
+
+        Returns:
+            {'picks': [{'name': str, 'reason': str}], 'status': 'online' | 'offline' | 'error', 'message': str}
+        Hallucinated names not present in `candidates` (case-insensitive) are
+        filtered out before returning.
+        """
+        import json
+        import re
+
+        if time.time() < self._offline_until:
+            return {'picks': [], 'status': 'offline',
+                    'message': 'CatByte is taking a catnap. Try again in a moment.'}
+
+        base_url = self._get_base_url()
+        if not base_url:
+            return {'picks': [], 'status': 'offline',
+                    'message': 'No AI backend configured. Open Settings → CatByte.'}
+
+        if not candidates:
+            return {'picks': [], 'status': 'online',
+                    'message': 'Your library is empty — install something first!'}
+
+        count = max(1, min(int(count or 3), 5))
+        # Cap the candidate list so prompts stay small for tiny local models.
+        trimmed = candidates[:60]
+
+        # Build a numbered candidate list with at-a-glance context per game.
+        def _fmt(entry):
+            name = self._sanitize_game_context(str(entry.get('name', '')))
+            if not name:
+                return None
+            bits = [name]
+            sys = entry.get('system') or entry.get('source')
+            if sys:
+                bits.append(str(sys))
+            hrs = entry.get('total_hours')
+            if hrs is not None:
+                try:
+                    bits.append(f"{float(hrs):.1f}h played")
+                except (TypeError, ValueError):
+                    pass
+            lpd = entry.get('last_played_days')
+            if lpd is not None:
+                if lpd <= 1:
+                    bits.append("played today")
+                elif lpd < 60:
+                    bits.append(f"{int(lpd)}d ago")
+                else:
+                    bits.append("not in a while")
+            if entry.get('is_favorite'):
+                bits.append("favorite")
+            return " — ".join(bits)
+
+        lines = []
+        valid_names_lc = {}
+        for entry in trimmed:
+            line = _fmt(entry)
+            if line:
+                idx = len(lines) + 1
+                lines.append(f"{idx}. {line}")
+                valid_names_lc[entry['name'].lower()] = entry['name']
+
+        if not lines:
+            return {'picks': [], 'status': 'online',
+                    'message': 'No installable games to recommend.'}
+
+        ctx = context or {}
+        time_bits = []
+        if ctx.get('time_of_day'):
+            time_bits.append(str(ctx['time_of_day']))
+        if ctx.get('day_of_week'):
+            time_bits.append(str(ctx['day_of_week']))
+        time_line = ", ".join(time_bits) if time_bits else "no time hint"
+
+        system_prompt = (
+            "You are CatByte, the gaming curator inside YancoHub. The user wants "
+            f"{count} recommendations for tonight from their library. Be warm, "
+            "concise, and personal — like a friend who knows their taste. Each "
+            "reason is ONE sentence (12–22 words) that connects to recent play "
+            "history, genre fit, mood, or time available. Pick ONLY from the "
+            "numbered candidates and reproduce names EXACTLY as listed. Reply "
+            "with valid JSON only, no markdown fences, no commentary."
+        )
+        user_prompt = (
+            f"Context: {time_line}\n\n"
+            f"Candidates (pick {count} distinct, exact names):\n"
+            + "\n".join(lines)
+            + "\n\nRespond with JSON in this exact shape:\n"
+            + '{"picks": [{"name": "Exact Name", "reason": "one sentence"}]}'
+        )
+
+        try:
+            resp = requests.post(
+                f"{base_url}/v1/chat/completions",
+                headers=self._headers(),
+                json={
+                    'model': self.get_model(),
+                    'messages': [
+                        {'role': 'system', 'content': system_prompt},
+                        {'role': 'user', 'content': user_prompt},
+                    ],
+                    'stream': False,
+                    'temperature': 0.7,
+                },
+                timeout=HTTP_TIMEOUT_EXTENDED,
+            )
+        except requests.ConnectionError:
+            self._offline_until = time.time() + 5
+            backend_name = BACKEND_PRESETS.get(
+                self._settings.get('backend', 'ollama'), {}).get('name', 'CatByte')
+            return {'picks': [], 'status': 'offline',
+                    'message': f"Can't reach {backend_name}. Make sure it's running."}
+        except Exception as e:
+            logger.error(f"tonights_pick request failed: {e}")
+            return {'picks': [], 'status': 'error', 'message': 'Recommendation failed.'}
+
+        if resp.status_code != 200:
+            logger.warning(f"tonights_pick non-200: {resp.status_code} — {resp.text[:200]}")
+            return {'picks': [], 'status': 'error',
+                    'message': f'Backend returned {resp.status_code}.'}
+
+        try:
+            content = resp.json().get('choices', [{}])[0].get('message', {}).get('content', '')
+        except Exception:
+            content = ''
+        if not content:
+            return {'picks': [], 'status': 'error', 'message': 'Empty response from CatByte.'}
+
+        # Extract the first {...} block, tolerant of code fences or chatter.
+        text = content.strip()
+        text = re.sub(r'^```(?:json)?\s*|\s*```$', '', text, flags=re.IGNORECASE | re.MULTILINE)
+        start = text.find('{')
+        end = text.rfind('}')
+        parsed = None
+        if start >= 0 and end > start:
+            try:
+                parsed = json.loads(text[start:end + 1])
+            except json.JSONDecodeError:
+                parsed = None
+
+        if not parsed or not isinstance(parsed.get('picks'), list):
+            logger.debug(f"tonights_pick unparseable: {content[:300]}")
+            return {'picks': [], 'status': 'error',
+                    'message': "CatByte's reply didn't parse — try again."}
+
+        picks = []
+        seen = set()
+        for raw in parsed['picks'][:count]:
+            if not isinstance(raw, dict):
+                continue
+            name_raw = str(raw.get('name', '')).strip()
+            reason = str(raw.get('reason', '')).strip()
+            if not name_raw:
+                continue
+            real = valid_names_lc.get(name_raw.lower())
+            if not real or real in seen:
+                continue
+            seen.add(real)
+            picks.append({
+                'name': real,
+                'reason': reason[:240] or 'A solid choice from your library.',
+            })
+
+        if not picks:
+            return {'picks': [], 'status': 'error',
+                    'message': "CatByte picked games that aren't in your library — try again."}
+
+        return {'picks': picks, 'status': 'online', 'message': ''}
+
     def test_connection(self) -> dict:
         """Send a quick test message to verify the backend works end-to-end."""
         backend = self._settings.get('backend', 'ollama')
