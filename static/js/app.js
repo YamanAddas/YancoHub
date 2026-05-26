@@ -72,6 +72,61 @@ async function loadSettings() {
 /** Apply settings that affect the visual appearance (live preview targets). */
 function applyVisualSettings() {
     document.documentElement.dataset.density = state.settings.card_density || 'comfortable';
+    if (state.settings.theme_accent) applyTheme(state.settings.theme_accent);
+}
+
+/** Set the accent-family CSS vars from a hex color. accent-dim/glow follow
+ *  automatically because they're defined as rgba(var(--accent-rgb), X). */
+function applyTheme(hex) {
+    if (typeof hex !== 'string') return;
+    let m = hex.replace('#', '').trim();
+    if (m.length === 3) m = m.split('').map(c => c + c).join('');
+    if (m.length !== 6 || /[^0-9a-f]/i.test(m)) return;
+    const r = parseInt(m.slice(0, 2), 16);
+    const g = parseInt(m.slice(2, 4), 16);
+    const b = parseInt(m.slice(4, 6), 16);
+    const mix = (v, t = 0.30) => Math.round(v + (255 - v) * t);
+    const toHex = (v) => v.toString(16).padStart(2, '0');
+    const bright = `#${toHex(mix(r))}${toHex(mix(g))}${toHex(mix(b))}`;
+    const root = document.documentElement;
+    root.style.setProperty('--accent', '#' + m);
+    root.style.setProperty('--accent-rgb', `${r}, ${g}, ${b}`);
+    root.style.setProperty('--accent-bright', bright);
+}
+
+/** Wire the accent-color swatches + native color picker. */
+function bindThemeSwatches() {
+    const root = document.querySelector('.theme-swatches[data-setting="theme_accent"]');
+    if (!root) return;
+    const current = (state.settings.theme_accent || '#00e5c1').toLowerCase();
+    const swatches = root.querySelectorAll('.theme-swatch[data-value]');
+    const customSwatch = root.querySelector('.theme-swatch-custom');
+    const isPreset = [...swatches].some(s => s.dataset.value.toLowerCase() === current);
+    swatches.forEach(s => s.classList.toggle('active', s.dataset.value.toLowerCase() === current));
+    if (customSwatch) customSwatch.classList.toggle('active', !isPreset);
+
+    swatches.forEach((s) => {
+        s.onclick = async () => {
+            const value = s.dataset.value;
+            swatches.forEach(b => b.classList.toggle('active', b === s));
+            if (customSwatch) customSwatch.classList.remove('active');
+            try { await patchSetting('theme_accent', value, { showUndo: true }); }
+            catch (e) { console.warn('patchSetting theme_accent failed:', e); }
+        };
+    });
+
+    const picker = document.getElementById('themeAccentPicker');
+    if (picker) {
+        picker.value = current.length === 7 ? current : '#00e5c1';
+        // Live-preview only while dragging the picker (no PATCH each frame)
+        picker.oninput = (e) => applyTheme(e.target.value);
+        picker.onchange = async (e) => {
+            swatches.forEach(b => b.classList.remove('active'));
+            if (customSwatch) customSwatch.classList.add('active');
+            try { await patchSetting('theme_accent', e.target.value, { showUndo: true }); }
+            catch (err) { console.warn('patchSetting theme_accent failed:', err); }
+        };
+    }
 }
 
 /**
@@ -4358,6 +4413,7 @@ async function renderAccountsTab() {
     await loadSettings();
     bindSettingToggles();
     bindSettingEnums();
+    bindThemeSwatches();
 
     // ── Detected Stores ──
     const storeNames = {

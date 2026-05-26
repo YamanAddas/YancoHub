@@ -77,6 +77,24 @@ class TestValidate:
         assert ok is False
         assert 'compact' in msg  # error lists valid choices
 
+    def test_color_accepts_six_digit_hex(self):
+        assert ss.validate('theme_accent', '#00e5c1') == (True, '#00e5c1')
+        assert ss.validate('theme_accent', '#FF7E5F') == (True, '#ff7e5f')
+
+    def test_color_expands_three_digit_hex(self):
+        assert ss.validate('theme_accent', '#0fc') == (True, '#00ffcc')
+
+    def test_color_accepts_without_hash(self):
+        assert ss.validate('theme_accent', '00e5c1') == (True, '#00e5c1')
+
+    def test_color_rejects_invalid(self):
+        for bad in ['', 'not-a-color', '#zzzzzz', '#00e5c', 12345]:
+            ok, _ = ss.validate('theme_accent', bad)
+            if bad == '':
+                assert ok is True  # empty allowed (clears)
+            else:
+                assert ok is False, f'should reject {bad!r}'
+
 
 class TestPublicSchema:
     def test_excludes_hidden(self):

@@ -17,7 +17,7 @@ the dispatch lives in app.py where scanner/artwork/startup are already imported.
 
 from pathlib import Path
 
-# Supported value types: 'bool', 'enum', 'path_file', 'path_dir', 'int_map'
+# Supported value types: 'bool', 'enum', 'color', 'path_file', 'path_dir', 'int_map'
 SETTINGS = {
     'show_uninstalled': {
         'type': 'bool',
@@ -50,6 +50,13 @@ SETTINGS = {
         'tab': 'display',
         'label': 'Card density',
         'hint': 'How large game cards appear in the carousel',
+    },
+    'theme_accent': {
+        'type': 'color',
+        'default': '#00e5c1',
+        'tab': 'display',
+        'label': 'Accent color',
+        'hint': 'Recolors highlights, glows, and active states throughout the UI',
     },
     'launch_on_startup': {
         'type': 'bool',
@@ -119,6 +126,20 @@ def validate(key: str, value):
         if value in choices:
             return True, value
         return False, f'must be one of: {", ".join(choices)}'
+
+    if t == 'color':
+        if not isinstance(value, str):
+            return False, 'must be a hex color string'
+        v = value.strip().lower()
+        if not v:
+            return True, ''
+        if v.startswith('#'):
+            v = v[1:]
+        if len(v) == 3:
+            v = ''.join(c * 2 for c in v)
+        if len(v) != 6 or any(c not in '0123456789abcdef' for c in v):
+            return False, 'must be a hex color like #00e5c1'
+        return True, '#' + v
 
     if t in ('path_file', 'path_dir'):
         if not isinstance(value, str):
