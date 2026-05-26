@@ -2323,6 +2323,32 @@ function bindEvents() {
         const tab = e.target.closest('.settings-tab');
         if (tab) switchSettingsTab(tab.dataset.stab);
     });
+
+    // Settings command palette
+    $('settingsSearchTrigger').addEventListener('click', openSettingsPalette);
+    $('settingsSearchOverlay').addEventListener('click', (e) => {
+        if (e.target.id === 'settingsSearchOverlay') closeSettingsPalette();
+    });
+    $('settingsSearchInput').addEventListener('input', (e) => {
+        renderSettingsSearchResults(e.target.value);
+    });
+    $('settingsSearchInput').addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            _searchActiveIdx = Math.min(_searchResults.length - 1, _searchActiveIdx + 1);
+            updatePaletteActiveRow();
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            _searchActiveIdx = Math.max(0, _searchActiveIdx - 1);
+            updatePaletteActiveRow();
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            selectSettingsSearchResult();
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            closeSettingsPalette();
+        }
+    });
     $('addRomDir').addEventListener('click', addRomDir);
     $('addLocalDir').addEventListener('click', addLocalDir);
     $('addBiosDir').addEventListener('click', addBiosDir);
@@ -2357,6 +2383,14 @@ function bindEvents() {
 
     // Keyboard navigation
     document.addEventListener('keydown', (e) => {
+        // Ctrl/Cmd+K — open the settings command palette from anywhere.
+        // Handled before the input-focus guard so it works even from text fields.
+        if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
+            e.preventDefault();
+            openSettingsSearch();
+            return;
+        }
+
         // Don't navigate if a text input is focused
         if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) ||
             e.target.isContentEditable) return;
@@ -2371,6 +2405,8 @@ function bindEvents() {
         if (e.ctrlKey && e.shiftKey && e.key === 'S') { e.preventDefault(); sendScreenshot(); }
 
         if (e.key === 'Escape') {
+            // Palette closes before its parent settings overlay
+            if (!$('settingsSearchOverlay').classList.contains('hidden')) { closeSettingsPalette(); return; }
             if (!$('moodOverlay').classList.contains('hidden')) { $('moodOverlay').classList.add('hidden'); return; }
             if (!$('catbyteInfoOverlay').classList.contains('hidden')) $('catbyteInfoOverlay').classList.add('hidden');
             else if (!$('searchOverlay').classList.contains('hidden')) closeSearch();
@@ -3275,6 +3311,165 @@ async function renderSettings() {
         renderEmulationTab(),
         renderCatbyteTab(),
     ]);
+    // Re-index the palette after each render so newly created cards are searchable.
+    buildSettingsIndex();
+}
+
+// ── Settings Command Palette ─────────────────────────────────────────────────
+
+let _settingsIndex = [];
+let _searchResults = [];
+let _searchActiveIdx = 0;
+
+/** Build a searchable index of every settings card + toggle row across all panes. */
+function buildSettingsIndex() {
+    const entries = [];
+    document.querySelectorAll('.settings-pane').forEach((pane) => {
+        const tabId = pane.id.replace('settingsPane-', '');
+        pane.querySelectorAll('.settings-card').forEach((card) => {
+            const h4 = card.querySelector('.settings-card-header h4');
+            const cardHint = card.querySelector('.settings-card-hint');
+            if (h4 && h4.textContent.trim()) {
+                entries.push({
+                    title: h4.textContent.trim(),
+                    hint: cardHint ? cardHint.textContent.trim() : '',
+                    tab: tabId,
+                    element: card,
+                });
+            }
+            card.querySelectorAll('.settings-toggle-row').forEach((row) => {
+                const labelEl = row.querySelector('.settings-toggle-label > span:first-child');
+                const rowHint = row.querySelector('.settings-toggle-hint');
+                if (labelEl && labelEl.textContent.trim()) {
+                    entries.push({
+                        title: labelEl.textContent.trim(),
+                        hint: rowHint ? rowHint.textContent.trim() : '',
+                        tab: tabId,
+                        element: row,
+                    });
+                }
+            });
+        });
+    });
+    _settingsIndex = entries;
+    return entries;
+}
+
+function _paletteEscape(s) {
+    return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function _paletteHighlight(text, q) {
+    if (!q) return _paletteEscape(text);
+    const lower = text.toLowerCase();
+    const needle = q.toLowerCase();
+    let out = '';
+    let i = 0;
+    while (i < text.length) {
+        const idx = lower.indexOf(needle, i);
+        if (idx < 0) { out += _paletteEscape(text.slice(i)); break; }
+        out += _paletteEscape(text.slice(i, idx));
+        out += '<mark>' + _paletteEscape(text.slice(idx, idx + needle.length)) + '</mark>';
+        i = idx + needle.length;
+    }
+    return out;
+}
+
+function _scoreEntry(entry, q) {
+    const t = entry.title.toLowerCase();
+    const h = entry.hint.toLowerCase();
+    if (t === q) return 100;
+    if (t.startsWith(q)) return 80;
+    const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp('\\b' + escaped).test(t)) return 60;
+    if (t.includes(q)) return 50;
+    if (h.includes(q)) return 25;
+    return 0;
+}
+
+function filterSettings(query) {
+    const q = query.trim().toLowerCase();
+    if (!q) return _settingsIndex.slice(0, 12);
+    return _settingsIndex
+        .map((e) => ({ e, s: _scoreEntry(e, q) }))
+        .filter((x) => x.s > 0)
+        .sort((a, b) => b.s - a.s)
+        .slice(0, 12)
+        .map((x) => x.e);
+}
+
+function renderSettingsSearchResults(query) {
+    _searchResults = filterSettings(query);
+    _searchActiveIdx = 0;
+    const container = $('settingsSearchResults');
+    if (!_searchResults.length) {
+        container.innerHTML = `<div class="settings-search-empty">No settings match "${_paletteEscape(query)}"</div>`;
+        return;
+    }
+    container.innerHTML = _searchResults.map((e, i) => `
+        <div class="settings-search-result ${i === 0 ? 'active' : ''}" data-idx="${i}" role="option">
+            <div class="settings-search-result-body">
+                <div class="settings-search-result-title">${_paletteHighlight(e.title, query)}</div>
+                ${e.hint ? `<div class="settings-search-result-hint">${_paletteHighlight(e.hint, query)}</div>` : ''}
+            </div>
+            <span class="settings-search-result-tab">${_paletteEscape(e.tab)}</span>
+        </div>
+    `).join('');
+    container.querySelectorAll('.settings-search-result').forEach((row) => {
+        row.addEventListener('click', () => {
+            _searchActiveIdx = parseInt(row.dataset.idx, 10);
+            selectSettingsSearchResult();
+        });
+        row.addEventListener('mouseenter', () => {
+            _searchActiveIdx = parseInt(row.dataset.idx, 10);
+            updatePaletteActiveRow();
+        });
+    });
+}
+
+function updatePaletteActiveRow() {
+    document.querySelectorAll('#settingsSearchResults .settings-search-result').forEach((row, i) => {
+        row.classList.toggle('active', i === _searchActiveIdx);
+        if (i === _searchActiveIdx) row.scrollIntoView({ block: 'nearest' });
+    });
+}
+
+function selectSettingsSearchResult() {
+    const entry = _searchResults[_searchActiveIdx];
+    if (!entry) return;
+    closeSettingsPalette();
+    if ($('settingsOverlay').classList.contains('hidden')) openSettings();
+    switchSettingsTab(entry.tab);
+    setTimeout(() => {
+        entry.element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        entry.element.classList.remove('setting-flash');
+        void entry.element.offsetWidth;  // restart animation on repeat
+        entry.element.classList.add('setting-flash');
+        setTimeout(() => entry.element.classList.remove('setting-flash'), 1700);
+    }, 60);
+}
+
+function openSettingsPalette() {
+    if (!_settingsIndex.length) buildSettingsIndex();
+    const overlay = $('settingsSearchOverlay');
+    overlay.classList.remove('hidden');
+    const input = $('settingsSearchInput');
+    input.value = '';
+    renderSettingsSearchResults('');
+    setTimeout(() => input.focus(), 0);
+}
+
+function closeSettingsPalette() {
+    $('settingsSearchOverlay').classList.add('hidden');
+}
+
+/** Open settings first (if closed), then open the palette. Used by Ctrl+K. */
+async function openSettingsSearch() {
+    if ($('settingsOverlay').classList.contains('hidden')) {
+        await openSettings();
+    }
+    buildSettingsIndex();
+    openSettingsPalette();
 }
 
 // ── Settings Status Summaries ──────────────────────────────────────────────

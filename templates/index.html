@@ -330,6 +330,11 @@
         <div class="overlay-panel settings-panel">
             <div class="settings-header">
                 <h3>Settings</h3>
+                <button class="settings-search-trigger" id="settingsSearchTrigger" type="button" aria-label="Search settings (Ctrl+K)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+                    <span>Search settings…</span>
+                    <kbd>Ctrl K</kbd>
+                </button>
                 <button class="close-btn" id="closeSettings">&times;</button>
             </div>
             <nav class="settings-tabs" id="settingsTabs">
@@ -989,6 +994,23 @@
                 <div class="onboarding-actions">
                     <button class="btn-action hidden" id="onbFinish">Your library is ready!</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ Settings Command Palette ═══ -->
+    <div class="overlay hidden" id="settingsSearchOverlay">
+        <div class="settings-search-panel">
+            <div class="settings-search-inputbar">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+                <input type="text" id="settingsSearchInput" class="settings-search-input" placeholder="Search settings…" autocomplete="off" spellcheck="false">
+                <kbd class="settings-search-esc">Esc</kbd>
+            </div>
+            <div id="settingsSearchResults" class="settings-search-results" role="listbox"></div>
+            <div class="settings-search-footer">
+                <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+                <span><kbd>↵</kbd> jump to setting</span>
+                <span><kbd>Esc</kbd> close</span>
             </div>
         </div>
     </div>
