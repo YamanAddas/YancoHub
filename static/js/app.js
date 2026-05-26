@@ -3669,6 +3669,46 @@ async function openSettingsSearch() {
     openSettingsPalette();
 }
 
+// ── Settings focus navigation (controller-first / keyboard) ─────────────────
+
+/** Focusable interactive controls within the currently active settings pane. */
+function _focusableInSettings() {
+    const pane = document.querySelector('.settings-pane.active');
+    if (!pane) return [];
+    const sel = 'button:not([disabled]):not([tabindex="-1"]),'
+              + ' input:not([disabled]):not([type="hidden"]),'
+              + ' select:not([disabled]),'
+              + ' textarea:not([disabled]),'
+              + ' a[href],'
+              + ' [tabindex]:not([tabindex="-1"])';
+    return Array.from(pane.querySelectorAll(sel)).filter((el) => {
+        if (el.offsetParent === null) return false;  // hidden via display:none
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+    });
+}
+
+/** Move focus to the next/prev focusable settings control. direction: -1 | 1.
+ *  Adds a .gp-focus class so the focus ring shows for gamepad users (Chromium
+ *  withholds :focus-visible from script-driven focus). */
+function focusSettingControl(direction) {
+    const list = _focusableInSettings();
+    if (!list.length) return;
+    const active = document.activeElement;
+    const idx = list.indexOf(active);
+    const nextIdx = idx < 0 ? 0 : (idx + direction + list.length) % list.length;
+    const target = list[nextIdx];
+    document.querySelectorAll('.gp-focus').forEach((el) => el.classList.remove('gp-focus'));
+    target.classList.add('gp-focus');
+    target.focus();
+    if (target.scrollIntoView) target.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+// Clear the gp-focus marker as soon as the user picks up a pointer.
+document.addEventListener('mousedown', () => {
+    document.querySelectorAll('.gp-focus').forEach((el) => el.classList.remove('gp-focus'));
+}, { capture: true });
+
 // ── Settings Status Summaries ──────────────────────────────────────────────
 
 function renderAccountsSummary(accounts) {
@@ -5094,6 +5134,8 @@ function pollGamepad() {
                 ? (activeIdx + 1) % tabs.length
                 : (activeIdx - 1 + tabs.length) % tabs.length;
             switchSettingsTab(tabs[next].dataset.stab);
+            // Move focus into the new pane for clear visual feedback
+            focusSettingControl(1);
         } else if (!anyOverlay) {
             const hexes = Array.from(document.querySelectorAll('.console-hex-wrap'));
             const activeIdx = hexes.findIndex(h => h.classList.contains('active'));
@@ -5102,6 +5144,21 @@ function pollGamepad() {
                 : (activeIdx - 1 + hexes.length) % hexes.length;
             selectConsoleHex(hexes[next].dataset.tab);
         }
+    }
+
+    // ── Settings panel: gamepad focus navigation ──
+    // Claims D-pad / stick / A while settings is open (and the palette isn't),
+    // so input doesn't bleed through to the carousel below.
+    const paletteOpen = !$('settingsSearchOverlay').classList.contains('hidden');
+    if (settingsOpen && !paletteOpen) {
+        if (navDirY !== 0) focusSettingControl(navDirY);
+        if (navDirX !== 0) focusSettingControl(navDirX);
+        if (btnA) {
+            const el = document.activeElement;
+            if (el && el !== document.body && typeof el.click === 'function') el.click();
+        }
+        requestAnimationFrame(pollGamepad);
+        return;
     }
 
     // Navigation (only when no text-input overlay is focused)
