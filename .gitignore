@@ -4,6 +4,16 @@ catbyte_history.json
 *.migrated
 logs/*.log
 logs/
+saves/
+
+# ── Secrets / credentials (defensive — none currently in tree) ──
+.env
+.env.*
+*.pem
+*.key
+*.crt
+*.p12
+secrets.json
 
 # ── Cached content (downloaded at runtime) ──
 cache/
