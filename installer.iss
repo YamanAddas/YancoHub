@@ -3,11 +3,20 @@
 ; Run: ISCC installer.iss (or use build.py which calls this automatically)
 
 [Setup]
+; Stable AppId — never change this, it's what makes Inno recognize an
+; existing install for updates and uninstalls. New apps get a fresh GUID.
+AppId={{493D1505-68D4-4E59-92C9-679781E98F9D}
 AppName=YancoHub
 AppVersion=1.0.0
 AppPublisher=Yaman Addas
 AppPublisherURL=https://github.com/YamanAddas/YancoHub
 AppSupportURL=https://github.com/YamanAddas/YancoHub/issues
+AppCopyright=© Yaman Addas
+VersionInfoVersion=1.0.0.0
+VersionInfoCompany=Yaman Addas
+VersionInfoDescription=YancoHub installer
+VersionInfoProductName=YancoHub
+VersionInfoProductVersion=1.0.0
 DefaultDirName={localappdata}\YancoHub
 DefaultGroupName=YancoHub
 OutputDir=dist
@@ -18,9 +27,14 @@ PrivilegesRequired=lowest
 WizardStyle=modern
 SetupIconFile=assets\icon.ico
 UninstallDisplayIcon={app}\YancoHub.exe
+UninstallDisplayName=YancoHub
 LicenseFile=LICENSE
 DisableWelcomePage=no
+MinVersion=10.0.17763
 ArchitecturesInstallIn64BitMode=x64compatible
+; Block install while the app is running — friendlier than killing the process.
+; Must match singleinstance.py:_MUTEX_NAME exactly.
+AppMutex=YancoHub_SingleInstance_Mutex
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

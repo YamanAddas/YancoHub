@@ -83,6 +83,28 @@ def run_pyinstaller():
     if manifest_path.exists():
         cmd.extend(['--manifest', str(manifest_path)])
 
+    # Embed Windows version metadata (company / product / version / copyright)
+    # so File Properties → Details has real values and SmartScreen heuristics
+    # treat the binary as a real app. Sync the numeric tuples to constants.VERSION.
+    version_file = PROJECT_DIR / 'assets' / 'version_info.py'
+    if version_file.exists():
+        sys.path.insert(0, str(PROJECT_DIR))
+        from constants import VERSION
+        try:
+            parts = [int(p) for p in VERSION.split('.')[:4]]
+        except ValueError:
+            parts = [1, 0, 0, 0]
+        while len(parts) < 4:
+            parts.append(0)
+        tup = ', '.join(str(p) for p in parts)
+        text = version_file.read_text(encoding='utf-8')
+        text = re.sub(r'filevers=\([^)]*\)', f'filevers=({tup})', text)
+        text = re.sub(r'prodvers=\([^)]*\)', f'prodvers=({tup})', text)
+        text = re.sub(r"'FileVersion',\s*'[^']+'", f"'FileVersion',      '{'.'.join(str(p) for p in parts)}'", text)
+        text = re.sub(r"'ProductVersion',\s*'[^']+'", f"'ProductVersion',   '{VERSION}'", text)
+        version_file.write_text(text, encoding='utf-8')
+        cmd.extend(['--version-file', str(version_file)])
+
     # Entry point
     cmd.append(str(PROJECT_DIR / 'launch.py'))
 
@@ -252,39 +274,63 @@ def _build_nsis_installer(makensis: str):
     return None
 
 
+def _resolve_signtool() -> str | None:
+    """Find signtool.exe via PATH or common Windows SDK locations."""
+    found = shutil.which('signtool') or shutil.which('signtool.exe')
+    if found:
+        return found
+    sdk_root = Path('C:/Program Files (x86)/Windows Kits/10/bin')
+    if sdk_root.is_dir():
+        # Pick the newest x64 SDK build
+        candidates = sorted(sdk_root.glob('*/x64/signtool.exe'),
+                            key=lambda p: p.parent.parent.name, reverse=True)
+        if candidates:
+            return str(candidates[0])
+    fallback = Path('C:/Program Files (x86)/Windows Kits/10/App Certification Kit/signtool.exe')
+    return str(fallback) if fallback.exists() else None
+
+
 def sign_executable(path: Path) -> bool:
-    """Sign an executable with signtool if available.
+    """Code-sign an executable with signtool when a cert is configured.
 
-    Requires:
-      - signtool on PATH (Windows SDK)
-      - YANCOHUB_SIGN_CERT environment variable set
+    Configuration (any one of these is enough):
+      • YANCOHUB_SIGN_CERT = <path to .pfx>   + YANCOHUB_SIGN_PASS = <password>
+      • YANCOHUB_SIGN_CERT = "store"           (use the best cert in CurrentUser\\My)
+      • YANCOHUB_SIGN_CERT = <SHA1 thumbprint> (pick a specific cert from the store)
 
-    Options for open-source projects:
-      - SignPath Foundation (free for open source)
-      - Azure Trusted Signing ($9.99/mo)
-      - EV code signing certificate ($300-700/yr)
-
-    Skips silently if signtool or cert env var is not available.
+    Skips silently when no cert is configured so unsigned builds still succeed.
+    Uses a sha256 file digest + RFC 3161 timestamp so the signature stays valid
+    after the cert expires.
     """
     import os
-    signtool = shutil.which('signtool')
-    cert = os.environ.get('YANCOHUB_SIGN_CERT', '')
-
-    if not signtool or not cert:
-        return False
-
     if not path.exists():
         return False
+    signtool = _resolve_signtool()
+    if not signtool:
+        return False
+    cert = os.environ.get('YANCOHUB_SIGN_CERT', '').strip()
+    if not cert:
+        return False
 
+    cmd = [
+        signtool, 'sign',
+        '/tr', 'http://timestamp.digicert.com',
+        '/td', 'sha256',
+        '/fd', 'sha256',
+    ]
+    if cert.lower() == 'store':
+        cmd += ['/a']
+    elif Path(cert).is_file():
+        cmd += ['/f', cert]
+        pw = os.environ.get('YANCOHUB_SIGN_PASS', '')
+        if pw:
+            cmd += ['/p', pw]
+    else:
+        # Treat as a thumbprint in the user's certificate store
+        cmd += ['/sha1', cert.replace(' ', '')]
+
+    cmd.append(str(path))
     try:
-        cmd = [
-            signtool, 'sign',
-            '/tr', 'http://timestamp.digicert.com',
-            '/td', 'sha256',
-            '/fd', 'sha256',
-            '/a',
-            str(path),
-        ]
         subprocess.check_call(cmd)
         print(f"  [OK] Signed: {path.name}")
         return True
