@@ -1,6 +1,7 @@
 # ── Personal data (never commit) ──
 userdata.json
 catbyte_history.json
+*.migrated
 logs/*.log
 logs/
 

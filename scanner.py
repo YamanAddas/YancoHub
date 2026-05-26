@@ -1111,7 +1111,8 @@ class GameScanner:
             return self._retroarch_path
 
         # Check YancoHub's managed emulators directory
-        managed = Path(__file__).parent / 'emulators' / 'retroarch'
+        from paths import APP_DIR
+        managed = APP_DIR / 'emulators' / 'retroarch'
         if (managed / 'retroarch.exe').exists():
             self._retroarch_path = managed
             logger.info(f"Using YancoHub managed RetroArch: {managed}")

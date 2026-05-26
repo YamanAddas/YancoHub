@@ -11,11 +11,12 @@ YancoHub is a unified game launcher — not a storefront, not a social network. 
 ```bash
 python launch.py                    # Run the app (Flask + pywebview)
 python app.py                       # Flask backend only (dev mode)
-pip install -r requirements.txt     # Install deps
-python -m venv venv && venv\Scripts\activate && pip install -r requirements.txt  # Fresh setup
+pip install -r requirements.txt     # Install runtime deps
+pip install -r requirements-dev.txt # Install runtime + test deps (pytest)
+python -m venv venv && venv\Scripts\activate && pip install -r requirements-dev.txt  # Fresh setup
 python build.py                     # Build installer + portable zip (needs PyInstaller)
 python build.py --portable          # Portable zip only
-python build.py --installer         # NSIS installer only (needs makensis on PATH)
+python build.py --installer         # Installer only (Inno Setup preferred, NSIS fallback)
 python -m pytest tests/ -v          # Run all tests (328 tests)
 python -m pytest tests/test_app.py  # Run Flask route tests only
 python -m pytest tests/ -k fuzzy    # Run tests matching keyword
@@ -45,18 +46,19 @@ Storage:  userdata.json (settings/favorites/playtime) + cache/metadata.db (SQLit
 | `chathistory.py` | CatByte conversation history persistence |
 | `constants.py` | Shared constants (VERSION, ports, LIBRETRO_SYSTEMS, VALID_ART_TYPES, BUILTIN_SYSTEMS, STEAM_CDN, LIBRETRO_THUMB) |
 | `emusetup.py` | RetroArch + core auto-download and configuration |
-| `launch.py` | App entry point — starts Flask subprocess + pywebview window |
+| `launch.py` | App entry point — starts Flask (subprocess in dev, daemon thread when frozen) + pywebview window, health watchdog |
 | `romident.py` | ROM header parsing, fuzzy name matching, format priority |
-| `window.py` | pywebview window API (folder/file browse dialogs, native menu bar, tray integration) |
+| `window.py` | pywebview window API (folder/file browse dialogs, native menu bar) |
 | `paths.py` | Centralized data paths (%APPDATA%, %LOCALAPPDATA%), portable mode, migration |
 | `singleinstance.py` | Windows named mutex for single-instance enforcement |
 | `dpi.py` | Per-Monitor V2 DPI awareness via ctypes fallback chain |
 | `updatecheck.py` | GitHub Releases API update checker (background thread) |
 | `startup.py` | Windows startup registry (HKCU\...\Run) toggle |
-| `tray.py` | System tray icon via pystray (minimize-to-tray behavior) |
+| `gamepad.py` | Direct HID controller support (DualSense/DS4) bridged to the frontend |
 | `overlay.py` | CatByte in-game overlay — F10 global hotkey, always-on-top pywebview window |
-| `build.py` | PyInstaller + NSIS packaging, code signing hooks, portable zip |
-| `installer.nsi` | NSIS installer script with protocol handler registration |
+| `build.py` | PyInstaller + Inno Setup (NSIS fallback) packaging, code signing hooks, portable zip |
+| `installer.iss` | Inno Setup installer script (primary) with protocol handler registration |
+| `installer.nsi` | NSIS installer script (fallback) with protocol handler registration |
 | `static/js/app.js` | 3D hexagonal carousel, starfield, tabs, search, settings UI |
 | `static/js/overlay.js` | Standalone CatByte chat JS for in-game overlay window |
 | `static/css/overlay.css` | Overlay-specific styles (glassmorphism, slide-in animation) |
@@ -77,6 +79,8 @@ Storage:  userdata.json (settings/favorites/playtime) + cache/metadata.db (SQLit
 | `tests/test_singleinstance.py` | Mutex acquisition/release, already-running detection |
 | `tests/test_updatecheck.py` | Version parsing, newer/same/older comparison, mocked HTTP |
 | `tests/test_startup.py` | Mock winreg read/write/delete for startup registry |
+| `tests/test_gamepad.py` | HID controller parsing, button mapping, bridge state |
+| `tests/test_security.py` | Path validation, origin checks, prompt-injection sanitization |
 
 ## Code Conventions
 
@@ -135,7 +139,7 @@ Every change must meet ALL of these:
 - **Process monitoring** — `pid.is_running()` can return True briefly after exit; poll with status check
 - **Direct launch** — `direct_exe` paths are Windows paths; never `shlex.split()` them (spaces break). Use `[exe_path]` as a list. `direct_args` can be split with `shlex.split(args, posix=False)`
 - **GOG `goggame-*.info`** — JSON files in install dir with `playTasks` array; `isPrimary` + `type: "FileTask"` gives the main exe. All GOG games are DRM-free
-- **pystray threading** — pystray runs its own message loop in a daemon thread; callbacks execute on that thread, use `window.evaluate_js()` to talk to the UI
+- **Frozen vs dev Flask** — `launch.py` runs Flask as a subprocess in dev mode, but in-process on a daemon thread when frozen (PyInstaller `sys.executable` is the exe, not python). The watchdog restart kills the old subprocess first (dev) and cannot restart a hung in-process server (frozen) — it surfaces a fatal-error overlay instead
 - **Named mutex auto-release** — Windows automatically releases the mutex when the process exits (even on crash), so no stale lock files
 - **Portable mode detection** — `paths.is_portable()` checks for `portable.txt` next to the exe; portable zip includes this file, installer does not
 - **%APPDATA% migration** — `migrate_legacy_data()` runs once at startup; copies files then renames originals to `.migrated` suffix to prevent double-migration

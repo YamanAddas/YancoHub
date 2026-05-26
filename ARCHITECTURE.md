@@ -20,7 +20,6 @@ User opens app
   → Frontend polls /api/games → renders carousel
   → Frontend checks /api/onboarding/status → shows onboarding if first run
   → Frontend checks /api/update-available (3s delay) → shows update banner if newer
-  → System tray icon started (pystray) if minimize_to_tray enabled
 ```
 
 ### Health Watchdog
@@ -31,7 +30,8 @@ launch.py health_watchdog thread:
     GET /health → 200? → reset failure count
     failure? → increment count
     3 consecutive failures → notify frontend (showConnectionError)
-                           → restart Flask subprocess
+                           → restart Flask (kills old subprocess first in dev;
+                             frozen in-process server that hangs → showFatalError)
                            → max 5 restarts → showFatalError, stop
 ```
 
@@ -338,7 +338,6 @@ tests/
 | POST | `/api/hidden-systems/toggle` | Toggle system visibility |
 | GET | `/api/update-available` | Check for newer GitHub release |
 | GET/POST | `/api/settings/launch-on-startup` | Windows startup toggle |
-| GET/POST | `/api/settings/minimize-to-tray` | Minimize-to-tray toggle |
 | GET | `/api/onboarding/status` | First-run onboarding status |
 | POST | `/api/onboarding/complete` | Mark onboarding complete |
 | POST | `/api/protocol-action` | Handle yancohub:// protocol URLs |

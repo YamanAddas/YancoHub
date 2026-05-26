@@ -3547,24 +3547,6 @@ async function renderAccountsTab() {
         };
     }
 
-    // ── Minimize to Tray toggle ──
-    const trayToggle = $('toggleMinimizeToTray');
-    if (trayToggle) {
-        try {
-            const trayData = await fetchJSON('/api/settings/minimize-to-tray');
-            trayToggle.setAttribute('aria-checked', trayData.enabled ? 'true' : 'false');
-        } catch {
-            trayToggle.setAttribute('aria-checked', 'true');
-        }
-        trayToggle.onclick = async () => {
-            try {
-                const s = await fetchJSON('/api/settings/minimize-to-tray', { method: 'POST' });
-                trayToggle.setAttribute('aria-checked', s.enabled ? 'true' : 'false');
-                showToast(s.enabled ? 'Minimize to tray enabled' : 'Minimize to tray disabled — app will quit on close');
-            } catch (e) { console.warn('toggleMinimizeToTray failed:', e); }
-        };
-    }
-
     // ── Launch on Startup toggle ──
     const startupToggle = $('toggleLaunchOnStartup');
     if (startupToggle) {

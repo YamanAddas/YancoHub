@@ -82,11 +82,11 @@ venv\Scripts\python launch.py
 ## Testing
 
 ```bash
-pip install pytest
+pip install -r requirements-dev.txt
 python -m pytest tests/ -v
 ```
 
-183 tests covering constants, ROM header parsing, user data persistence, BIOS scanning, chat history, metadata caching, and Flask API routes. All tests use temp files and mocks — no network access, no side effects.
+328 tests covering constants, ROM header parsing, user data persistence, BIOS scanning, chat history, metadata caching, Flask API routes, gamepad input, security/path validation, paths, single-instance, update checks, and startup registry. All tests use temp files and mocks — no network access, no side effects.
 
 ## Building from Source
 

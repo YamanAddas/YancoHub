@@ -214,9 +214,9 @@ Features that make YancoHub unique — things no competitor does.
 - ~~Download link directs to GitHub Releases page~~
 
 ### 6.4 — GitHub release pipeline
-- GitHub Actions: lint → test → build → release
-- Run `pytest` in CI on every push/PR
-- Auto-generate changelog from commit messages
+- ~~Run `pytest` in CI on every push/PR~~ — `.github/workflows/ci.yml` runs the
+  suite on Windows across Python 3.10–3.12
+- Remaining: build + release automation and changelog generation
 
 ---
 
@@ -245,10 +245,12 @@ Turns YancoHub from a developer tool into a proper Windows application.
 - ~~Auto-restart Flask on 3 consecutive health check failures~~
 - ~~Connection error / fatal error overlays in frontend~~
 
-### 7.6 — System tray (COMPLETE)
-- ~~`tray.py`: pystray icon in daemon thread~~
-- ~~Minimize to tray on close (configurable)~~
-- ~~`--minimized` flag for startup~~
+### 7.6 — System tray (REMOVED)
+- System tray was removed — `tray.py`, the `minimize_to_tray` setting, and the
+  `/api/settings/minimize-to-tray` endpoint no longer exist. Closing the window
+  quits the app.
+- `--minimized` flag still supported for startup — starts the window minimized
+  to the taskbar (restorable), not hidden.
 
 ### 7.7 — Windows startup (COMPLETE)
 - ~~`startup.py`: HKCU\...\Run registry toggle~~

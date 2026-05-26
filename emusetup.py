@@ -40,7 +40,8 @@ CORE_URL_TEMPLATE = (
 
 
 # Managed emulator base directory
-BASE_DIR = Path(__file__).parent / 'emulators'
+from paths import APP_DIR as _APP_DIR
+BASE_DIR = _APP_DIR / 'emulators'
 
 
 class EmulatorSetup:

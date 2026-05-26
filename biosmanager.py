@@ -137,7 +137,8 @@ class BIOSManager:
     def __init__(self):
         self.bios_dirs = []
         self.found = {}  # system → {filename → path}
-        self._bundled_dir = Path(__file__).parent / 'bios'
+        from paths import APP_DIR
+        self._bundled_dir = APP_DIR / 'bios'
 
     def set_bios_dirs(self, dirs):
         """Set directories to scan for BIOS files."""

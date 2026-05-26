@@ -39,7 +39,6 @@ DEFAULT_DATA = {
         'launchbox_path': '',      # Path to LaunchBox install dir (artwork source)
         'show_uninstalled': True,  # Show games from accounts even if not installed
         'direct_launch': True,     # Launch games directly without store client when possible
-        'minimize_to_tray': True,  # Minimize to system tray on close
         'launch_on_startup': False,  # Launch YancoHub on Windows startup
         'onboarding_complete': False,  # First-run onboarding completed
     },

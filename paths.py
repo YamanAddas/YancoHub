@@ -6,12 +6,18 @@ Supports portable mode via a 'portable.txt' marker file next to the executable.
 
 import logging
 import os
+import sys
 import shutil
 from pathlib import Path
 
 logger = logging.getLogger('yancohub.paths')
 
-APP_DIR = Path(__file__).parent
+# When frozen by PyInstaller, __file__ points inside _internal/ but app
+# resources (templates, static, bios, config, etc.) live next to the exe.
+if getattr(sys, 'frozen', False):
+    APP_DIR = Path(sys.executable).parent
+else:
+    APP_DIR = Path(__file__).parent
 
 _APP_NAME = 'YancoHub'
 

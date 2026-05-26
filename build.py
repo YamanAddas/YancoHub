@@ -31,6 +31,7 @@ BUNDLE_EXTRAS = [
     ('templates', 'templates'),
     ('static', 'static'),
     ('config', 'config'),
+    ('assets', 'assets'),
     ('bios/README.md', 'bios/README.md'),
     ('LICENSE', 'LICENSE'),
     ('README.md', 'README.md'),
@@ -150,20 +151,83 @@ def build_portable_zip():
     return zip_path
 
 
-def build_nsis_installer():
-    """Build NSIS installer if makensis is available."""
+def build_installer():
+    """Build installer using Inno Setup (preferred) or NSIS (fallback)."""
+    # Try Inno Setup first (modern look)
+    iscc = shutil.which('ISCC')
+    if not iscc:
+        # Check common install locations
+        for iscc_candidate in [
+            Path('C:/Program Files (x86)/Inno Setup 6/ISCC.exe'),
+            Path.home() / 'AppData/Local/Programs/Inno Setup 6/ISCC.exe',
+        ]:
+            if iscc_candidate.exists():
+                iscc = str(iscc_candidate)
+                break
+
+    if iscc:
+        return _build_inno_installer(iscc)
+
+    # Fallback to NSIS
     makensis = shutil.which('makensis')
     if not makensis:
-        print("[BUILD] NSIS not found on PATH — skipping installer build")
-        print("  Install NSIS from https://nsis.sourceforge.io/ to build .exe installer")
+        makensis_path = Path('C:/Program Files (x86)/NSIS/makensis.exe')
+        if makensis_path.exists():
+            makensis = str(makensis_path)
+
+    if makensis:
+        return _build_nsis_installer(makensis)
+
+    print("[BUILD] No installer tool found — skipping installer build")
+    print("  Install Inno Setup: winget install JRSoftware.InnoSetup")
+    return None
+
+
+def _build_inno_installer(iscc: str):
+    """Build installer with Inno Setup."""
+    iss_script = PROJECT_DIR / 'installer.iss'
+    if not iss_script.exists():
+        print("[BUILD] installer.iss not found — skipping")
         return None
 
+    # Sync version from constants.py into installer.iss
+    sys.path.insert(0, str(PROJECT_DIR))
+    from constants import VERSION
+    iss_text = iss_script.read_text(encoding='utf-8')
+    iss_text_patched = re.sub(
+        r'AppVersion=.*',
+        f'AppVersion={VERSION}',
+        iss_text,
+    )
+    iss_text_patched = re.sub(
+        r'OutputBaseFilename=.*',
+        f'OutputBaseFilename={APP_NAME}-{VERSION}-setup',
+        iss_text_patched,
+    )
+    if iss_text_patched != iss_text:
+        iss_script.write_text(iss_text_patched, encoding='utf-8')
+        print(f"  [OK] Synced installer.iss version to {VERSION}")
+
+    print("[BUILD] Building Inno Setup installer...")
+    subprocess.check_call([iscc, '/Q', str(iss_script)])
+
+    installer_path = DIST_DIR / f'{APP_NAME}-{VERSION}-setup.exe'
+    if installer_path.exists():
+        size_mb = installer_path.stat().st_size / (1024 * 1024)
+        print(f"[BUILD] Installer created: {installer_path} ({size_mb:.1f} MB)")
+        return installer_path
+
+    print("[BUILD] Installer may have been created with a different name in dist/")
+    return None
+
+
+def _build_nsis_installer(makensis: str):
+    """Build installer with NSIS (fallback)."""
     nsis_script = PROJECT_DIR / 'installer.nsi'
     if not nsis_script.exists():
-        print("[BUILD] installer.nsi not found — skipping installer build")
+        print("[BUILD] installer.nsi not found — skipping")
         return None
 
-    # Sync version from constants.py into installer.nsi
     sys.path.insert(0, str(PROJECT_DIR))
     from constants import VERSION
     nsi_text = nsis_script.read_text(encoding='utf-8')
@@ -176,18 +240,15 @@ def build_nsis_installer():
         nsis_script.write_text(nsi_text_patched, encoding='utf-8')
         print(f"  [OK] Synced installer.nsi version to {VERSION}")
 
-    print("[BUILD] Building NSIS installer...")
+    print("[BUILD] Building NSIS installer (fallback)...")
     subprocess.check_call([makensis, str(nsis_script)])
 
-    sys.path.insert(0, str(PROJECT_DIR))
-    from constants import VERSION
     installer_path = DIST_DIR / f'{APP_NAME}-{VERSION}-setup.exe'
     if installer_path.exists():
         size_mb = installer_path.stat().st_size / (1024 * 1024)
         print(f"[BUILD] Installer created: {installer_path} ({size_mb:.1f} MB)")
         return installer_path
 
-    print("[BUILD] Installer may have been created with a different name in dist/")
     return None
 
 
@@ -253,7 +314,7 @@ def main():
         build_portable_zip()
 
     if build_all or args.installer:
-        installer_path = build_nsis_installer()
+        installer_path = build_installer()
         if installer_path:
             sign_executable(installer_path)
 

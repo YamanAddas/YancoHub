@@ -57,7 +57,7 @@ def show_already_running_message() -> None:
     _MB_ICONINFORMATION = 0x00000040
     _user32.MessageBoxW(
         None,
-        "YancoHub is already running.\n\nCheck your system tray or taskbar.",
+        "YancoHub is already running.\n\nCheck your taskbar.",
         "YancoHub",
         _MB_ICONINFORMATION,
     )

@@ -4,6 +4,7 @@ Unified game launcher for Windows with CatByte AI companion.
 """
 
 import os
+import sys
 import json
 import time
 import atexit
@@ -52,9 +53,11 @@ logger = logging.getLogger('yancohub')
 
 # ── App Setup ───────────────────────────────────────────────────────────────
 
+from paths import APP_DIR as _APP_DIR
+
 app = Flask(__name__,
-            static_folder='static',
-            template_folder='templates')
+            static_folder=str(_APP_DIR / 'static'),
+            template_folder=str(_APP_DIR / 'templates'))
 
 scanner = GameScanner()
 userdata = UserData()
@@ -1555,7 +1558,7 @@ def api_serve_bios(system, filename=None):
 
     # Validate resolved path is within configured BIOS directories or built-in bios/
     bios_dirs = userdata.get_settings().get('bios_dirs', [])
-    builtin_bios = str(Path(__file__).parent / 'bios')
+    builtin_bios = str(_APP_DIR / 'bios')
     if not _validate_file_within_dirs(bios_path, bios_dirs + [builtin_bios]):
         logger.warning(f"BIOS path outside allowed dirs: {bios_path}")
         abort(403)
@@ -1696,19 +1699,6 @@ def api_update_available():
     if info:
         return jsonify({'available': True, **info})
     return jsonify({'available': False, 'current_version': VERSION})
-
-
-@app.route('/api/settings/minimize-to-tray', methods=['GET'])
-def api_get_minimize_to_tray():
-    return jsonify({'enabled': userdata.get_settings().get('minimize_to_tray', True)})
-
-
-@app.route('/api/settings/minimize-to-tray', methods=['POST'])
-def api_set_minimize_to_tray():
-    current = userdata.get_settings().get('minimize_to_tray', True)
-    new_val = not current
-    userdata.update_settings({'minimize_to_tray': new_val})
-    return jsonify({'status': 'ok', 'enabled': new_val})
 
 
 @app.route('/api/settings/launch-on-startup', methods=['GET'])

@@ -14,10 +14,9 @@ from pathlib import Path
 
 from constants import FLASK_PORT, VERSION
 from paths import get_cache_dir, get_log_dir
-from tray import start_tray, stop_tray
 from overlay import create_overlay_window, start_overlay, stop_overlay
 
-APP_DIR = Path(__file__).parent
+from paths import APP_DIR
 
 
 class Api:
@@ -149,7 +148,6 @@ def _menu_settings():
 
 def _menu_exit():
     stop_overlay()
-    stop_tray()
     w = _win()
     if w:
         w.destroy()
@@ -324,11 +322,7 @@ def _build_menu():
 
 # ── Window Entry Point ───────────────────────────────────────────────────────
 
-_tray_enabled = False
-
-
 def main():
-    global _tray_enabled
     menu = _build_menu()
     start_minimized = '--minimized' in sys.argv
 
@@ -341,7 +335,7 @@ def main():
         background_color='#060b14',
         text_select=False,
         js_api=api,
-        hidden=start_minimized,
+        minimized=start_minimized,
     )
     api.set_window(window)
 
@@ -353,40 +347,15 @@ def main():
         logging.getLogger('yancohub.window').debug(
             "Overlay window creation failed: %s", e)
 
-    # Tray callbacks
-    def _tray_show():
-        if window:
-            window.show()
-            window.restore()
-
-    def _tray_exit():
-        stop_tray()
-        if window:
-            window.destroy()
-
-    # Closing handler — minimize to tray instead of quitting
     def _on_closing():
-        if _tray_enabled:
-            window.hide()
-            return False  # Prevent actual close
-        return True
+        """When main window closes, destroy overlay so webview.start() can return."""
+        stop_overlay()
+        return True  # Allow the main window to close
+
+    window.events.closing += _on_closing
 
     def _on_start():
-        """Start tray icon and gamepad bridge after window is ready."""
-        global _tray_enabled
-        # Start system tray
-        try:
-            from userdata import UserData
-            ud = UserData()
-            if ud.get_settings().get('minimize_to_tray', True):
-                start_tray(_tray_show, _tray_exit)
-                _tray_enabled = True
-                window.events.closing += _on_closing
-        except Exception as e:
-            import logging
-            logging.getLogger('yancohub.window').debug(
-                "Tray setup failed: %s", e)
-
+        """Start overlay and gamepad bridge after window is ready."""
         # Start CatByte overlay (F10 hotkey)
         try:
             start_overlay()
@@ -406,8 +375,6 @@ def main():
                 "Gamepad bridge failed to start: %s", e)
 
     webview.start(func=_on_start, menu=menu, debug='--debug' in sys.argv)
-    stop_overlay()  # Ensure overlay is cleaned up on exit
-    stop_tray()  # Ensure tray is cleaned up on exit
 
 
 if __name__ == '__main__':
