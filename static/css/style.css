@@ -5279,6 +5279,122 @@ select.settings-input option {
 .toast-action:hover { color: var(--accent-bright); }
 .toast-action:disabled { opacity: 0.5; cursor: default; }
 
+/* ═══ Save Guardian modal ════════════════════════════════════════════════ */
+
+.saves-panel {
+    width: 92%;
+    max-width: 760px;
+}
+
+.saves-body {
+    padding: 4px 22px 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+}
+
+.saves-section { display: flex; flex-direction: column; gap: 10px; }
+
+.saves-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.saves-section-header h4 {
+    color: var(--text-bright);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+}
+
+.saves-hint {
+    color: var(--text);
+    font-size: 12px;
+    line-height: 1.5;
+    opacity: 0.85;
+}
+
+.saves-paths-list,
+.saves-backups-list,
+.saves-candidates {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.saves-path-row,
+.saves-backup-row,
+.saves-candidate-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: var(--bg-glass);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 12.5px;
+    color: var(--text);
+}
+
+.saves-path-text,
+.saves-backup-text,
+.saves-candidate-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.saves-backup-row strong { color: var(--text-bright); font-weight: 600; }
+.saves-backup-meta { color: var(--text-dim); font-size: 11px; margin-left: 6px; }
+
+.saves-candidate-score {
+    padding: 2px 8px;
+    font-size: 10.5px;
+    font-weight: 700;
+    color: var(--accent);
+    background: var(--bg-glass);
+    border: 1px solid var(--accent-dim);
+    border-radius: 5px;
+    flex-shrink: 0;
+}
+
+.saves-row-actions { display: flex; gap: 6px; }
+
+.saves-row-actions .btn-small {
+    padding: 4px 10px;
+    font-size: 11px;
+}
+
+.saves-add-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.saves-add-row .settings-input { flex: 1; }
+
+.saves-status {
+    min-height: 18px;
+    color: var(--accent);
+    font-size: 12px;
+    font-style: italic;
+    text-align: center;
+    transition: opacity 0.3s ease;
+}
+
+.saves-status.is-error { color: var(--danger); }
+
+.saves-empty {
+    padding: 16px;
+    color: var(--text-dim);
+    font-size: 12.5px;
+    text-align: center;
+    font-style: italic;
+}
+
 /* ═══ Now Playing — ambient full-screen during a session ══════════════════ */
 
 .now-playing-overlay {

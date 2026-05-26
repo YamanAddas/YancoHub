@@ -148,6 +148,10 @@
                         <span id="detailFavIcon">☆</span>
                         Favorite
                     </button>
+                    <button class="detail-btn" id="detailSaves" title="Manage save backups">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                        Saves
+                    </button>
                     <div class="detail-collection-wrap">
                         <button class="detail-btn" id="detailCollection">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
@@ -1053,6 +1057,39 @@
                 <div class="onboarding-actions">
                     <button class="btn-action hidden" id="onbFinish">Your library is ready!</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ Save Guardian — per-game save backup manager ═══ -->
+    <div class="overlay hidden" id="savesOverlay">
+        <div class="overlay-panel saves-panel">
+            <div class="overlay-header">
+                <h3 id="savesTitle">Save Guardian</h3>
+                <button class="close-btn" id="closeSaves">&times;</button>
+            </div>
+            <div class="saves-body">
+                <section class="saves-section">
+                    <div class="saves-section-header">
+                        <h4>Save locations</h4>
+                        <button class="btn-small" id="savesDetect" type="button">Auto-detect</button>
+                    </div>
+                    <p class="saves-hint">YancoHub backs up these folders when you click <strong>Back up now</strong>. Add a path manually or auto-detect candidates.</p>
+                    <div id="savesPathsList" class="saves-paths-list"></div>
+                    <div class="saves-add-row">
+                        <input type="text" id="savesAddPath" placeholder="C:\…\Documents\My Games\GameName" class="settings-input">
+                        <button class="btn-small btn-accent" id="savesAddBtn" type="button">Add path</button>
+                    </div>
+                    <div id="savesCandidates" class="saves-candidates"></div>
+                </section>
+                <section class="saves-section">
+                    <div class="saves-section-header">
+                        <h4>Backups</h4>
+                        <button class="btn-small btn-accent" id="savesBackupNow" type="button">Back up now</button>
+                    </div>
+                    <div id="savesBackupsList" class="saves-backups-list"></div>
+                </section>
+                <div class="saves-status" id="savesStatus" aria-live="polite"></div>
             </div>
         </div>
     </div>

@@ -2246,6 +2246,247 @@ function updateHeroBackdrop(game) {
 
 // ── Detail Panel ──────────────────────────────────────────────────────────
 
+// ── Save Guardian (per-game save backups) ────────────────────────────────────
+
+let _savesGame = null;
+
+function _savesFmtBytes(n) {
+    if (!n) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let v = n, i = 0;
+    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+    return `${v < 10 && i > 0 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
+}
+
+function _savesFmtBackupId(id) {
+    // Backup ids look like 20260315T120530742 — render as "Mar 15 · 12:05"
+    if (!id || id.length < 13) return id;
+    const y = id.slice(0, 4), m = id.slice(4, 6), d = id.slice(6, 8);
+    const hh = id.slice(9, 11), mm = id.slice(11, 13);
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const mn = months[parseInt(m, 10) - 1] || m;
+    return `${mn} ${parseInt(d, 10)} · ${hh}:${mm}`;
+}
+
+function _savesStatus(text, error = false) {
+    const el = $('savesStatus');
+    if (!el) return;
+    el.textContent = text || '';
+    el.classList.toggle('is-error', !!error);
+}
+
+async function openSaves(game) {
+    if (!game) return;
+    _savesGame = game;
+    $('savesTitle').textContent = `Save Guardian — ${game.name}`;
+    $('savesAddPath').value = '';
+    $('savesCandidates').innerHTML = '';
+    _savesStatus('');
+    $('savesOverlay').classList.remove('hidden');
+    await _savesRefresh();
+}
+
+function closeSaves() {
+    $('savesOverlay').classList.add('hidden');
+    _savesGame = null;
+}
+
+async function _savesRefresh() {
+    if (!_savesGame) return;
+    const gid = _savesGame.id;
+    try {
+        const [pathsRes, backupsRes] = await Promise.all([
+            fetchJSON(`/api/saves/paths/${encodeURIComponent(gid)}`),
+            fetchJSON(`/api/saves/list/${encodeURIComponent(gid)}`),
+        ]);
+        _renderSavesPaths(pathsRes.paths || []);
+        _renderSavesBackups(backupsRes.backups || []);
+    } catch (e) {
+        _savesStatus(`Could not load saves: ${e.message || e}`, true);
+    }
+}
+
+function _renderSavesPaths(paths) {
+    const wrap = $('savesPathsList');
+    if (!paths.length) {
+        wrap.innerHTML = `<div class="saves-empty">No save paths configured yet. Use Auto-detect or paste a path below.</div>`;
+        return;
+    }
+    wrap.innerHTML = paths.map(p => `
+        <div class="saves-path-row">
+            <span class="saves-path-text" title="${escapeAttr(p)}">${escapeHtml(p)}</span>
+            <div class="saves-row-actions">
+                <button class="btn-small btn-danger" data-path="${escapeAttr(p)}">Remove</button>
+            </div>
+        </div>
+    `).join('');
+    wrap.querySelectorAll('.btn-danger[data-path]').forEach(b => {
+        b.addEventListener('click', () => _savesRemovePath(b.dataset.path));
+    });
+}
+
+function _renderSavesBackups(backups) {
+    const wrap = $('savesBackupsList');
+    if (!backups.length) {
+        wrap.innerHTML = `<div class="saves-empty">No backups yet. Add a save path, then click <strong>Back up now</strong>.</div>`;
+        return;
+    }
+    wrap.innerHTML = backups.map(b => {
+        const labelBit = b.label ? `<strong>${escapeHtml(b.label)}</strong>` : (b.pre_restore ? '<strong>Pre-restore snapshot</strong>' : '<strong>Snapshot</strong>');
+        return `
+            <div class="saves-backup-row">
+                <span class="saves-backup-text">
+                    ${labelBit}
+                    <span class="saves-backup-meta">${_savesFmtBackupId(b.id)} · ${b.files} files · ${_savesFmtBytes(b.size_bytes)}</span>
+                </span>
+                <div class="saves-row-actions">
+                    <button class="btn-small btn-accent" data-restore="${escapeAttr(b.id)}">Restore</button>
+                    <button class="btn-small btn-danger" data-delete="${escapeAttr(b.id)}">Delete</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+    wrap.querySelectorAll('[data-restore]').forEach(b => {
+        b.addEventListener('click', () => _savesRestore(b.dataset.restore));
+    });
+    wrap.querySelectorAll('[data-delete]').forEach(b => {
+        b.addEventListener('click', () => _savesDelete(b.dataset.delete));
+    });
+}
+
+async function _savesAddPathClicked() {
+    const input = $('savesAddPath');
+    const path = input.value.trim();
+    if (!path || !_savesGame) return;
+    const current = await fetchJSON(`/api/saves/paths/${encodeURIComponent(_savesGame.id)}`);
+    const next = [...new Set([...(current.paths || []), path])];
+    try {
+        const r = await fetchJSON(`/api/saves/paths/${encodeURIComponent(_savesGame.id)}`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ paths: next }),
+        });
+        if (r.rejected && r.rejected.length) {
+            _savesStatus(`Rejected: ${r.rejected[0].reason}`, true);
+        } else {
+            input.value = '';
+            _savesStatus('Path added.');
+        }
+        _renderSavesPaths(r.paths || []);
+    } catch (e) {
+        _savesStatus(`Add failed: ${e.message || e}`, true);
+    }
+}
+
+async function _savesRemovePath(path) {
+    if (!_savesGame) return;
+    const current = await fetchJSON(`/api/saves/paths/${encodeURIComponent(_savesGame.id)}`);
+    const next = (current.paths || []).filter(p => p !== path);
+    const r = await fetchJSON(`/api/saves/paths/${encodeURIComponent(_savesGame.id)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paths: next }),
+    });
+    _renderSavesPaths(r.paths || []);
+    _savesStatus('Path removed.');
+}
+
+async function _savesDetectClicked() {
+    if (!_savesGame) return;
+    _savesStatus('Scanning common save folders…');
+    try {
+        const r = await fetchJSON(`/api/saves/detect/${encodeURIComponent(_savesGame.id)}`);
+        const candidates = r.candidates || [];
+        const existing = new Set(r.configured || []);
+        const wrap = $('savesCandidates');
+        if (!candidates.length) {
+            wrap.innerHTML = `<div class="saves-empty">No likely matches found. Paste the path manually below.</div>`;
+            _savesStatus('');
+            return;
+        }
+        wrap.innerHTML = candidates.map(c => {
+            const already = existing.has(c.path);
+            return `
+                <div class="saves-candidate-row">
+                    <span class="saves-candidate-score">${c.score}</span>
+                    <span class="saves-candidate-text" title="${escapeAttr(c.path)}">${escapeHtml(c.path)}</span>
+                    <div class="saves-row-actions">
+                        <button class="btn-small btn-accent" ${already ? 'disabled' : ''} data-add="${escapeAttr(c.path)}">${already ? 'Added' : 'Add'}</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        wrap.querySelectorAll('[data-add]').forEach(b => {
+            b.addEventListener('click', async () => {
+                $('savesAddPath').value = b.dataset.add;
+                await _savesAddPathClicked();
+                b.disabled = true;
+                b.textContent = 'Added';
+            });
+        });
+        _savesStatus(`Found ${candidates.length} candidate${candidates.length === 1 ? '' : 's'}.`);
+    } catch (e) {
+        _savesStatus(`Detect failed: ${e.message || e}`, true);
+    }
+}
+
+async function _savesBackupNow() {
+    if (!_savesGame) return;
+    _savesStatus('Capturing snapshot…');
+    try {
+        const r = await fetchJSON(`/api/saves/backup/${encodeURIComponent(_savesGame.id)}`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+        });
+        _savesStatus(`Backed up — ${r.backup.files} files · ${_savesFmtBytes(r.backup.size_bytes)}.`);
+        await _savesRefresh();
+    } catch (e) {
+        _savesStatus(`Backup failed: ${e.message || e}`, true);
+    }
+}
+
+let _savesArmedRestore = null;
+async function _savesRestore(backupId) {
+    if (!_savesGame) return;
+    if (_savesArmedRestore !== backupId) {
+        _savesArmedRestore = backupId;
+        _savesStatus('Click Restore again to confirm — current saves will be backed up first.');
+        setTimeout(() => { if (_savesArmedRestore === backupId) _savesArmedRestore = null; }, 4000);
+        return;
+    }
+    _savesArmedRestore = null;
+    _savesStatus('Restoring…');
+    try {
+        const r = await fetchJSON(`/api/saves/restore/${encodeURIComponent(_savesGame.id)}/${encodeURIComponent(backupId)}`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+        });
+        const msg = r.pre_restore
+            ? 'Restored. A pre-restore snapshot was kept in case you want to roll back.'
+            : 'Restored.';
+        _savesStatus(msg);
+        await _savesRefresh();
+    } catch (e) {
+        _savesStatus(`Restore failed: ${e.message || e}`, true);
+    }
+}
+
+let _savesArmedDelete = null;
+async function _savesDelete(backupId) {
+    if (!_savesGame) return;
+    if (_savesArmedDelete !== backupId) {
+        _savesArmedDelete = backupId;
+        _savesStatus('Click Delete again to confirm.');
+        setTimeout(() => { if (_savesArmedDelete === backupId) _savesArmedDelete = null; }, 4000);
+        return;
+    }
+    _savesArmedDelete = null;
+    try {
+        await fetch(`/api/saves/${encodeURIComponent(_savesGame.id)}/${encodeURIComponent(backupId)}`, { method: 'DELETE' });
+        _savesStatus('Backup deleted.');
+        await _savesRefresh();
+    } catch (e) {
+        _savesStatus(`Delete failed: ${e.message || e}`, true);
+    }
+}
+
 // ── Now Playing screen ───────────────────────────────────────────────────────
 
 let _npTickTimer = null;
@@ -2855,6 +3096,22 @@ function bindEvents() {
     $('npBack').addEventListener('click', closeNowPlaying);
     $('npDone').addEventListener('click', _npDoneClicked);
 
+    // Save Guardian
+    $('detailSaves').addEventListener('click', () => {
+        const game = state.filteredGames[state.selectedIndex];
+        if (game) openSaves(game);
+    });
+    $('closeSaves').addEventListener('click', closeSaves);
+    $('savesOverlay').addEventListener('click', (e) => {
+        if (e.target.id === 'savesOverlay') closeSaves();
+    });
+    $('savesDetect').addEventListener('click', _savesDetectClicked);
+    $('savesAddBtn').addEventListener('click', _savesAddPathClicked);
+    $('savesAddPath').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); _savesAddPathClicked(); }
+    });
+    $('savesBackupNow').addEventListener('click', _savesBackupNow);
+
     // Tonight's Pick (CatByte curator)
     $('btnTonightsPick').addEventListener('click', openTonightsPick);
     $('closeTonightsPick').addEventListener('click', closeTonightsPick);
@@ -2977,6 +3234,7 @@ function bindEvents() {
             // Palette closes before its parent settings overlay
             if (!$('settingsSearchOverlay').classList.contains('hidden')) { closeSettingsPalette(); return; }
             if (!$('shortcutsOverlay').classList.contains('hidden')) { closeShortcuts(); return; }
+            if (!$('savesOverlay').classList.contains('hidden')) { closeSaves(); return; }
             if (!$('nowPlayingOverlay').classList.contains('hidden')) { closeNowPlaying(); return; }
             if (!$('yearOverlay').classList.contains('hidden')) { closeYearOverlay(); return; }
             if (!$('tonightsPickOverlay').classList.contains('hidden')) { closeTonightsPick(); return; }

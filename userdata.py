@@ -22,6 +22,7 @@ DEFAULT_DATA = {
     'favorites': [],      # [game_id, ...]
     'hidden_systems': [], # [system_id, ...]
     'notes': {},          # game_id → free-text personal note (where I left off, build ideas, …)
+    'save_paths': {},     # game_id → [paths] (user-confirmed save directories for Save Guardian)
     'local_dirs': [],     # [path, ...]
     'rom_dirs': [],       # [path, ...]
     'accounts': {
@@ -391,6 +392,24 @@ class UserData:
                 notes.pop(game_id, None)
             self._save()
         return cleaned
+
+    # ── Save Guardian paths (user-confirmed per game) ──────────────────────
+
+    def get_save_paths(self, game_id: str) -> list:
+        return list(self.data.get('save_paths', {}).get(game_id, []))
+
+    def set_save_paths(self, game_id: str, paths: list) -> list:
+        """Persist the user's confirmed save paths for a game.
+        Filters to non-empty strings; empty list removes the entry entirely."""
+        clean = [str(p).strip() for p in (paths or []) if str(p).strip()]
+        with self._lock:
+            store = self.data.setdefault('save_paths', {})
+            if clean:
+                store[game_id] = clean
+            else:
+                store.pop(game_id, None)
+            self._save()
+        return clean
 
     # ── Settings ────────────────────────────────────────────────────────────
 

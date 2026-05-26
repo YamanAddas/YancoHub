@@ -32,6 +32,7 @@ from updatecheck import start_update_check, get_update_info
 from startup import is_startup_enabled, set_startup_enabled
 import settings_schema
 import yearsummary
+import saveguardian
 
 # ── Logging ─────────────────────────────────────────────────────────────────
 
@@ -1261,6 +1262,91 @@ def api_catbyte_models():
 def api_catbyte_test():
     """Test the current backend connection end-to-end."""
     return jsonify(catbyte.test_connection())
+
+
+# ── Save Guardian ─────────────────────────────────────────────────────────────
+
+def _saves_root() -> Path:
+    """Where Save Guardian stores its snapshots (cached locally per machine)."""
+    root = get_log_dir().parent / 'saves'
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+@app.route('/api/saves/detect/<game_id>')
+def api_saves_detect(game_id):
+    """Heuristically find candidate save folders for a game."""
+    with _library_lock:
+        game = game_index.get(game_id)
+    if not game:
+        return jsonify({'candidates': [], 'error': 'unknown game'}), 404
+    results = saveguardian.detect_candidates(game.get('name') or '')
+    return jsonify({
+        'candidates': results,
+        'configured': userdata.get_save_paths(game_id),
+    })
+
+
+@app.route('/api/saves/paths/<game_id>', methods=['GET', 'POST'])
+def api_saves_paths(game_id):
+    """Get or replace the user's confirmed save paths for a game."""
+    if request.method == 'POST':
+        body = request.get_json(silent=True) or {}
+        raw = body.get('paths') or []
+        if not isinstance(raw, list):
+            return jsonify({'error': 'paths must be a list'}), 400
+        accepted, rejected = [], []
+        for p in raw:
+            if not isinstance(p, str):
+                continue
+            err = _validate_dir_path(p)
+            if err:
+                rejected.append({'path': p, 'reason': err})
+            else:
+                accepted.append(p)
+        saved = userdata.set_save_paths(game_id, accepted)
+        return jsonify({'paths': saved, 'rejected': rejected})
+    return jsonify({'paths': userdata.get_save_paths(game_id)})
+
+
+@app.route('/api/saves/list/<game_id>')
+def api_saves_list(game_id):
+    return jsonify({'backups': saveguardian.list_backups(_saves_root(), game_id)})
+
+
+@app.route('/api/saves/backup/<game_id>', methods=['POST'])
+def api_saves_backup(game_id):
+    body = request.get_json(silent=True) or {}
+    label = (body.get('label') or '').strip()
+    paths = userdata.get_save_paths(game_id)
+    if not paths:
+        return jsonify({'error': 'No save paths configured for this game'}), 400
+    try:
+        record = saveguardian.backup(_saves_root(), game_id, paths, label=label)
+    except Exception as e:
+        logger.error('Backup failed for %s: %s', game_id, e)
+        return jsonify({'error': str(e)}), 500
+    if not record:
+        return jsonify({'error': 'Nothing to back up — paths missing on disk'}), 404
+    return jsonify({'backup': record})
+
+
+@app.route('/api/saves/restore/<game_id>/<backup_id>', methods=['POST'])
+def api_saves_restore(game_id, backup_id):
+    try:
+        result = saveguardian.restore(_saves_root(), game_id, backup_id)
+    except FileNotFoundError as e:
+        return jsonify({'error': str(e)}), 404
+    except Exception as e:
+        logger.error('Restore failed for %s/%s: %s', game_id, backup_id, e)
+        return jsonify({'error': str(e)}), 500
+    return jsonify(result)
+
+
+@app.route('/api/saves/<game_id>/<backup_id>', methods=['DELETE'])
+def api_saves_delete(game_id, backup_id):
+    ok = saveguardian.delete_backup(_saves_root(), game_id, backup_id)
+    return jsonify({'deleted': ok})
 
 
 @app.route('/api/active-game')
