@@ -2246,6 +2246,125 @@ function updateHeroBackdrop(game) {
 
 // ── Detail Panel ──────────────────────────────────────────────────────────
 
+// ── Now Playing screen ───────────────────────────────────────────────────────
+
+let _npTickTimer = null;
+let _npPollTimer = null;
+let _npStartedAt = 0;        // unix seconds at which the active session began (server)
+let _npLocalEpoch = 0;       // performance.now() reference for smooth local ticking
+let _npGameId = null;
+let _npManualEnded = false;  // user pressed "I'm done"
+
+function _npFormat(seconds) {
+    const s = Math.max(0, Math.floor(seconds));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    const pad = (n) => n.toString().padStart(2, '0');
+    return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${pad(m)}:${pad(sec)}`;
+}
+
+function _npRenderTimer() {
+    if (!_npStartedAt) return;
+    const elapsed = (performance.now() - _npLocalEpoch) / 1000 + _npStartedAt;
+    $('npTimer').textContent = _npFormat(elapsed);
+}
+
+function openNowPlaying(gameOrInfo) {
+    const ov = $('nowPlayingOverlay');
+    if (!ov) return;
+    const info = gameOrInfo || {};
+    _npManualEnded = false;
+    _npGameId = info.game_id || info.id || null;
+    $('npTitle').textContent = info.name || '—';
+    const sys = info.system || info.source || '';
+    const meta = sys ? `<span class="np-meta-pill">${escapeHtml(sys)}</span>` : '';
+    $('npMeta').innerHTML = meta;
+    $('npStatus').textContent = '';
+    $('npTimer').textContent = '00:00';
+    $('npTimerLabel').textContent = 'elapsed';
+    // Backdrop art (fades in once loaded)
+    const back = $('npBackdrop');
+    back.classList.remove('is-loaded');
+    if (_npGameId) {
+        const url = `/api/artwork/${encodeURIComponent(_npGameId)}/cover`;
+        const probe = new Image();
+        probe.onload = () => {
+            back.style.backgroundImage = `url('${url}')`;
+            back.classList.add('is-loaded');
+        };
+        probe.src = url;
+    }
+    ov.classList.remove('hidden');
+
+    // Seed local timer; the first poll will reconcile from the server.
+    _npStartedAt = 0;
+    _npLocalEpoch = performance.now();
+    clearInterval(_npTickTimer);
+    _npTickTimer = setInterval(_npRenderTimer, 1000);
+    _npPollActive();  // initial sync
+    clearInterval(_npPollTimer);
+    _npPollTimer = setInterval(_npPollActive, 4000);
+}
+
+async function _npPollActive() {
+    try {
+        const d = await fetchJSON('/api/active-game');
+        // No game is active anymore — the process exited or was ended.
+        if (!d.game_id) {
+            _npOnGameEnded(false);
+            return;
+        }
+        // Sync local timer to server-reported elapsed for accuracy.
+        if (typeof d.elapsed_seconds === 'number') {
+            _npStartedAt = d.elapsed_seconds;
+            _npLocalEpoch = performance.now();
+            _npRenderTimer();
+        }
+        // If the active game changed underneath us (rare), refresh the title.
+        if (_npGameId && d.game_id !== _npGameId) {
+            _npGameId = d.game_id;
+            $('npTitle').textContent = d.name || '—';
+        }
+    } catch {
+        // Backend hiccup — keep ticking locally; next poll will retry.
+    }
+}
+
+function _npOnGameEnded(viaManual) {
+    clearInterval(_npPollTimer); _npPollTimer = null;
+    clearInterval(_npTickTimer); _npTickTimer = null;
+    const finalElapsed = (performance.now() - _npLocalEpoch) / 1000 + _npStartedAt;
+    $('npTimer').textContent = _npFormat(finalElapsed);
+    $('npTimerLabel').textContent = 'this session';
+    $('npStatus').textContent = viaManual
+        ? "Saved. Welcome back."
+        : "Game closed. Welcome back.";
+    // Auto-close after a brief celebratory pause unless user clicks "Back".
+    setTimeout(() => {
+        if (!$('nowPlayingOverlay').classList.contains('hidden')) closeNowPlaying();
+    }, 2400);
+}
+
+function closeNowPlaying() {
+    clearInterval(_npPollTimer); _npPollTimer = null;
+    clearInterval(_npTickTimer); _npTickTimer = null;
+    $('nowPlayingOverlay').classList.add('hidden');
+    _npGameId = null;
+}
+
+async function _npDoneClicked() {
+    if (!_npGameId) { closeNowPlaying(); return; }
+    _npManualEnded = true;
+    $('npStatus').textContent = 'Saving session…';
+    try {
+        await fetch(`/api/session/end/${encodeURIComponent(_npGameId)}`, { method: 'POST' });
+    } catch (e) {
+        console.warn('session end failed:', e);
+    }
+    _npOnGameEnded(true);
+}
+
 // ── Keyboard / controller cheat sheet ────────────────────────────────────────
 
 function openShortcuts()  { $('shortcutsOverlay').classList.remove('hidden'); }
@@ -2732,6 +2851,10 @@ function bindEvents() {
         if (e.target.id === 'shortcutsOverlay') closeShortcuts();
     });
 
+    // Now Playing screen
+    $('npBack').addEventListener('click', closeNowPlaying);
+    $('npDone').addEventListener('click', _npDoneClicked);
+
     // Tonight's Pick (CatByte curator)
     $('btnTonightsPick').addEventListener('click', openTonightsPick);
     $('closeTonightsPick').addEventListener('click', closeTonightsPick);
@@ -2854,6 +2977,7 @@ function bindEvents() {
             // Palette closes before its parent settings overlay
             if (!$('settingsSearchOverlay').classList.contains('hidden')) { closeSettingsPalette(); return; }
             if (!$('shortcutsOverlay').classList.contains('hidden')) { closeShortcuts(); return; }
+            if (!$('nowPlayingOverlay').classList.contains('hidden')) { closeNowPlaying(); return; }
             if (!$('yearOverlay').classList.contains('hidden')) { closeYearOverlay(); return; }
             if (!$('tonightsPickOverlay').classList.contains('hidden')) { closeTonightsPick(); return; }
             if (!$('moodOverlay').classList.contains('hidden')) { $('moodOverlay').classList.add('hidden'); return; }
@@ -2921,8 +3045,16 @@ async function launchGame(gameId) {
     try {
         const r = await fetch(`/api/launch/${gameId}`, { method: 'POST' });
         const d = await r.json();
-        if (!r.ok) $('launchText').textContent = `Failed: ${d.error || 'Unknown error'}`;
-        setTimeout(() => $('launchOverlay').classList.add('hidden'), 3000);
+        if (!r.ok) {
+            $('launchText').textContent = `Failed: ${d.error || 'Unknown error'}`;
+            setTimeout(() => $('launchOverlay').classList.add('hidden'), 3000);
+        } else {
+            // Fade through to the Now Playing screen (unless the user opted out).
+            $('launchOverlay').classList.add('hidden');
+            if (state.settings && state.settings.show_now_playing !== false) {
+                openNowPlaying(game);
+            }
+        }
     } catch {
         $('launchText').textContent = 'Launch failed!';
         setTimeout(() => $('launchOverlay').classList.add('hidden'), 3000);

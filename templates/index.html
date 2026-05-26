@@ -1057,6 +1057,27 @@
         </div>
     </div>
 
+    <!-- ═══ Now Playing — full-screen ambient screen during a session ═══ -->
+    <div class="now-playing-overlay hidden" id="nowPlayingOverlay">
+        <div class="np-backdrop" id="npBackdrop"></div>
+        <div class="np-vignette"></div>
+        <div class="np-content">
+            <div class="np-eyebrow">Now Playing</div>
+            <h1 class="np-title" id="npTitle">—</h1>
+            <div class="np-meta" id="npMeta"></div>
+            <div class="np-timer-wrap">
+                <div class="np-timer" id="npTimer">00:00</div>
+                <div class="np-timer-label" id="npTimerLabel">elapsed</div>
+            </div>
+            <div class="np-status" id="npStatus"></div>
+            <div class="np-actions">
+                <button class="btn-small" id="npBack" type="button">Back to library</button>
+                <button class="btn-small btn-accent" id="npDone" type="button">I'm done playing</button>
+            </div>
+            <div class="np-hint">YancoHub will quietly track your time while you play. Esc anytime to return.</div>
+        </div>
+    </div>
+
     <!-- ═══ Keyboard / Controller cheat sheet ═══ -->
     <div class="overlay hidden" id="shortcutsOverlay">
         <div class="overlay-panel shortcuts-panel">

@@ -58,6 +58,13 @@ SETTINGS = {
         'label': 'Accent color',
         'hint': 'Recolors highlights, glows, and active states throughout the UI',
     },
+    'show_now_playing': {
+        'type': 'bool',
+        'default': True,
+        'tab': 'display',
+        'label': 'Show Now Playing screen',
+        'hint': 'Fade into a cinematic ambient screen when you launch a game',
+    },
     'launch_on_startup': {
         'type': 'bool',
         'default': False,

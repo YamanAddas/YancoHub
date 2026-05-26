@@ -1263,6 +1263,38 @@ def api_catbyte_test():
     return jsonify(catbyte.test_connection())
 
 
+@app.route('/api/active-game')
+def api_active_game():
+    """Currently running game, if any — feeds the Now Playing screen.
+
+    Returns {game_id: null} when nothing is playing. When something is, returns
+    the metadata + started_at + a server-computed elapsed_seconds so the client
+    can sync its live timer.
+    """
+    _, gid = _get_active()
+    if not gid:
+        return jsonify({'game_id': None})
+    with _library_lock:
+        game = game_index.get(gid)
+    if not game:
+        return jsonify({'game_id': None})
+    session = userdata.data.get('sessions', {}).get(gid, {}) if isinstance(userdata.data, dict) else {}
+    started_at = session.get('active_since')
+    try:
+        elapsed = max(0, int(time.time() - float(started_at))) if started_at else 0
+    except (TypeError, ValueError):
+        elapsed = 0
+    return jsonify({
+        'game_id': gid,
+        'name': game.get('name'),
+        'source': game.get('source'),
+        'system': game.get('system') or game.get('source'),
+        'artwork_url': f'/api/artwork/{gid}/cover',
+        'started_at': started_at,
+        'elapsed_seconds': elapsed,
+    })
+
+
 @app.route('/api/notes/<game_id>', methods=['GET'])
 def api_get_note(game_id):
     """Return the user's free-text note for a game (empty string if none)."""
