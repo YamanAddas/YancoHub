@@ -1263,6 +1263,23 @@ def api_catbyte_test():
     return jsonify(catbyte.test_connection())
 
 
+@app.route('/api/notes/<game_id>', methods=['GET'])
+def api_get_note(game_id):
+    """Return the user's free-text note for a game (empty string if none)."""
+    return jsonify({'note': userdata.get_note(game_id)})
+
+
+@app.route('/api/notes/<game_id>', methods=['POST'])
+def api_set_note(game_id):
+    """Persist a note for a game. Empty text removes it."""
+    data = request.get_json(silent=True) or {}
+    text = data.get('note', '')
+    if not isinstance(text, str):
+        return jsonify({'error': 'note must be a string'}), 400
+    saved = userdata.set_note(game_id, text)
+    return jsonify({'note': saved})
+
+
 @app.route('/api/year-summary')
 def api_year_summary():
     """Local year-in-review payload for the requested year (default: current).

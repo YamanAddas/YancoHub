@@ -767,6 +767,67 @@ body::before {
     margin-top: 0;
 }
 
+/* Per-game free-text note inline in the detail panel */
+.detail-notes-wrap {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 10px 0 4px;
+    padding: 6px 10px;
+    border: 1px dashed rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.detail-notes-wrap:hover,
+.detail-notes-wrap:focus-within {
+    border-color: var(--accent-dim);
+    border-style: solid;
+    background: var(--bg-glass);
+}
+
+.detail-notes-icon {
+    color: var(--text-dim);
+    margin-top: 5px;
+    flex-shrink: 0;
+}
+
+.detail-notes-wrap:focus-within .detail-notes-icon { color: var(--accent); }
+
+.detail-notes {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    outline: none;
+    resize: none;
+    color: var(--text-bright);
+    font: 13px/1.55 inherit;
+    padding: 3px 0;
+    overflow: hidden;  /* auto-grow handled in JS */
+}
+
+.detail-notes::placeholder {
+    color: var(--text-dim);
+    font-style: italic;
+}
+
+.detail-notes-status {
+    align-self: center;
+    color: var(--accent);
+    font-size: 11px;
+    font-weight: 500;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    flex-shrink: 0;
+    min-width: 42px;
+    text-align: right;
+}
+
+.detail-notes-status.is-saving { opacity: 0.6; color: var(--text); }
+.detail-notes-status.is-saved  { opacity: 1; }
+
 .detail-actions {
     display: flex;
     gap: 10px;
@@ -5217,6 +5278,62 @@ select.settings-input option {
 
 .toast-action:hover { color: var(--accent-bright); }
 .toast-action:disabled { opacity: 0.5; cursor: default; }
+
+/* ═══ Keyboard / Controller cheat sheet ════════════════════════════════════ */
+
+.shortcuts-panel {
+    width: 92%;
+    max-width: 720px;
+}
+
+.shortcuts-body {
+    padding: 4px 22px 22px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 22px;
+}
+
+.shortcuts-group h4 {
+    color: var(--accent);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    margin: 8px 0 12px;
+}
+
+.shortcut {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 6px 0;
+    font-size: 13px;
+    color: var(--text-bright);
+    border-bottom: 1px dashed rgba(255, 255, 255, 0.04);
+}
+
+.shortcut:last-child { border-bottom: none; }
+
+.shortcut-action {
+    color: var(--text);
+    font-size: 13px;
+}
+
+.shortcut kbd {
+    display: inline-block;
+    min-width: 28px;
+    padding: 3px 7px;
+    margin-left: 4px;
+    font: 600 11px/1 'Inter', -apple-system, sans-serif;
+    letter-spacing: 0.02em;
+    color: var(--text-bright);
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--border);
+    border-bottom-width: 2px;
+    border-radius: 5px;
+    text-align: center;
+}
 
 /* ═══ Year in Review (full-screen story) ══════════════════════════════════ */
 

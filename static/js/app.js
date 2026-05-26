@@ -2246,6 +2246,106 @@ function updateHeroBackdrop(game) {
 
 // ── Detail Panel ──────────────────────────────────────────────────────────
 
+// ── Keyboard / controller cheat sheet ────────────────────────────────────────
+
+function openShortcuts()  { $('shortcutsOverlay').classList.remove('hidden'); }
+function closeShortcuts() { $('shortcutsOverlay').classList.add('hidden'); }
+function toggleShortcuts() {
+    const ov = $('shortcutsOverlay');
+    if (!ov) return;
+    ov.classList.toggle('hidden');
+}
+
+// ── Per-game notes (free-text, autosaved) ────────────────────────────────────
+
+let _notesCurrentGameId = null;
+let _notesSaveTimer = null;
+let _notesLastSaved = '';
+
+function _autoSizeNote() {
+    const ta = $('detailNotes');
+    if (!ta) return;
+    ta.style.height = 'auto';
+    ta.style.height = ta.scrollHeight + 'px';
+}
+
+function _flashNoteStatus(text, cls = 'is-saved', ms = 1400) {
+    const el = $('detailNotesStatus');
+    if (!el) return;
+    el.textContent = text;
+    el.classList.remove('is-saved', 'is-saving');
+    if (cls) el.classList.add(cls);
+    if (ms > 0) {
+        clearTimeout(el._fadeT);
+        el._fadeT = setTimeout(() => {
+            el.classList.remove('is-saving', 'is-saved');
+        }, ms);
+    }
+}
+
+async function loadGameNote(gameId) {
+    _notesCurrentGameId = gameId;
+    const ta = $('detailNotes');
+    if (!ta) return;
+    // Flush any pending save from the previous game before swapping.
+    if (_notesSaveTimer) { clearTimeout(_notesSaveTimer); _notesSaveTimer = null; }
+    try {
+        const d = await fetchJSON(`/api/notes/${encodeURIComponent(gameId)}`);
+        // Guard against race: the user may have already navigated again.
+        if (_notesCurrentGameId !== gameId) return;
+        ta.value = d.note || '';
+        _notesLastSaved = ta.value;
+        _autoSizeNote();
+        _flashNoteStatus('', null, 0);
+    } catch (e) {
+        console.warn('loadGameNote failed:', e);
+    }
+}
+
+async function _saveCurrentNote() {
+    const ta = $('detailNotes');
+    if (!ta || !_notesCurrentGameId) return;
+    const text = ta.value;
+    if (text === _notesLastSaved) return;
+    const targetGid = _notesCurrentGameId;  // capture for race protection
+    _flashNoteStatus('Saving…', 'is-saving', 0);
+    try {
+        const d = await fetchJSON(`/api/notes/${encodeURIComponent(targetGid)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ note: text }),
+        });
+        if (_notesCurrentGameId === targetGid) {
+            _notesLastSaved = d.note || '';
+            _flashNoteStatus('Saved');
+        }
+    } catch (e) {
+        console.warn('saveNote failed:', e);
+        _flashNoteStatus('Save failed', 'is-saving', 2000);
+    }
+}
+
+function bindNoteHandlers() {
+    const ta = $('detailNotes');
+    if (!ta) return;
+    ta.addEventListener('input', () => {
+        _autoSizeNote();
+        if (_notesSaveTimer) clearTimeout(_notesSaveTimer);
+        _notesSaveTimer = setTimeout(() => {
+            _notesSaveTimer = null;
+            _saveCurrentNote();
+        }, 800);
+    });
+    ta.addEventListener('blur', () => {
+        if (_notesSaveTimer) { clearTimeout(_notesSaveTimer); _notesSaveTimer = null; }
+        _saveCurrentNote();
+    });
+    ta.addEventListener('keydown', (e) => {
+        // Esc commits + blurs (escape from the textarea).
+        if (e.key === 'Escape') { e.preventDefault(); ta.blur(); }
+    });
+}
+
 function updateDetailPanel(game) {
     const panel = $('detailPanel');
     if (!game) {
@@ -2255,6 +2355,9 @@ function updateDetailPanel(game) {
 
     // Description
     $('detailDesc').textContent = game.description || '';
+
+    // Personal note (debounced auto-save while typing)
+    loadGameNote(game.id);
 
     // Favorite button state
     const isFav = state.favorites.has(game.id);
@@ -2620,6 +2723,15 @@ function bindEvents() {
     $('btnOpenYearOverlay').addEventListener('click', openYearOverlay);
     $('closeYearOverlay').addEventListener('click', closeYearOverlay);
 
+    // Per-game note textarea
+    bindNoteHandlers();
+
+    // Keyboard / controller cheat sheet
+    $('closeShortcuts').addEventListener('click', closeShortcuts);
+    $('shortcutsOverlay').addEventListener('click', (e) => {
+        if (e.target.id === 'shortcutsOverlay') closeShortcuts();
+    });
+
     // Tonight's Pick (CatByte curator)
     $('btnTonightsPick').addEventListener('click', openTonightsPick);
     $('closeTonightsPick').addEventListener('click', closeTonightsPick);
@@ -2713,6 +2825,17 @@ function bindEvents() {
             openYearOverlay();
             return;
         }
+        // "?" (Shift+/) — show the keyboard / controller cheat sheet.
+        // Skipped when typing into a text input so "?" remains a literal character there.
+        if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            const t = e.target;
+            const inField = t && (['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName) || t.isContentEditable);
+            if (!inField) {
+                e.preventDefault();
+                toggleShortcuts();
+                return;
+            }
+        }
 
         // Don't navigate if a text input is focused
         if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) ||
@@ -2730,6 +2853,7 @@ function bindEvents() {
         if (e.key === 'Escape') {
             // Palette closes before its parent settings overlay
             if (!$('settingsSearchOverlay').classList.contains('hidden')) { closeSettingsPalette(); return; }
+            if (!$('shortcutsOverlay').classList.contains('hidden')) { closeShortcuts(); return; }
             if (!$('yearOverlay').classList.contains('hidden')) { closeYearOverlay(); return; }
             if (!$('tonightsPickOverlay').classList.contains('hidden')) { closeTonightsPick(); return; }
             if (!$('moodOverlay').classList.contains('hidden')) { $('moodOverlay').classList.add('hidden'); return; }

@@ -21,6 +21,7 @@ DEFAULT_DATA = {
     'collections': {},    # name → [game_id, ...]
     'favorites': [],      # [game_id, ...]
     'hidden_systems': [], # [system_id, ...]
+    'notes': {},          # game_id → free-text personal note (where I left off, build ideas, …)
     'local_dirs': [],     # [path, ...]
     'rom_dirs': [],       # [path, ...]
     'accounts': {
@@ -360,6 +361,36 @@ class UserData:
             else:
                 overrides[game_id] = value
             self._save()
+
+    # ── Notes (per-game free text) ─────────────────────────────────────────
+
+    _NOTE_MAX_LEN = 2000
+
+    def get_note(self, game_id: str) -> str:
+        """Return the user's note for a game (empty string if none)."""
+        return self.data.get('notes', {}).get(game_id, '')
+
+    def set_note(self, game_id: str, text: str) -> str:
+        """Persist a note for a game. Returns the cleaned text actually stored.
+
+        Strips non-newline control characters (LLM-injection / paste-from-PDF
+        artifacts) and caps the length. Empty strings remove the note entirely
+        so the dict doesn't grow with phantom keys.
+        """
+        if not game_id:
+            return ''
+        cleaned = ''.join(
+            c for c in (text or '')
+            if c == '\n' or c == '\t' or (c.isprintable() and c not in '\r\x0b\x0c')
+        )[: self._NOTE_MAX_LEN].rstrip()
+        with self._lock:
+            notes = self.data.setdefault('notes', {})
+            if cleaned:
+                notes[game_id] = cleaned
+            else:
+                notes.pop(game_id, None)
+            self._save()
+        return cleaned
 
     # ── Settings ────────────────────────────────────────────────────────────
 

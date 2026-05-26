@@ -128,6 +128,13 @@
         <div class="detail-panel" id="detailPanel">
             <div class="detail-panel-inner">
                 <div class="detail-desc" id="detailDesc"></div>
+                <div class="detail-notes-wrap">
+                    <svg class="detail-notes-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                    <textarea class="detail-notes" id="detailNotes" rows="1" maxlength="2000"
+                              placeholder="Add a note — where you left off, a build idea, anything…"
+                              aria-label="Personal note for this game"></textarea>
+                    <span class="detail-notes-status" id="detailNotesStatus" aria-live="polite"></span>
+                </div>
                 <div class="detail-actions">
                     <button class="detail-btn detail-btn-primary" id="detailLaunch">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
@@ -1046,6 +1053,45 @@
                 <div class="onboarding-actions">
                     <button class="btn-action hidden" id="onbFinish">Your library is ready!</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ Keyboard / Controller cheat sheet ═══ -->
+    <div class="overlay hidden" id="shortcutsOverlay">
+        <div class="overlay-panel shortcuts-panel">
+            <div class="overlay-header">
+                <h3>Keyboard &amp; Controller</h3>
+                <button class="close-btn" id="closeShortcuts">&times;</button>
+            </div>
+            <div class="shortcuts-body">
+                <section class="shortcuts-group">
+                    <h4>General</h4>
+                    <div class="shortcut"><span class="shortcut-action">Search games</span><kbd>Ctrl</kbd><kbd>F</kbd></div>
+                    <div class="shortcut"><span class="shortcut-action">Toggle CatByte</span><kbd>Ctrl</kbd><kbd>B</kbd></div>
+                    <div class="shortcut"><span class="shortcut-action">Open Settings</span><kbd>Ctrl</kbd><kbd>,</kbd></div>
+                    <div class="shortcut"><span class="shortcut-action">Settings command palette</span><kbd>Ctrl</kbd><kbd>K</kbd></div>
+                    <div class="shortcut"><span class="shortcut-action">Your YancoHub Year</span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Y</kbd></div>
+                    <div class="shortcut"><span class="shortcut-action">Send CatByte a screenshot</span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>S</kbd></div>
+                    <div class="shortcut"><span class="shortcut-action">This cheat sheet</span><kbd>?</kbd></div>
+                    <div class="shortcut"><span class="shortcut-action">Close overlay / back</span><kbd>Esc</kbd></div>
+                </section>
+                <section class="shortcuts-group">
+                    <h4>Carousel</h4>
+                    <div class="shortcut"><span class="shortcut-action">Navigate</span><kbd>←</kbd><kbd>→</kbd></div>
+                    <div class="shortcut"><span class="shortcut-action">Launch selected</span><kbd>Enter</kbd></div>
+                    <div class="shortcut"><span class="shortcut-action">Toggle favorite</span><kbd>F</kbd></div>
+                    <div class="shortcut"><span class="shortcut-action">Game Mode (fullscreen)</span><kbd>F11</kbd></div>
+                </section>
+                <section class="shortcuts-group">
+                    <h4>Controller</h4>
+                    <div class="shortcut"><span class="shortcut-action">Launch / confirm</span><kbd>A</kbd></div>
+                    <div class="shortcut"><span class="shortcut-action">Back / close</span><kbd>B</kbd></div>
+                    <div class="shortcut"><span class="shortcut-action">Favorite</span><kbd>Y</kbd></div>
+                    <div class="shortcut"><span class="shortcut-action">Switch tab / category</span><kbd>LB</kbd><kbd>RB</kbd></div>
+                    <div class="shortcut"><span class="shortcut-action">Open Game Mode / close Settings</span><kbd>Start</kbd></div>
+                    <div class="shortcut"><span class="shortcut-action">Search</span><kbd>Select</kbd></div>
+                </section>
             </div>
         </div>
     </div>

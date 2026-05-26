@@ -5,6 +5,35 @@ import time
 from pathlib import Path
 
 
+class TestNotes:
+    def test_note_round_trip(self, userdata_instance):
+        userdata_instance.set_note('steam_1', "Stuck at the lava boss\nTry fire resistance")
+        assert userdata_instance.get_note('steam_1') == "Stuck at the lava boss\nTry fire resistance"
+
+    def test_note_empty_removes(self, userdata_instance):
+        userdata_instance.set_note('steam_1', 'temporary')
+        userdata_instance.set_note('steam_1', '')
+        assert userdata_instance.get_note('steam_1') == ''
+        assert 'steam_1' not in userdata_instance.data.get('notes', {})
+
+    def test_note_strips_control_chars(self, userdata_instance):
+        saved = userdata_instance.set_note('g1', "ok\x00bad\nfine")
+        assert '\x00' not in saved
+        assert '\n' in saved
+        assert 'ok' in saved and 'bad' in saved and 'fine' in saved
+
+    def test_note_length_cap(self, userdata_instance):
+        long = 'x' * 5000
+        saved = userdata_instance.set_note('g1', long)
+        assert len(saved) <= 2000
+
+    def test_note_unknown_game_returns_empty(self, userdata_instance):
+        assert userdata_instance.get_note('does_not_exist') == ''
+
+    def test_note_blank_game_id_noop(self, userdata_instance):
+        assert userdata_instance.set_note('', 'hi') == ''
+
+
 class TestUserDataInit:
     def test_creates_with_defaults(self, userdata_instance):
         assert 'sessions' in userdata_instance.data
