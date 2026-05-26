@@ -6,6 +6,8 @@ YancoHub is a unified PC game launcher that aggregates Steam, Epic, GOG, Xbox, E
 
 ![Platform](https://img.shields.io/badge/Windows-0078D6?style=flat-square&logo=windows) ![Python](https://img.shields.io/badge/Python_3.10+-3776AB?style=flat-square&logo=python&logoColor=white) ![License](https://img.shields.io/badge/MIT-green?style=flat-square)
 
+![YancoHub library](docs/screenshots/library.png)
+
 ## Why YancoHub
 
 | | Playnite | LaunchBox | GOG Galaxy | **YancoHub** |
@@ -86,18 +88,20 @@ pip install -r requirements-dev.txt
 python -m pytest tests/ -v
 ```
 
-328 tests covering constants, ROM header parsing, user data persistence, BIOS scanning, chat history, metadata caching, Flask API routes, gamepad input, security/path validation, paths, single-instance, update checks, and startup registry. All tests use temp files and mocks — no network access, no side effects.
+381 tests covering constants, ROM header parsing, user data persistence, BIOS scanning, chat history, metadata caching, Flask API routes, gamepad input, security and path validation, save backups, year-summary aggregation, the settings schema, single-instance, update checks, and startup registry. All tests use temp files and mocks — no network access, no side effects.
 
 ## Building from Source
 
 ```bash
-pip install pyinstaller
-python build.py              # Build both installer and portable zip
+pip install -r requirements-dev.txt
+python build.py              # Inno Setup installer + portable zip
 python build.py --portable   # Portable zip only
-python build.py --installer  # NSIS installer only (requires NSIS on PATH)
+python build.py --installer  # Installer only
 ```
 
-Output goes to `dist/`. The NSIS installer requires [NSIS 3.x](https://nsis.sourceforge.io/) to be installed and on your PATH.
+Output goes to `dist/`. The installer build prefers [Inno Setup 6](https://jrsoftware.org/isinfo.php) (recommended) and falls back to [NSIS 3](https://nsis.sourceforge.io/) if Inno Setup isn't installed.
+
+Code signing is wired in via [SIGNING.md](SIGNING.md) — set `YANCOHUB_SIGN_CERT` (and `YANCOHUB_SIGN_PASS` for `.pfx` files) before running `build.py` and the resulting installer is signed automatically.
 
 ## Security Note
 
