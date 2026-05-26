@@ -391,7 +391,7 @@
                                 <span>Show uninstalled games</span>
                                 <span class="settings-toggle-hint">Display owned games from connected accounts even if they're not currently installed</span>
                             </label>
-                            <button class="toggle-switch" id="toggleShowUninstalled" role="switch" aria-checked="true">
+                            <button class="toggle-switch" id="toggleShowUninstalled" data-setting="show_uninstalled" role="switch" aria-checked="true">
                                 <span class="toggle-knob"></span>
                             </button>
                         </div>
@@ -407,7 +407,7 @@
                                 <span>Direct launch</span>
                                 <span class="settings-toggle-hint">Run games directly without opening the store client. Works best for GOG (DRM-free) and Epic. Some Steam games may still require Steam.</span>
                             </label>
-                            <button class="toggle-switch" id="toggleDirectLaunch" role="switch" aria-checked="true">
+                            <button class="toggle-switch" id="toggleDirectLaunch" data-setting="direct_launch" role="switch" aria-checked="true">
                                 <span class="toggle-knob"></span>
                             </button>
                         </div>
@@ -617,7 +617,7 @@
                                 <span>Start in Game Mode</span>
                                 <span class="settings-toggle-hint">Launch YancoHub directly into fullscreen Game Mode</span>
                             </label>
-                            <button class="toggle-switch" id="toggleStartGameMode" role="switch" aria-checked="false">
+                            <button class="toggle-switch" id="toggleStartGameMode" data-setting="start_in_game_mode" role="switch" aria-checked="false">
                                 <span class="toggle-knob"></span>
                             </button>
                         </div>
@@ -632,7 +632,7 @@
                                 <span>Launch on Windows startup</span>
                                 <span class="settings-toggle-hint">Automatically start YancoHub when you sign in to Windows</span>
                             </label>
-                            <button class="toggle-switch" id="toggleLaunchOnStartup" role="switch" aria-checked="false">
+                            <button class="toggle-switch" id="toggleLaunchOnStartup" data-setting="launch_on_startup" role="switch" aria-checked="false">
                                 <span class="toggle-knob"></span>
                             </button>
                         </div>

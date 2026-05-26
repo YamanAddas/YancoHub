@@ -364,36 +364,39 @@ class TestArtworkAPI:
 
 
 class TestGamepadAPI:
-    def test_get_mapping_default_is_none(self, client):
-        resp = client.get('/api/settings/gamepad-mapping')
-        assert resp.status_code == 200
-        assert resp.get_json()['mapping'] is None
-
-    def test_set_mapping_returns_cleaned(self, client):
-        mapping = {'a': 1, 'b': 0, 'start': 9}
-        resp = client.post('/api/settings/gamepad-mapping',
-                           json={'mapping': mapping})
+    def test_get_settings_includes_defaults(self, client):
+        resp = client.get('/api/settings')
         assert resp.status_code == 200
         data = resp.get_json()
-        assert data['mapping']['a'] == 1
-        assert data['mapping']['b'] == 0
-        assert data['mapping']['start'] == 9
-        # Verify update_settings was called with the mapping
+        assert 'values' in data and 'schema' in data
+        assert data['values']['gamepad_mapping'] == {}
+        assert data['values']['show_uninstalled'] is True
+
+    def test_set_mapping_persists_cleaned(self, client):
+        mapping = {'a': 1, 'b': 0, 'start': 9}
+        resp = client.patch('/api/settings', json={'gamepad_mapping': mapping})
+        assert resp.status_code == 200
+        assert resp.get_json()['errors'] == {}
         client._mock_ud.update_settings.assert_called()
+        saved = client._mock_ud.update_settings.call_args[0][0]
+        assert saved['gamepad_mapping'] == {'a': 1, 'b': 0, 'start': 9}
 
     def test_set_mapping_rejects_non_dict(self, client):
-        resp = client.post('/api/settings/gamepad-mapping',
-                           json={'mapping': 'bad'})
-        assert resp.status_code == 400
+        resp = client.patch('/api/settings', json={'gamepad_mapping': 'bad'})
+        assert resp.status_code == 200
+        assert 'gamepad_mapping' in resp.get_json()['errors']
 
     def test_set_mapping_filters_invalid_values(self, client):
         mapping = {'a': 2, 'bad_key': -1, 'b': 'string'}
-        resp = client.post('/api/settings/gamepad-mapping',
-                           json={'mapping': mapping})
-        data = resp.get_json()
-        assert data['mapping']['a'] == 2
-        assert 'bad_key' not in data['mapping']
-        assert 'b' not in data['mapping']
+        resp = client.patch('/api/settings', json={'gamepad_mapping': mapping})
+        assert resp.status_code == 200
+        saved = client._mock_ud.update_settings.call_args[0][0]
+        assert saved['gamepad_mapping'] == {'a': 2}
+
+    def test_unknown_setting_reports_error(self, client):
+        resp = client.patch('/api/settings', json={'nope': True})
+        assert resp.status_code == 200
+        assert 'nope' in resp.get_json()['errors']
 
     def test_gamepad_status_endpoint(self, client):
         resp = client.get('/api/gamepad/status')

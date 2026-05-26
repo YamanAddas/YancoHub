@@ -42,6 +42,7 @@ Storage:  userdata.json (settings/favorites/playtime) + cache/metadata.db (SQLit
 | `artwork.py` | Steam CDN → LibRetro thumbnails → SteamGridDB → fallback gradient |
 | `biosmanager.py` | Auto-detect BIOS files by filename/MD5, per-system readiness |
 | `userdata.py` | JSON persistence for settings, playtime, collections |
+| `settings_schema.py` | Single source of truth for key/value settings (type, default, validation, UI metadata) — drives DEFAULT_DATA and the unified `/api/settings` endpoints |
 | `catbyte.py` | Multi-backend AI companion (Ollama, OpenClaw, LM Studio, OpenAI, custom) |
 | `chathistory.py` | CatByte conversation history persistence |
 | `constants.py` | Shared constants (VERSION, ports, LIBRETRO_SYSTEMS, VALID_ART_TYPES, BUILTIN_SYSTEMS, STEAM_CDN, LIBRETRO_THUMB) |
@@ -81,6 +82,7 @@ Storage:  userdata.json (settings/favorites/playtime) + cache/metadata.db (SQLit
 | `tests/test_startup.py` | Mock winreg read/write/delete for startup registry |
 | `tests/test_gamepad.py` | HID controller parsing, button mapping, bridge state |
 | `tests/test_security.py` | Path validation, origin checks, prompt-injection sanitization |
+| `tests/test_settings_schema.py` | Setting defaults, type/path/int-map validation, public schema |
 
 ## Code Conventions
 
@@ -125,7 +127,7 @@ Every change must meet ALL of these:
 8. **Tests pass** — run `python -m pytest tests/ -v` before considering a change complete; all 328 tests must pass
 9. **New logic gets tests** — any new module, function, or route should have corresponding tests in `tests/`; use existing fixtures from `conftest.py` (temp dirs, synthetic ROMs, mocked HTTP)
 10. **Data paths use `paths.py`** — never hardcode `userdata.json`, `cache/`, or `logs/` paths; always use `get_data_dir()`, `get_cache_dir()`, `get_log_dir()`
-11. **New settings get DEFAULT_DATA entry** — add new user-facing settings to `userdata.py:DEFAULT_DATA['settings']` with a sensible default
+11. **New settings go in `settings_schema.py`** — add a key/value setting to the `SETTINGS` registry (type, default, tab, label, hint, optional `validate`/`side_effect`/`backend`). This auto-populates `DEFAULT_DATA['settings']` and the `/api/settings` endpoints — never add a setting straight into `userdata.py` or a one-off endpoint
 
 ## Gotchas
 

@@ -330,14 +330,12 @@ tests/
 | POST | `/api/catbyte/chat` | Chat with CatByte AI |
 | POST | `/api/catbyte/chat-vision` | Chat with screenshot |
 | GET | `/api/catbyte/status` | CatByte online/offline |
-| POST | `/api/settings/show-uninstalled` | Toggle uninstalled games visibility |
-| GET/POST | `/api/settings/direct-launch` | Toggle direct game launching (bypass store clients) |
-| GET/POST | `/api/settings/retroarch-path` | Get/set RetroArch path |
-| GET/POST | `/api/settings/launchbox-path` | Get/set LaunchBox path |
+| GET | `/api/settings` | All settings: current `values` + UI `schema` (from settings_schema.py) |
+| PATCH | `/api/settings` | Partial update `{key: value, ...}`; returns `values`, per-key `errors`, `meta` |
+| GET/POST | `/api/settings/direct-launch/<game_id>` | Per-game direct-launch override |
 | GET | `/api/hidden-systems` | Hidden retro systems |
 | POST | `/api/hidden-systems/toggle` | Toggle system visibility |
 | GET | `/api/update-available` | Check for newer GitHub release |
-| GET/POST | `/api/settings/launch-on-startup` | Windows startup toggle |
 | GET | `/api/onboarding/status` | First-run onboarding status |
 | POST | `/api/onboarding/complete` | Mark onboarding complete |
 | POST | `/api/protocol-action` | Handle yancohub:// protocol URLs |

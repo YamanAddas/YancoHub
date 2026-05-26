@@ -30,6 +30,7 @@ from constants import VALID_ART_TYPES, FLASK_PORT, HTTP_TIMEOUT_SHORT, VERSION
 from paths import get_log_dir
 from updatecheck import start_update_check, get_update_info
 from startup import is_startup_enabled, set_startup_enabled
+import settings_schema
 
 # ── Logging ─────────────────────────────────────────────────────────────────
 
@@ -990,37 +991,111 @@ def api_epic_auth():
     return jsonify(result)
 
 
-@app.route('/api/settings/show-uninstalled', methods=['GET'])
-def api_get_show_uninstalled():
-    """Get current show_uninstalled setting."""
+# ── Unified Settings API ─────────────────────────────────────────────────────
+
+def _read_setting_value(key, spec, settings):
+    """Effective current value for one setting (registry-backed keys read live)."""
+    if spec.get('backend') == 'registry':
+        if key == 'launch_on_startup':
+            return is_startup_enabled()
+        return spec['default']
+    return settings.get(key, spec['default'])
+
+
+def _current_settings_values():
+    """All visible settings keyed by name with their effective current values."""
     settings = userdata.get_settings()
-    return jsonify({'show_uninstalled': settings.get('show_uninstalled', True)})
+    return {
+        key: _read_setting_value(key, spec, settings)
+        for key, spec in settings_schema.SETTINGS.items()
+        if not spec.get('hidden')
+    }
 
 
-@app.route('/api/settings/show-uninstalled', methods=['POST'])
-def api_toggle_show_uninstalled():
-    """Toggle showing uninstalled games from connected accounts."""
-    settings = userdata.get_settings()
-    new_val = not settings.get('show_uninstalled', True)
-    userdata.update_settings({'show_uninstalled': new_val})
-    threading.Thread(target=_build_library, daemon=True).start()
-    return jsonify({'show_uninstalled': new_val})
+def _apply_setting(key, value):
+    """Run a setting's side effect / external write. Returns optional meta dict.
+
+    Raises on failure so the caller can report a per-key error.
+    """
+    spec = settings_schema.SETTINGS.get(key, {})
+
+    if spec.get('backend') == 'registry':
+        if key == 'launch_on_startup':
+            if not set_startup_enabled(bool(value)):
+                raise RuntimeError('Failed to update Windows startup setting')
+        return None
+
+    effect = spec.get('side_effect')
+    if effect == 'rebuild_library':
+        threading.Thread(target=_build_library, daemon=True).start()
+    elif effect == 'update_retroarch':
+        if value:
+            p = Path(value)
+            scanner._retroarch_path = p.parent if p.is_file() else p
+        else:
+            scanner._retroarch_path = None
+    elif effect == 'update_launchbox':
+        artwork_scraper.set_launchbox_path(value)
+        if value:
+            lb_root = artwork_scraper._resolve_lb_root(value)
+            if lb_root:
+                scanner._lb_emulators = discover_launchbox_emulators(str(lb_root))
+        return {'matched_count': len(artwork_scraper._lb_title_index) if value else 0}
+    return None
 
 
-@app.route('/api/settings/direct-launch', methods=['GET'])
-def api_get_direct_launch():
-    """Get current direct_launch setting."""
-    settings = userdata.get_settings()
-    return jsonify({'direct_launch': settings.get('direct_launch', True)})
+@app.route('/api/settings', methods=['GET'])
+def api_get_settings():
+    """All user-facing settings: current values + UI schema."""
+    return jsonify({
+        'values': _current_settings_values(),
+        'schema': settings_schema.public_schema(),
+    })
 
 
-@app.route('/api/settings/direct-launch', methods=['POST'])
-def api_toggle_direct_launch():
-    """Toggle direct game launching (bypass store clients when possible)."""
-    settings = userdata.get_settings()
-    new_val = not settings.get('direct_launch', True)
-    userdata.update_settings({'direct_launch': new_val})
-    return jsonify({'direct_launch': new_val})
+@app.route('/api/settings', methods=['PATCH'])
+def api_patch_settings():
+    """Partial update. Body: {key: value, ...}. Validates each key, persists
+    userdata-backed ones, applies side effects, and reports per-key errors."""
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({'error': 'body must be an object'}), 400
+
+    errors = {}
+    meta = {}
+    persist = {}
+    apply_keys = []
+
+    for key, raw in data.items():
+        spec = settings_schema.SETTINGS.get(key)
+        if spec is None or spec.get('hidden'):
+            errors[key] = 'unknown setting'
+            continue
+        ok, cleaned = settings_schema.validate(key, raw)
+        if not ok:
+            errors[key] = cleaned
+            continue
+        if spec.get('backend', 'userdata') == 'userdata':
+            persist[key] = cleaned
+        apply_keys.append((key, cleaned))
+
+    if persist:
+        userdata.update_settings(persist)
+
+    for key, value in apply_keys:
+        try:
+            result = _apply_setting(key, value)
+            if result:
+                meta[key] = result
+        except Exception as e:
+            errors[key] = str(e)
+            logger.error("Failed to apply setting %s: %s", key, e)
+
+    return jsonify({
+        'values': _current_settings_values(),
+        'errors': errors,
+        'meta': meta,
+    })
 
 
 @app.route('/api/gamepad/status')
@@ -1031,45 +1106,6 @@ def api_gamepad_status():
         return jsonify(gamepad_diagnostics())
     except Exception as e:
         return jsonify({'error': str(e)})
-
-
-@app.route('/api/settings/gamepad-mapping', methods=['GET'])
-def api_get_gamepad_mapping():
-    """Get custom gamepad button mapping."""
-    settings = userdata.get_settings()
-    return jsonify({'mapping': settings.get('gamepad_mapping', None)})
-
-
-@app.route('/api/settings/gamepad-mapping', methods=['POST'])
-def api_set_gamepad_mapping():
-    """Save custom gamepad button mapping."""
-    data = request.get_json(silent=True) or {}
-    mapping = data.get('mapping')
-    if not isinstance(mapping, dict):
-        return jsonify({'error': 'mapping must be a dict'}), 400
-    # Validate: all values must be non-negative integers
-    clean = {}
-    for key, val in mapping.items():
-        if isinstance(val, int) and val >= 0:
-            clean[key] = val
-    userdata.update_settings({'gamepad_mapping': clean})
-    return jsonify({'mapping': clean})
-
-
-@app.route('/api/settings/start-in-game-mode', methods=['GET'])
-def api_get_start_in_game_mode():
-    """Get start_in_game_mode setting."""
-    settings = userdata.get_settings()
-    return jsonify({'start_in_game_mode': settings.get('start_in_game_mode', False)})
-
-
-@app.route('/api/settings/start-in-game-mode', methods=['POST'])
-def api_toggle_start_in_game_mode():
-    """Toggle start in game mode."""
-    settings = userdata.get_settings()
-    new_val = not settings.get('start_in_game_mode', False)
-    userdata.update_settings({'start_in_game_mode': new_val})
-    return jsonify({'start_in_game_mode': new_val})
 
 
 @app.route('/api/settings/direct-launch/<game_id>', methods=['GET'])
@@ -1101,28 +1137,6 @@ def api_set_game_direct_launch(game_id):
 
 
 # ── RetroArch Path ─────────────────────────────────────────────────────────
-
-@app.route('/api/settings/retroarch-path', methods=['GET'])
-def api_get_retroarch_path():
-    settings = userdata.get_settings()
-    return jsonify({'retroarch_path': settings.get('retroarch_path', '')})
-
-
-@app.route('/api/settings/retroarch-path', methods=['POST'])
-def api_set_retroarch_path():
-    data = request.get_json(silent=True) or {}
-    path = data.get('path', '').strip()
-    if path and not Path(path).exists():
-        return jsonify({'error': 'File not found'}), 400
-    userdata.update_settings({'retroarch_path': path})
-    # Update scanner — it expects the RetroArch directory (containing retroarch.exe)
-    if path:
-        p = Path(path)
-        scanner._retroarch_path = p.parent if p.is_file() else p
-    else:
-        scanner._retroarch_path = None
-    return jsonify({'retroarch_path': path})
-
 
 # ── Artwork Progress ───────────────────────────────────────────────────────
 
@@ -1189,29 +1203,6 @@ def api_test_launchbox():
 
 
 # ── LaunchBox Artwork ──────────────────────────────────────────────────────
-
-@app.route('/api/settings/launchbox-path', methods=['GET'])
-def api_get_launchbox_path():
-    settings = userdata.get_settings()
-    return jsonify({'launchbox_path': settings.get('launchbox_path', '')})
-
-
-@app.route('/api/settings/launchbox-path', methods=['POST'])
-def api_set_launchbox_path():
-    data = request.get_json(silent=True) or {}
-    path = data.get('path', '').strip()
-    if path and not Path(path).is_dir():
-        return jsonify({'error': 'Directory not found'}), 400
-    userdata.update_settings({'launchbox_path': path})
-    artwork_scraper.set_launchbox_path(path)
-    # Also refresh emulator discovery from LaunchBox
-    if path:
-        lb_root = artwork_scraper._resolve_lb_root(path)
-        if lb_root:
-            scanner._lb_emulators = discover_launchbox_emulators(str(lb_root))
-    matched_count = len(artwork_scraper._lb_title_index) if path else 0
-    return jsonify({'launchbox_path': path, 'matched_count': matched_count})
-
 
 # ── CatByte AI ──────────────────────────────────────────────────────────────
 
@@ -1699,21 +1690,6 @@ def api_update_available():
     if info:
         return jsonify({'available': True, **info})
     return jsonify({'available': False, 'current_version': VERSION})
-
-
-@app.route('/api/settings/launch-on-startup', methods=['GET'])
-def api_get_startup():
-    return jsonify({'enabled': is_startup_enabled()})
-
-
-@app.route('/api/settings/launch-on-startup', methods=['POST'])
-def api_set_startup():
-    data = request.get_json(silent=True) or {}
-    enabled = bool(data.get('enabled', False))
-    success = set_startup_enabled(enabled)
-    if success:
-        return jsonify({'status': 'ok', 'enabled': enabled})
-    return jsonify({'error': 'Failed to update startup setting'}), 500
 
 
 @app.route('/api/protocol-action', methods=['POST'])

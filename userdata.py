@@ -9,6 +9,7 @@ import threading
 from pathlib import Path
 
 from paths import get_data_dir
+from settings_schema import build_default_settings
 
 logger = logging.getLogger('yancohub.userdata')
 
@@ -34,14 +35,7 @@ DEFAULT_DATA = {
             'db_path': '',       # Auto-filled if found
         },
     },
-    'settings': {
-        'retroarch_path': '',
-        'launchbox_path': '',      # Path to LaunchBox install dir (artwork source)
-        'show_uninstalled': True,  # Show games from accounts even if not installed
-        'direct_launch': True,     # Launch games directly without store client when possible
-        'launch_on_startup': False,  # Launch YancoHub on Windows startup
-        'onboarding_complete': False,  # First-run onboarding completed
-    },
+    'settings': build_default_settings(),  # single source of truth: settings_schema.py
     'catbyte': {
         'backend': 'ollama',       # ollama, openclaw, lmstudio, openai, custom
         'base_url': '',            # empty = use preset default
@@ -69,10 +63,15 @@ class UserData:
             try:
                 with open(self.data_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                # Merge with defaults for new fields
+                # Merge with defaults for new fields. Backfill missing nested keys
+                # too (one level deep) so newly added settings/accounts/catbyte keys
+                # appear in pre-existing userdata.json files.
                 for key, default in DEFAULT_DATA.items():
                     if key not in data:
-                        data[key] = default
+                        data[key] = json.loads(json.dumps(default))
+                    elif isinstance(default, dict) and isinstance(data[key], dict):
+                        for sub_key, sub_val in default.items():
+                            data[key].setdefault(sub_key, sub_val)
                 return data
             except Exception as e:
                 logger.error(f"Failed to load userdata: {e}")

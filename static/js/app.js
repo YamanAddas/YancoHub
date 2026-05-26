@@ -31,6 +31,7 @@ const state = {
     activeMood: null,
     gamingMode: false,
     gamingFocusIndex: 0,
+    settings: {},
 };
 
 // ── DOM ────────────────────────────────────────────────────────────────────
@@ -47,6 +48,64 @@ async function fetchJSON(url, opts) {
     const r = await fetch(url, opts);
     if (!r.ok) throw new Error(`HTTP ${r.status} from ${url}`);
     return r.json();
+}
+
+// ── Unified Settings ─────────────────────────────────────────────────────────
+
+/** Load all settings once; caches into state.settings and returns the values map. */
+async function loadSettings() {
+    try {
+        const data = await fetchJSON('/api/settings');
+        state.settings = data.values || {};
+    } catch (e) {
+        console.warn('loadSettings failed:', e);
+    }
+    return state.settings;
+}
+
+/**
+ * Partial-update one setting via PATCH /api/settings.
+ * Returns {values, errors, meta}; updates state.settings with the new values.
+ */
+async function patchSetting(key, value) {
+    const data = await fetchJSON('/api/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [key]: value }),
+    });
+    if (data.values) state.settings = data.values;
+    return data;
+}
+
+// Optional post-change hooks for settings with client-side effects.
+const SETTING_HOOKS = {
+    show_uninstalled: () => { setTimeout(async () => { await loadGames(); applyFilter(); }, 3000); },
+};
+
+/** Wire every [data-setting] toggle-switch to the unified API. */
+function bindSettingToggles() {
+    document.querySelectorAll('.toggle-switch[data-setting]').forEach((el) => {
+        const key = el.dataset.setting;
+        el.setAttribute('aria-checked', state.settings[key] ? 'true' : 'false');
+        el.onclick = async () => {
+            const prev = el.getAttribute('aria-checked') === 'true';
+            const next = !prev;
+            el.setAttribute('aria-checked', next ? 'true' : 'false');  // optimistic
+            try {
+                const d = await patchSetting(key, next);
+                if (d.errors && d.errors[key]) {
+                    el.setAttribute('aria-checked', prev ? 'true' : 'false');  // revert
+                    showToast(d.errors[key], 'error');
+                    return;
+                }
+                el.setAttribute('aria-checked', state.settings[key] ? 'true' : 'false');
+                if (SETTING_HOOKS[key]) SETTING_HOOKS[key]();
+            } catch (e) {
+                el.setAttribute('aria-checked', prev ? 'true' : 'false');  // revert
+                console.warn(`patchSetting ${key} failed:`, e);
+            }
+        };
+    });
 }
 
 // ── Global Toast Notifications ────────────────────────────────────────────
@@ -215,8 +274,8 @@ async function init() {
 
     // Auto-enter Game Mode if setting is enabled
     try {
-        const gmData = await fetchJSON('/api/settings/start-in-game-mode');
-        if (gmData.start_in_game_mode && state.games.length > 0) {
+        const s = await loadSettings();
+        if (s.start_in_game_mode && state.games.length > 0) {
             setTimeout(() => enterGamingMode(), 800);
         }
     } catch (e) { console.warn('Game mode setting check failed:', e); }
@@ -2269,7 +2328,7 @@ function bindEvents() {
     $('addBiosDir').addEventListener('click', addBiosDir);
     $('btnRescan').addEventListener('click', rescanLibrary);
     $('btnConnectSteam').addEventListener('click', connectSteam);
-    // toggleShowUninstalled is now wired in renderAccountsTab as a toggle switch
+    // Settings toggles are wired generically via bindSettingToggles() (data-setting attrs)
 
     // Browse buttons — native folder dialogs via pywebview bridge
     $('browseRomDir').addEventListener('click', () => browseFolder('romDirInput'));
@@ -3193,15 +3252,6 @@ function validateDirInput(inputId) {
     }, 300);
 }
 
-async function toggleShowUninstalled() {
-    const toggle = $('toggleShowUninstalled');
-    try {
-        const d = await fetchJSON('/api/settings/show-uninstalled', { method: 'POST' });
-        if (toggle) toggle.setAttribute('aria-checked', d.show_uninstalled ? 'true' : 'false');
-        setTimeout(async () => { await loadGames(); applyFilter(); }, 3000);
-    } catch (e) { console.warn('toggleShowUninstalled failed:', e); }
-}
-
 async function openSettings() {
     $('settingsOverlay').classList.remove('hidden');
     // Default to first tab
@@ -3501,73 +3551,9 @@ async function renderAccountsTab() {
         renderAccountsSummary(accounts);
     } catch (e) { console.warn('renderAccountsTab failed:', e); }
 
-    // ── Show/Hide Uninstalled toggle ──
-    const uToggle = $('toggleShowUninstalled');
-    if (uToggle) {
-        try {
-            const uData = await fetchJSON('/api/settings/show-uninstalled');
-            uToggle.setAttribute('aria-checked', uData.show_uninstalled ? 'true' : 'false');
-        } catch {
-            uToggle.setAttribute('aria-checked', 'true');
-        }
-        uToggle.onclick = toggleShowUninstalled;
-    }
-
-    // ── Direct Launch toggle ──
-    const dlToggle = $('toggleDirectLaunch');
-    if (dlToggle) {
-        try {
-            const dlData = await fetchJSON('/api/settings/direct-launch');
-            dlToggle.setAttribute('aria-checked', dlData.direct_launch ? 'true' : 'false');
-        } catch {
-            dlToggle.setAttribute('aria-checked', 'true');
-        }
-        dlToggle.onclick = async () => {
-            try {
-                const d = await fetchJSON('/api/settings/direct-launch', { method: 'POST' });
-                dlToggle.setAttribute('aria-checked', d.direct_launch ? 'true' : 'false');
-            } catch (e) { console.warn('toggleDirectLaunch failed:', e); }
-        };
-    }
-
-    // ── Start in Game Mode toggle ──
-    const gmToggle = $('toggleStartGameMode');
-    if (gmToggle) {
-        try {
-            const gmData = await fetchJSON('/api/settings/start-in-game-mode');
-            gmToggle.setAttribute('aria-checked', gmData.start_in_game_mode ? 'true' : 'false');
-        } catch {
-            gmToggle.setAttribute('aria-checked', 'false');
-        }
-        gmToggle.onclick = async () => {
-            try {
-                const d = await fetchJSON('/api/settings/start-in-game-mode', { method: 'POST' });
-                gmToggle.setAttribute('aria-checked', d.start_in_game_mode ? 'true' : 'false');
-            } catch (e) { console.warn('toggleStartGameMode failed:', e); }
-        };
-    }
-
-    // ── Launch on Startup toggle ──
-    const startupToggle = $('toggleLaunchOnStartup');
-    if (startupToggle) {
-        try {
-            const startupData = await fetchJSON('/api/settings/launch-on-startup');
-            startupToggle.setAttribute('aria-checked', startupData.enabled ? 'true' : 'false');
-        } catch {
-            startupToggle.setAttribute('aria-checked', 'false');
-        }
-        startupToggle.onclick = async () => {
-            const current = startupToggle.getAttribute('aria-checked') === 'true';
-            try {
-                const d = await fetchJSON('/api/settings/launch-on-startup', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ enabled: !current }),
-                });
-                startupToggle.setAttribute('aria-checked', d.enabled ? 'true' : 'false');
-            } catch (e) { console.warn('toggleLaunchOnStartup failed:', e); }
-        };
-    }
+    // ── Settings toggles (unified schema-driven API) ──
+    await loadSettings();
+    bindSettingToggles();
 
     // ── Detected Stores ──
     const storeNames = {
@@ -3747,22 +3733,14 @@ async function renderEmulationTab() {
         });
     });
 
-    // RetroArch path
-    try {
-        const raData = await fetchJSON('/api/settings/retroarch-path');
-        if (raData.retroarch_path) $('retroarchPathInput').value = raData.retroarch_path;
-    } catch (e) { console.warn('retroarch-path load failed:', e); }
-
-    // LaunchBox path
-    let lbPath = '';
-    try {
-        const lbData = await fetchJSON('/api/settings/launchbox-path');
-        lbPath = lbData.launchbox_path || '';
-        $('launchboxPathInput').value = lbPath;
-        $('launchboxStatus').textContent = lbPath
-            ? 'Artwork will be loaded directly from LaunchBox — no files copied.'
-            : '';
-    } catch (e) { console.warn('launchbox-path load failed:', e); }
+    // RetroArch + LaunchBox paths (from unified settings)
+    const s = await loadSettings();
+    if (s.retroarch_path) $('retroarchPathInput').value = s.retroarch_path;
+    const lbPath = s.launchbox_path || '';
+    $('launchboxPathInput').value = lbPath;
+    $('launchboxStatus').textContent = lbPath
+        ? 'Artwork will be loaded directly from LaunchBox — no files copied.'
+        : '';
 
     renderEmulationSummary(_biosStatus, lbPath);
 
@@ -3777,22 +3755,20 @@ async function saveLaunchboxPath() {
     btn.textContent = 'Saving...';
     btn.disabled = true;
     try {
-        const d = await fetchJSON('/api/settings/launchbox-path', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path }),
-        });
-        if (d.error) {
-            $('launchboxStatus').textContent = d.error;
+        const d = await patchSetting('launchbox_path', path);
+        const err = d.errors && d.errors.launchbox_path;
+        if (err) {
+            $('launchboxStatus').textContent = err;
             $('launchboxStatus').style.color = 'var(--danger)';
-            showToast(d.error, 'error');
+            showToast(err, 'error');
         } else {
+            const matched = d.meta && d.meta.launchbox_path ? d.meta.launchbox_path.matched_count : null;
             const msg = path
-                ? `Saved. ${d.matched_count != null ? d.matched_count + ' games matched.' : 'Artwork will load from LaunchBox.'}`
+                ? `Saved. ${matched != null ? matched + ' games matched.' : 'Artwork will load from LaunchBox.'}`
                 : 'Cleared.';
             $('launchboxStatus').textContent = msg;
             $('launchboxStatus').style.color = 'var(--accent)';
-            showToast(path ? `LaunchBox linked \u2014 <strong>${d.matched_count ?? '?'}</strong> games indexed` : 'LaunchBox path cleared', 'success');
+            showToast(path ? `LaunchBox linked \u2014 <strong>${matched ?? '?'}</strong> games indexed` : 'LaunchBox path cleared', 'success');
         }
     } catch (e) {
         console.warn('saveLaunchboxPath failed:', e);
@@ -3811,15 +3787,12 @@ async function saveRetroarchPath() {
     btn.textContent = 'Saving...';
     btn.disabled = true;
     try {
-        const d = await fetchJSON('/api/settings/retroarch-path', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path }),
-        });
-        if (d.error) {
-            $('retroarchStatus').textContent = d.error;
+        const d = await patchSetting('retroarch_path', path);
+        const err = d.errors && d.errors.retroarch_path;
+        if (err) {
+            $('retroarchStatus').textContent = err;
             $('retroarchStatus').style.color = 'var(--danger)';
-            showToast(d.error, 'error');
+            showToast(err, 'error');
         } else {
             const msg = path ? 'RetroArch path saved.' : 'Cleared.';
             $('retroarchStatus').textContent = msg;
@@ -4855,11 +4828,11 @@ function updateGpTester() {
 
 /** Load user's custom gamepad mapping from backend. */
 function loadGpMapping() {
-    fetch('/api/settings/gamepad-mapping')
-        .then(r => r.json())
+    fetchJSON('/api/settings')
         .then(data => {
-            if (data.mapping) {
-                Object.assign(gpMap, data.mapping);
+            const mapping = data.values && data.values.gamepad_mapping;
+            if (mapping && Object.keys(mapping).length) {
+                Object.assign(gpMap, mapping);
             }
             refreshGpRemapUI();
         })
@@ -4868,11 +4841,7 @@ function loadGpMapping() {
 
 /** Save current gamepad mapping to backend. */
 function saveGpMapping() {
-    fetch('/api/settings/gamepad-mapping', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mapping: gpMap }),
-    }).catch(() => {});
+    patchSetting('gamepad_mapping', gpMap).catch(() => {});
 }
 
 /** Update the remap button labels to reflect current mapping. */
