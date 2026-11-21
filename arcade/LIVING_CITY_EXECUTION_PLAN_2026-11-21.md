@@ -1,7 +1,17 @@
 # NEON DISTRICT — Living City Execution Plan v0.1
 Date: 2026-11-21
-Status: PLANNING COMPLETE; EXPERIMENTAL IMPLEMENTATION NOT YET STARTED
+Status: PLANNING REVISED FROM DIRECT PLAYER FEEDBACK; EXPERIMENTAL IMPLEMENTATION NOT YET STARTED
 Owner intent: an enjoyable mobile game whose small world eventually shows observable, persistent, evidence-backed adaptation; use YancoSI / Yaman Society research for experimental discipline, not as a claim that we have built intelligence.
+
+## Owner correction — 2026-11-21 (supersedes previous control redesign assumptions)
+
+**Observed player feedback, not a simulated finding:**
+- Manual V2 **controls are already acceptable mechanically**. Problem is primarily **button placement and the inability to instantly recognize GAS vs BRAKE**, not steering physics.
+- **BOOST** exists but its purpose, usage and timing are undiscoverable.
+- Police repeatedly collide with/attack the player; there is no intelligible way for the player to escape. This is a game-balance and feedback-design issue, not simply a touch-control issue.
+- The owner wants to **defer** these improvements until the Living City project has moved ahead. No immediate game modification was requested.
+
+**Decisions:** Do not launch an A/B/C steering overhaul. Preserve existing V2 mechanics for now. Next build priority is a separate Living Intersection prototype (W01). Later create a controls UI/UX-only pass and, separately, police pursuit readability/balance. Do not silently change the live game.
 
 ## القرار بالعربي
 اللعبة أولاً: قيادة ممتعة قبل أي ذكاء تجريبي. بعدين نعمل حارة صغيرة فيها شخصيات بتتفاعل مع الظروف وبتراجع توقعاتها. ما مننقل أي تعديل للنسخة العامة إلا بعد اختبار فعلي على الهاتف وموافقة اللاعب. ما منخلط بين قصة مكتوبة سلفاً وبين تعلّم حقيقي قابل للقياس.
@@ -64,33 +74,25 @@ Design rules:
 - Do not introduce a second central knowledge database. Each NPC owns a bounded memory and a transparent state; a game-level save file is not shared omniscience.
 - No external model needed initially. Small tabular predictive models are more testable and much cheaper than an LLM for this first question.
 
-## 3. Milestone M0: Play-feel laboratory (first implementation)
+## 3. Deferred milestone D01: Mobile control interface clarity (NOT physics redesign)
 
-**Build**: `arcade/lab/drive-feel.html` — a separate 30–60-second course with two bends, a left and right turn, and a recovery section. No police, missions, damage, NPC experiments, or procedural distractions.
+**After W01 is playable**, create a separate UI-only test page (or an isolated branch) showing a few button layouts with identical existing V2 driving physics.
 
-Test **one axis at a time**. Lock road, zoom, camera, acceleration, collision and target speed across the input comparison.
+Known symptoms: the driver cannot tell GAS from BRAKE at a glance, does not know how to use BOOST, and must visually hunt for a button while driving.
 
-Modes:
-- A — unchanged V2 thumbstick + held GAS/BRAKE (reference).
-- B — large LEFT / RIGHT touch zones + GAS/BRAKE (no auto cruise; steering response smoothed).
-- C — analog drag-to-steer / thumb wheel + GAS/BRAKE (no auto-turn at intersections).
+Proposed layout hypotheses to validate, not fixed decisions:
+- Make accelerator the largest, most reachable action for the right thumb, low on the right.
+- Make BRAKE adjacent but visually/tactually distinct in shape, icon, size or position (not color alone); avoid accidental simultaneous pressing.
+- Place BOOST as a smaller, clearly secondary action above/away from the main throttle/brake path. Include an obvious ready/charging state and concise label.
+- Add a 10-second skippable in-game explanation + a re-openable help control; give instant feedback when any input is held.
+- Test both portrait and landscape, real iPhone reach, thumb occlusion, one-handed and two-thumb usage.
+- Compare actual comprehension, mis-presses and comfort; do not auto-drive, queue turns, or change acceleration / camera / collision behavior in this task.
 
-Follow-up physics experiments are independent from A/B/C:
-- softer low-speed steering, speed-limited steering sensitivity, stable camera damping, gentler curb bounce, predictable reverse.
-- **Never** silently enable auto-driving or automatically execute a queued intersection turn.
+**D01 GO:** On the actual phone, GAS/BRAKE/BOOST are immediately recognizable and reachable, and player preference is not worse than V2. Do not promote any UI candidate without player acceptance.
 
-Local test record (download/export only, with a visible player opt-in):
-- mode, trial seed, completion time, turn misses, collisions, stuck duration, reset count, device viewport, one-tap comfortable/frustrating verdict.
-- No network telemetry and no location collection.
+### Deferred police balancing (distinct task)
 
-Acceptance gate M0:
-1. Same reproducible course, all controls render and respond on real Safari/iPhone (not only desktop emulation).
-2. Player prefers a candidate to V2, or explicitly asks to keep V2. A numerical speed improvement alone **never** overrides player rejection.
-3. Restart and mode switch available within one tap. Manual throttle/brake always possible.
-4. No unhandled errors; tested portrait and landscape.
-5. Only after these gates, promote the selected control into production.
-
-**Decision owner**: the player, not a synthetic benchmark.
+Player reports being continuously hit by police with no understanding of the escape mechanic. Later test a visible wanted trigger, an intelligible lose-the-cops goal and map feedback, chase cooldown/disengagement, lower early punishment and optional difficulty assistance. Keep it separate from input layout changes. No implementation in this planning update.
 
 ## 4. Milestone M1: One living intersection (independent prototype)
 
@@ -173,10 +175,10 @@ Only after M1/M2:
 | ID | Priority | Deliverable | Status |
 |---|---|---|---|
 | D00 | P0 | Preserve playable V2 and rejected V3, keep production URL stable | DONE |
-| D01 | P0 | Implement isolated drive-feel course with baseline A and two experimental modes | TODO |
-| D02 | P0 | Measure controls in local-only replay, show one-tap preference and mode switching | TODO |
-| D03 | P0 | Real iPhone/Safari acceptance; promote only player-approved controls | BLOCKED ON REAL TEST |
-| W01 | P1 | Build deterministic single-intersection simulation with seeded replay | TODO |
+| D01 | P2 | UI-only button layout clarity: GAS/BRAKE/BOOST recognition, reach, help; no steering overhaul | DEFERRED — owner requested later |
+| D02 | P2 | Real phone comfort/comprehension test of button placement, accidental taps and boost discoverability | DEFERRED |
+| D03 | P2 | Promote button layout only after player approval, leaving driving physics unchanged | DEFERRED |
+| W01 | P0 | Build deterministic single-intersection simulation with seeded replay, separate lab URL | NEXT |
 | W02 | P1 | Add scripted courier and second resident with visible routines | TODO |
 | W03 | P1 | Implement agent interface + bounded resident memory + predictions + revision | TODO |
 | W04 | P1 | Make City Journal evidence-backed; no made-up reasoning | TODO |
@@ -184,6 +186,7 @@ Only after M1/M2:
 | E02 | P1 | Pre-register pass/fail and examine reversal/counterexample traces | TODO |
 | P01 | P2 | Real phone performance and local save/load/error recovery | TODO |
 | S01 | P3 | Expand to 4 agents only after validated enjoyable M1/M2 | DEFERRED |
+| G01 | P2 | Police escape clarity, fair pursuit intensity, disengagement feedback and recovery | DEFERRED — after living block |
 
 ## 9. Release discipline
 
@@ -197,9 +200,9 @@ Only after M1/M2:
 
 ## 10. Immediate next build (not yet implemented)
 
-Deliver **D01** only: a standalone mobile control playground with three modes, simple geometric track, repeat/reset, local observations and optional votes; publish a separate direct link for the player's real-device comparison.
+Deliver **W01** next: independent `arcade/lab/living-block.html` with a deterministic, seeded junction, two visible NPC routines, player interventions, repeatable outcomes and local debugging, with a simple clear input interface. First version can be scripted; no claim of real learning until evidence tests. Link via direct public HTTPS after implementation.
 
-Do **not** start NPC learning, change physics in the public game, or expand the city before D01 is accepted. This avoids repeating the V3 mistake.
+**Do not** modify the public V2 driving physics, replace controls, add forced auto cruise or rebalance police during W01. These are accepted player feedback items recorded for later, not prerequisites for experimenting with the Living City. A poor input layout should not block investigating a separate living-block simulation.
 
 ## Basis and limitations
 
