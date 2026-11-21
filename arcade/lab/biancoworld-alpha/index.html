@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0e2030">
+<title>BiancoWorld — Living Streets Alpha</title>
+<style>
+:root{--sea:#79d7e1;--gold:#ffd9a4;--ink:#091927;--white:#f6fcff}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--ink);color:var(--white);font:500 14px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;touch-action:none;-webkit-user-select:none;user-select:none;overscroll-behavior:none}
+#scene{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+#shade{position:fixed;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;padding:18px;background:linear-gradient(165deg,#071221df,#09222bcf);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.panel{border:1px solid #9de8e248;background:linear-gradient(145deg,#17354af5,#0c1c30f7);box-shadow:0 20px 90px #0009;border-radius:25px;text-align:center;padding:24px 20px 20px;width:min(440px,100%);max-height:calc(100dvh - 30px);overflow-y:auto;overscroll-behavior:contain}
+.emblem{display:flex;align-items:center;justify-content:center;gap:9px;letter-spacing:.25em;text-transform:uppercase;color:#b5ebeb;font-size:11px;font-weight:900}
+.emblem span{display:grid;place-items:center;width:35px;height:35px;border-radius:12px;background:#73dfd329;color:#b5fff3;border:1px solid #85e8e270;font-size:20px;letter-spacing:0}
+h1{font-size:clamp(34px,8vw,53px);line-height:1.02;margin:13px 0 3px;letter-spacing:-.06em;font-weight:900}h1 b{color:#85e5e2}
+.kicker{font-size:10px;text-transform:uppercase;letter-spacing:.26em;color:#eac59f;font-weight:900;margin:10px 0 14px}
+.desc{font-size:13px;line-height:1.5;color:#c5d9e2;max-width:330px;margin:0 auto 17px}
+.instructions{display:grid;grid-template-columns:1fr 1fr;gap:8px;text-align:left;margin:16px 0}
+.tip{display:flex;align-items:center;gap:9px;border-radius:12px;background:#ffffff0b;border:1px solid #c7faff24;padding:8px 9px;min-height:54px;font-size:11px;color:#d3e3e9}
+.tip strong{display:block;font-size:11px;color:#fff}
+.tip i{font-size:23px;font-style:normal;min-width:26px;text-align:center}
+.primary{font:900 15px system-ui;letter-spacing:.08em;background:linear-gradient(90deg,#93eac9,#77d9f3);border:0;border-radius:14px;width:100%;padding:15px 10px;color:#092936;box-shadow:0 8px 28px #71c9d641;cursor:pointer}
+.fine{color:#7f9eae;font-size:10px;margin:12px 0 0}
+#hud{position:fixed;z-index:4;top:max(12px,env(safe-area-inset-top));left:max(10px,env(safe-area-inset-left));right:max(10px,env(safe-area-inset-right));display:flex;gap:8px;justify-content:space-between;align-items:flex-start;pointer-events:none}
+.pill{border:1px solid #a6eaeb48;background:#0a2130d8;box-shadow:0 5px 20px #0005;backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px);border-radius:13px;padding:9px 11px}
+.heading{font-size:10px;letter-spacing:.15em;color:#b7f0e9;font-weight:900;white-space:nowrap}
+#task{font-size:12px;font-weight:800;max-width:220px;line-height:1.28;margin-top:4px;color:#fff3e4}
+.hudright{display:flex;flex-direction:column;align-items:end;gap:5px;text-align:right}.big{font-size:18px;font-weight:900;font-variant-numeric:tabular-nums}.sub{font-size:10px;letter-spacing:.05em;color:#a8d1da}
+#nitro{display:flex;align-items:center;gap:6px;font-size:10px;color:#f3d6ab;font-weight:800}.progress{width:56px;height:6px;background:#284559;border-radius:10px;overflow:hidden}#fill{height:100%;width:100%;background:linear-gradient(90deg,#e4b17e,#fce5af)}
+#guide{position:fixed;z-index:4;top:110px;left:50%;transform:translateX(-50%);max-width:80vw;min-width:160px;border:1px solid #d6e6b848;background:#122733c9;border-radius:12px;padding:8px 13px;font-size:12px;text-align:center;color:#f7e1b2;pointer-events:none}
+#controls{position:fixed;z-index:5;inset:0;pointer-events:none}
+#padArea{position:absolute;pointer-events:auto;left:max(17px,env(safe-area-inset-left));bottom:calc(max(17px,env(safe-area-inset-bottom)) + 11px);width:clamp(140px,40vw,182px);height:clamp(140px,40vw,182px);border-radius:50%;touch-action:none;border:2px solid #a7dce57c;background:radial-gradient(circle,#174052df 0,#103147cc 50%,#08202fdf 100%);box-shadow:inset 0 0 34px #46c5bb24,0 6px 26px #000a;overflow:visible}
+#padArea:before{content:"";position:absolute;inset:11px;border:1px dashed #9adeca5c;border-radius:50%}
+.axis{position:absolute;font-size:9px;letter-spacing:.08em;font-weight:900;pointer-events:none;text-shadow:0 2px 4px #000}.axis.top{top:9px;left:50%;transform:translateX(-50%);color:#fff1ae}.axis.bottom{bottom:8px;left:50%;transform:translateX(-50%);color:#ffc9be}.axis.left{left:10px;top:48%;color:#a3d9ec}.axis.right{right:10px;top:48%;color:#a3d9ec}
+#knob{position:absolute;top:50%;left:50%;width:44%;height:44%;border-radius:50%;transform:translate(-50%,-50%);background:linear-gradient(145deg,#afecea,#498fa8);border:2px solid #d4fffb;box-shadow:0 5px 20px #0008,0 0 19px #91fce75b;pointer-events:none;display:grid;place-items:center}
+#knob:after{content:"↕";font-size:25px;color:#103744;font-weight:800}
+#padArea.active #knob{background:linear-gradient(145deg,#cbfff3,#60d1dc)}
+#padArea.boost #knob{box-shadow:0 0 0 5px #fce6a36e,0 0 24px #fff0bd}
+.rightcontrols{position:absolute;right:max(17px,env(safe-area-inset-right));bottom:calc(max(23px,env(safe-area-inset-bottom)) + 8px);display:flex;flex-direction:column;align-items:center;gap:12px;pointer-events:none}
+.action{pointer-events:auto;touch-action:none;border:1px solid #b7dfe07a;min-width:94px;height:56px;border-radius:17px;background:linear-gradient(145deg,#2d5861,#21404c);color:#e1ffff;font-weight:900;font-size:12px;letter-spacing:.03em;box-shadow:0 5px 18px #0007;-webkit-tap-highlight-color:transparent}
+.action em{font-style:normal;font-size:20px;margin-right:3px;vertical-align:middle}.action:active,.action.held{background:#a3eed8;color:#16373b}
+#reverse{background:linear-gradient(145deg,#3b4b61,#222f46);height:58px}#reverse.held{background:#eac7a4;color:#28343b}
+#reverse:disabled{opacity:.4}
+#footHint{position:absolute;right:max(12px,env(safe-area-inset-right));bottom:180px;font-size:11px;color:#deebee;text-shadow:0 1px 4px #000;max-width:125px;line-height:1.25;text-align:right}
+#toast{position:fixed;top:31%;left:50%;transform:translate(-50%,-15px);opacity:0;transition:opacity .15s,transform .15s;z-index:7;max-width:85vw;min-width:180px;text-align:center;background:#17394bef;border:1px solid #d9f2e0a0;border-radius:14px;padding:12px 17px;font-size:13px;font-weight:800;pointer-events:none;box-shadow:0 10px 26px #0007}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+#legend{position:fixed;bottom:max(12px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);font-size:10px;color:#b9cdd0;letter-spacing:.08em;text-shadow:0 2px 8px #0007;pointer-events:none;z-index:3;white-space:nowrap}
+#again{position:fixed;top:calc(max(12px,env(safe-area-inset-top)) + 76px);right:max(10px,env(safe-area-inset-right));z-index:5;border:1px solid #c6e9ee58;background:#153146d8;color:#dcf6f7;padding:7px 10px;border-radius:9px;font-size:10px;font-weight:900}
+.hidden{display:none!important}
+@media(max-width:360px){#task{font-size:10px;max-width:175px}#padArea{width:139px;height:139px}.action{min-width:78px;height:52px}.pill{padding:8px}.big{font-size:14px}}
+@media(max-height:510px){#padArea{width:125px;height:125px;bottom:10px}.rightcontrols{bottom:9px;gap:7px}.action{height:44px;min-width:100px}.panel{padding:12px}.instructions{margin:8px 0}.tip{min-height:40px}.kicker{margin:3px 0}#guide{top:60px}#again{top:53px}#legend{display:none}#footHint{bottom:125px}}
+</style>
+</head>
+<body>
+<canvas id="scene" aria-label="BiancoWorld living streets game world"></canvas>
+<div id="hud" class="hidden"><div class="pill"><div class="heading">◈ BIANCO WORLD <span style="color:#f3ccad">· ALPHA 01</span></div><div id="task">Follow the glowing waypoint</div></div><div class="hudright"><div class="pill"><div class="big"><span id="speed">0</span> <small style="font-size:10px">KM/H</small></div><div class="sub" id="mode">DRIVING · $0</div><div id="nitro"><span>BOOST</span><div class="progress"><div id="fill"></div></div><span id="boostpct">100%</span></div></div></div></div>
+<div id="guide" class="hidden">↑ SPEED · TOP = BOOST · ↓ BRAKE</div>
+<button id="again" class="hidden">↻ RESTART</button>
+<div id="controls" class="hidden"><div id="padArea" aria-label="Analog joystick: up to accelerate, down to brake, left right to steer" role="application"><span class="axis top">BOOST ↑</span><span class="axis bottom">BRAKE ↓</span><span class="axis left">◀</span><span class="axis right">▶</span><div id="knob"></div></div>
+<div id="footHint">One stick to drive,<br>steer and brake</div>
+<div class="rightcontrols"><button class="action" id="interact"><em>↗</em><span id="actLabel">EXIT CAR</span></button><button class="action" id="reverse"><em>R</em> REVERSE</button></div></div>
+<div id="toast"></div><div id="legend" class="hidden">LIVING CITY LAB · NO POLICE IN THIS PROTOTYPE</div>
+<div id="shade"><div class="panel"><div class="emblem"><span>◈</span> a world for Bianco</div><h1>BIANCO<b>WORLD</b></h1><div class="kicker">Living Streets · Control Prototype 01</div><p class="desc">A more beautiful little city to explore, built around your one-thumb driving idea. No police. No confusing GAS/BRAKE/BOOST buttons.</p>
+<div class="instructions"><div class="tip"><i>↑</i><div><strong>Push UP to drive</strong>Higher = faster. Top = Boost.</div></div><div class="tip"><i>↓</i><div><strong>Pull DOWN to brake</strong>Bottom = full stop.</div></div><div class="tip"><i>↔</i><div><strong>Move LEFT / RIGHT</strong>Steer while accelerating.</div></div><div class="tip"><i>↗</i><div><strong>Exit / walk</strong>Same stick moves your character.</div></div></div>
+<button class="primary" id="start">EXPLORE THE CITY →</button><p class="fine">Original prototype · no account · no external AI · Bianco's real habits will never be invented</p></div></div>
+<script>
+(()=>{'use strict';
+const $=id=>document.getElementById(id), canvas=$('scene'),ctx=canvas.getContext('2d',{alpha:false});
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),lerp=(a,b,t)=>a+(b-a)*t,TAU=Math.PI*2;
+const WORLD=2960, STREET=[300,760,1220,1680,2140,2600], R=72;
+const state={started:false,foot:false,x:760,y:760,a:0,v:0,carX:760,carY:760,carA:0,nitro:100,cash:0,stage:0,reverse:false,clock:0,blockedAt:-10,last:performance.now(),guideUntil:0,toastUntil:0,toastText:'',camX:760,camY:760,viewW:390,viewH:844,dpr:1,zoom:.82};
+const stick={x:0,y:0,pointer:null,held:false};
+const lots=[],parks=[],lamps=[],citizens=[],traffic=[];
+let randomSeed=93001;function rand(){randomSeed=(randomSeed*1664525+1013904223)>>>0;return randomSeed/4294967296}
+const rooftops=['#546f79','#627c88','#687983','#657486','#617e79','#777485','#6b847f'];
+for(let i=0;i<STREET.length-1;i++)for(let j=0;j<STREET.length-1;j++){
+ const x=STREET[i]+R+17,y=STREET[j]+R+17,w=STREET[i+1]-STREET[i]-2*(R+17),h=STREET[j+1]-STREET[j]-2*(R+17);
+ if((i===1&&j===1)||(i===3&&j===2)){parks.push({x,y,w,h});continue}
+ lots.push({x,y,w,h,col:rooftops[(i*3+j*2)%rooftops.length],r:rand(),name:(i+j)%3});
+}
+for(const cx of STREET)for(const cy of STREET)for(let k=0;k<4;k++){const x=cx+(k%2?92:-92),y=cy+(k>1?92:-92);lamps.push({x,y});}
+for(let i=0;i<18;i++){const vertical=i%2===0, road=STREET[Math.floor(rand()*STREET.length)], dir=i%4<2?1:-1;
+ traffic.push({vertical,dir,road,pos:80+rand()*2800,lane:dir>0?24:-24,speed:45+rand()*40,color:['#f2bd91','#79b4c8','#bdc7db','#b4c98d'][i%4]});}
+const people=[{name:'Mira',x:1220,y:760,route:[[1220,760],[1220,1190],[1680,1190],[1680,760]],i:0,color:'#f0b899'},
+{name:'Nour',x:1680,y:1680,route:[[1680,1680],[2140,1680],[2140,2140],[1680,2140]],i:0,color:'#bad9bf'}];
+const tasks=[{x:1220,y:760,title:'Visit the Market Square',reward:80},{x:1680,y:1220,title:'Explore the riverside boulevard',reward:120},{x:760,y:2140,title:'Find the garden lights',reward:160}];
+function resize(){const w=innerWidth,h=innerHeight;state.viewW=w;state.viewH=h;state.dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(w*state.dpr);canvas.height=Math.round(h*state.dpr);state.zoom=clamp(Math.min(w/505,h/580),.75,1.2)}
+window.addEventListener('resize',resize,{passive:true});resize();
+function rect(x,y,w,h,c){ctx.fillStyle=c;ctx.fillRect(x,y,w,h)}
+function circle(x,y,r,c){ctx.beginPath();ctx.arc(x,y,r,0,TAU);ctx.fillStyle=c;ctx.fill()}
+function text(s,x,y,font,color,align='center'){ctx.font=font;ctx.fillStyle=color;ctx.textAlign=align;ctx.fillText(s,x,y)}
+function visible(x,y,r=280){return Math.abs(x-state.camX)<state.viewW/(2*state.zoom)+r&&Math.abs(y-state.camY)<state.viewH/(2*state.zoom)+r}
+function build(x,y,w,h,col,variant){
+ rect(x+13,y+19,w,h,'#0a223680');rect(x+2,y+9,w,h,'#344754');rect(x,y,w,h,col);
+ rect(x+10,y+12,w-20,h-24,'#ffffff0a');rect(x+21,y+24,w-42,9,'#1b405070');
+ if(variant>.45){rect(x+33,y+52,w*.42,64,'#405b68');rect(x+36,y+56,w*.42-6,9,'#94c5ca77')}
+ for(let i=0;i<3;i++){const wx=x+26+i*70;if(wx+25>x+w-10)continue;rect(wx,y+h-42,29,20,'#e7ca9e65');rect(wx+5,y+h-37,19,11,'#1c4b5a')}
+ rect(x+10,y+h-13,w-20,5,'#2b4754')
+}
+function ground(){rect(0,0,WORLD,WORLD,'#244b50');
+ for(const [i,cx]of STREET.entries()){
+  rect(cx-R-11,0,2*R+22,WORLD,'#698380');rect(0,cx-R-11,WORLD,2*R+22,'#698380');
+  rect(cx-R,0,R*2,WORLD,'#334b59');rect(0,cx-R,WORLD,R*2,'#334b59');
+ }
+ ctx.strokeStyle='#f7e6c356';ctx.lineWidth=3;ctx.setLineDash([26,35]);ctx.beginPath();for(const v of STREET){ctx.moveTo(v,0);ctx.lineTo(v,WORLD);ctx.moveTo(0,v);ctx.lineTo(WORLD,v)}ctx.stroke();ctx.setLineDash([]);
+ for(const cx of STREET)for(const cy of STREET){
+  for(let k=-2;k<=2;k++){rect(cx-110+k*23,cy-95,12,8,'#e7f0dc77');rect(cx-110+k*23,cy+86,12,8,'#e7f0dc77');rect(cx-94,cy-111+k*23,8,12,'#e7f0dc77');rect(cx+86,cy-111+k*23,8,12,'#e7f0dc77')}
+ }
+ // A canal with light edges brings depth to the district.
+ rect(2810,0,145,WORLD,'#1b5565');rect(2810,0,12,WORLD,'#d7cdaa77');
+ for(let y=42;y<WORLD;y+=85){ctx.strokeStyle='#80dce744';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(2840,y);ctx.quadraticCurveTo(2880,y-10,2925,y+2);ctx.stroke()}
+ for(const p of parks){rect(p.x,p.y,p.w,p.h,'#2c6555');rect(p.x+25,p.y+25,p.w-50,p.h-50,'#3c8065');rect(p.x+20,p.y+p.h*.47,p.w-40,16,'#d3c9a27c');rect(p.x+p.w*.46,p.y+20,15,p.h-40,'#d3c9a27c');for(let n=0;n<9;n++){const a=n*2.5;const xx=p.x+36+(n%3)*(p.w-70)/2,yy=p.y+38+Math.floor(n/3)*(p.h-75)/2;circle(xx+7,yy+12,19,'#102e37a0');circle(xx,yy,18,'#3b9d76');circle(xx-4,yy-7,11,'#85b887')}}
+ for(const l of lots){if(visible(l.x+l.w/2,l.y+l.h/2,320))build(l.x,l.y,l.w,l.h,l.col,l.r)}
+ // Street trees and lanterns.
+ for(const z of lamps)if(visible(z.x,z.y,50)){circle(z.x+4,z.y+6,15,'#0a25306b');circle(z.x,z.y,12,'#3f9a7b');circle(z.x-3,z.y-3,7,'#8abb8f');circle(z.x+15,z.y-15,3,'#ffddab');}
+ text('BIANCO PARK',1050,1160,'bold 21px system-ui','#d6efdcaa');text('OLD QUARTER',1850,165,'bold 22px system-ui','#d6efdcaa');
+ }
+function drawCar(x,y,a,color,police=false){ctx.save();ctx.translate(x,y);ctx.rotate(a);rect(-33,-17,70,39,'#0b26399c');rect(-32,-17,65,34,color);rect(-11,-14,27,28,'#153c51');rect(-7,-12,18,24,'#4a7b8a');rect(28,-12,5,8,'#ffe3a3');rect(28,4,5,8,'#ffe3a3');rect(-32,-13,4,8,'#f59f9c');rect(-32,5,4,8,'#f59f9c');rect(-17,-19,11,5,'#182b38');rect(12,-19,11,5,'#182b38');rect(-17,14,11,5,'#182b38');rect(12,14,11,5,'#182b38');ctx.restore()}
+function drawPerson(p){circle(p.x+4,p.y+7,13,'#0927368b');circle(p.x,p.y,10,p.color);circle(p.x-2,p.y-5,6,'#ecc8a7');circle(p.x+2,p.y-4,2,'#fef0d8');text(p.name,p.x,p.y-18,'bold 11px system-ui','#e6f9ef')}
+function render(){const {viewW:w,viewH:h,dpr,zoom}=state;ctx.setTransform(dpr,0,0,dpr,0,0);rect(0,0,w,h,'#14313f');ctx.save();ctx.translate(w/2,h/2);ctx.scale(zoom,zoom);ctx.translate(-state.camX,-state.camY);ground();
+ for(const c of traffic){const x=c.vertical?c.road+c.lane:c.pos,y=c.vertical?c.pos:c.road+c.lane;if(visible(x,y))drawCar(x,y,c.vertical?(c.dir>0?Math.PI/2:-Math.PI/2):(c.dir>0?0:Math.PI),c.color)}
+ for(const p of people)if(visible(p.x,p.y))drawPerson(p);
+ const t=tasks[state.stage];if(t){const pulse=1+.18*Math.sin(state.clock*4);circle(t.x,t.y,38*pulse,'#ffe9a43c');circle(t.x,t.y,16,'#ffe0a7');circle(t.x,t.y,7,'#fff');text('✦',t.x,t.y-42,'26px system-ui','#fff0be')}
+ drawCar(state.carX,state.carY,state.carA,'#97e5dc');if(state.foot){drawPerson({name:'YOU',x:state.x,y:state.y,color:'#f8d0a1'});}else{circle(state.x,state.y,40,'#7be4cf22')}
+ ctx.restore();if(t){const a=Math.atan2(t.y-state.y,t.x-state.x);const arrowX=w/2+Math.cos(a)*Math.min(90,w*.22),arrowY=h/2+Math.sin(a)*Math.min(65,h*.13);ctx.save();ctx.translate(arrowX,arrowY);ctx.rotate(a);ctx.beginPath();ctx.moveTo(15,0);ctx.lineTo(-9,-9);ctx.lineTo(-9,9);ctx.closePath();ctx.fillStyle='#ffe7aa';ctx.fill();ctx.restore()}}
+function blocked(x,y,r){if(x<30||y<30||x>WORLD-30||y>WORLD-30)return true;for(const b of lots){if(x+r>b.x&&x-r<b.x+b.w&&y+r>b.y&&y-r<b.y+b.h)return true}return false}
+function moveObject(o,nx,ny,r){let ox=o.x,oy=o.y;if(!blocked(nx,o.y,r))o.x=nx;if(!blocked(o.x,ny,r))o.y=ny;return Math.abs(o.x-ox)+Math.abs(o.y-oy)>0.0001}
+function moveToward(value,target,limit){return value<target?Math.min(value+limit,target):Math.max(value-limit,target)}
+function update(dt){state.clock+=dt;for(const c of traffic){c.pos+=c.dir*c.speed*dt;if(c.pos>WORLD+40)c.pos=-40;if(c.pos< -40)c.pos=WORLD+40}
+ for(const p of people){const next=p.route[p.i];const dx=next[0]-p.x,dy=next[1]-p.y,d=Math.hypot(dx,dy);if(d<7)p.i=(p.i+1)%p.route.length;else{p.x+=dx/d*40*dt;p.y+=dy/d*40*dt}}
+ if(state.foot){let dx=stick.x,dy=stick.y,m=Math.hypot(dx,dy),speed=155;if(m>1){dx/=m;dy/=m}moveObject(state,state.x+dx*speed*dt,state.y+dy*speed*dt,12);$('reverse').classList.add('hidden');$('actLabel').textContent=Math.hypot(state.x-state.carX,state.y-state.carY)<85?'ENTER CAR':'INTERACT';$('footHint').innerHTML='Move freely with<br>the same stick'}
+ else{
+  const up=clamp(-stick.y,0,1),down=clamp(stick.y,0,1),active=up>.1,boost=active&&up>=.88&&state.nitro>0&&!state.reverse;
+  let target=0,accel=160;
+  if(state.reverse){if((state.v<=0||Math.abs(state.v)<13)&&active){target=-clamp((up-.1)/.9,0,1)*92;accel=155}else{target=0;accel=340}}
+  else if(active){const frac=clamp((up-.1)/.9,0,1);target=boost?220+frac*48:8+frac*187;accel=boost?200:160;
+    if(boost)state.nitro=Math.max(0,state.nitro-20*dt)}
+  else{target=0;accel=down>.08?140+down*460:95}
+  if(!boost)state.nitro=Math.min(100,state.nitro+8*dt);
+  state.v=moveToward(state.v,target,accel*dt);
+  if(Math.abs(state.v)<.5)state.v=0;
+  const steering=stick.x;state.a+=steering*(state.v<0?-1:1)*(1.6+Math.min(Math.abs(state.v)/140,.5))*dt*Math.max(.18,Math.min(1,Math.abs(state.v)/38));
+  const moved=moveObject(state,state.x+Math.cos(state.a)*state.v*dt,state.y+Math.sin(state.a)*state.v*dt,26);
+  if(!moved&&Math.abs(state.v)>8){state.v=0;if(state.clock-state.blockedAt>3){state.blockedAt=state.clock;toast('Obstacle ahead — steer back onto the road')}}
+  state.carX=state.x;state.carY=state.y;state.carA=state.a;
+  $('reverse').classList.remove('hidden');$('actLabel').textContent='EXIT CAR';$('footHint').innerHTML='↑ SPEED · ↓ BRAKE<br>TOP = BOOST';
+  $('padArea').classList.toggle('boost',boost)
+ }
+ const task=tasks[state.stage];if(task&&Math.hypot(task.x-state.x,task.y-state.y)<80){state.cash+=task.reward;state.stage++;toast('✦ Destination reached · +$'+task.reward);if(!tasks[state.stage])toast('All routes done! Explore freely.')}
+ const target=state.foot?state:state;
+ state.camX=lerp(state.camX,target.x,Math.min(1,dt*5));state.camY=lerp(state.camY,target.y,Math.min(1,dt*5));
+ $('task').textContent=tasks[state.stage]?tasks[state.stage].title:'FREE ROAM · Discover the city';$('speed').textContent=state.foot?'WALK':Math.round(Math.abs(state.v)*.65);$('mode').textContent=(state.foot?'WALKING':'DRIVING')+' · $'+state.cash;$('fill').style.width=state.nitro+'%';$('boostpct').textContent=Math.round(state.nitro)+'%';
+ if(state.toastUntil&&performance.now()>state.toastUntil){$('toast').classList.remove('show');state.toastUntil=0}
+}
+function toast(message){$('toast').textContent=message;$('toast').classList.add('show');state.toastUntil=performance.now()+2200}
+function reset(){Object.assign(state,{foot:false,x:760,y:760,a:0,v:0,carX:760,carY:760,carA:0,nitro:100,cash:0,stage:0,reverse:false,clock:0,camX:760,camY:760});stick.x=0;stick.y=0;stick.held=false;stick.pointer=null;$('reverse').classList.remove('held');$('padArea').classList.remove('boost','active');$('knob').style.transform='translate(-50%,-50%)'}
+function interact(){if(!state.started)return;if(!state.foot){if(Math.abs(state.v)>20){toast('Slow down to exit');return}state.foot=true;state.x=clamp(state.x+37,28,WORLD-28);state.y=clamp(state.y+30,28,WORLD-28);$('reverse').classList.add('hidden');toast('Walking mode · joystick moves in every direction');return}
+ if(Math.hypot(state.x-state.carX,state.y-state.carY)<85){state.foot=false;state.x=state.carX;state.y=state.carY;state.a=state.carA;state.v=0;state.reverse=false;toast('Back in the car!')}else{let nearest=people.find(p=>Math.hypot(state.x-p.x,state.y-p.y)<88);if(nearest)toast(nearest.name+' has a daily route. Learning will come later.');else toast('Walk closer to a citizen or return to your car')}}
+function pointerUpdate(ev){const r=$('padArea').getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2,reach=r.width*.36;stick.x=clamp((ev.clientX-cx)/reach,-1,1);stick.y=clamp((ev.clientY-cy)/reach,-1,1);
+ $('knob').style.transform=`translate(calc(-50% + ${stick.x*r.width*.25}px), calc(-50% + ${stick.y*r.height*.25}px))`}
+const pad=$('padArea');pad.addEventListener('pointerdown',ev=>{ev.preventDefault();if(stick.pointer!==null)return;stick.held=true;stick.pointer=ev.pointerId;pad.classList.add('active');try{pad.setPointerCapture(ev.pointerId)}catch(_e){}pointerUpdate(ev)});pad.addEventListener('pointermove',ev=>{if(stick.pointer===ev.pointerId)pointerUpdate(ev)});
+function release(ev){if(stick.pointer!==ev.pointerId)return;stick.pointer=null;stick.held=false;stick.x=stick.y=0;pad.classList.remove('active','boost');$('knob').style.transform='translate(-50%,-50%)'}
+for(const n of ['pointerup','pointercancel','lostpointercapture'])pad.addEventListener(n,release);
+$('reverse').addEventListener('pointerdown',ev=>{ev.preventDefault();if(state.foot)return;state.reverse=true;const b=$('reverse');b.classList.add('held');try{b.setPointerCapture(ev.pointerId)}catch(_e){};if(Math.abs(state.v)>12)toast('Brake first, then hold Reverse and push UP')});
+for(const n of ['pointerup','pointercancel','lostpointercapture'])$('reverse').addEventListener(n,()=>{state.reverse=false;$('reverse').classList.remove('held')});
+$('interact').addEventListener('click',interact);$('again').addEventListener('click',()=>{reset();toast('Fresh start — no progress lost outside this demo')});
+$('start').addEventListener('click',()=>{state.started=true;state.last=performance.now();$('shade').classList.add('hidden');$('hud').classList.remove('hidden');$('guide').classList.remove('hidden');$('again').classList.remove('hidden');$('controls').classList.remove('hidden');$('legend').classList.remove('hidden');state.guideUntil=performance.now()+9500;toast('Try a diagonal UP+RIGHT motion for steering while accelerating')});
+const keys={};window.addEventListener('keydown',ev=>{const k=ev.key.toLowerCase();keys[k]=true;if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k))ev.preventDefault();if(k==='e'&&!ev.repeat)interact();if(k==='r')state.reverse=true});window.addEventListener('keyup',ev=>{const k=ev.key.toLowerCase();keys[k]=false;if(k==='r')state.reverse=false});window.addEventListener('blur',()=>{Object.keys(keys).forEach(k=>keys[k]=false);state.reverse=false;stick.x=stick.y=0});
+const previousUpdate=update;
+function keyboardInput(){if(stick.held)return;stick.x=(keys.d||keys.arrowright?1:0)-(keys.a||keys.arrowleft?1:0);stick.y=(keys.s||keys.arrowdown?1:0)-(keys.w||keys.arrowup?1:0)}
+function frame(now){const dt=clamp((now-state.last)/1000,0,.042);state.last=now;if(state.started){keyboardInput();previousUpdate(dt);if(state.guideUntil&&now>state.guideUntil){$('guide').classList.add('hidden');state.guideUntil=0}}render();requestAnimationFrame(frame)}
+reset();window.BIANCO_DEBUG={getState:()=>({x:state.x,y:state.y,a:state.a,v:state.v,nitro:state.nitro,stage:state.stage,foot:state.foot,reverse:state.reverse,stick:{x:stick.x,y:stick.y},started:state.started})};requestAnimationFrame(frame);
+})();
+</script>
+</body></html>
