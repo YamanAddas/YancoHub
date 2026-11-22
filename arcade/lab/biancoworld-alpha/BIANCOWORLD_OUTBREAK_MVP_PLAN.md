@@ -31,11 +31,40 @@ This is a **fixed story with lightweight simulated encounters**, not an open-end
   5. Rescue final research scientist + recover missing sample (the base is assembled).
   6. Get cure running and deploy it; reunion or failure.
 - **Three scientists** are story specialists at the lab/base, not extra playable lives. They do not need autonomous AI.
-- **A small set of civilian survivors**: start with one playable hero; rescue civilians through missions and one or two optional clearly marked encounters, providing additional chances. Exact roster size to balance in playtests.
+- **A small set of civilian survivors**: start with one playable hero; rescue civilians through missions at authored fixed locations, with narrative clues pointing to the next rescue. Exact roster size to balance in playtests; no random survivor spawning.
 - **One basic electric pulse tool** in the first slice. A spread-pulse unlock only after play loop is fun. Long-range pulse is optional stretch scope; don't hold shipping hostage.
 - **Two or three enemy behavior types** maximum: wandering, alert/chasing, stunned/knocked out. These can be states of the same zombie rather than separately animated species.
 - **Two endings**, one linear story. Optional side rescue does not rewrite the timeline.
 - No voice acting, complex cutscenes, inventories with dozens of resources, crafting tree, hunger/thirst, day/night ecology, police, or detailed character skills in MVP.
+
+## 3A. Fixed survivor queue and level-by-level budget — owner clarified
+
+**This is the actual game's main resource system, not a generic lives mechanic:**
+- The game uses a **finite, authored roster of named civilian survivors** placed in fixed levels and locations. They are not randomly spawned as extra lives. Their discovery naturally points to the next person / mission in the story.
+- A small starting party (proposed: two people) is introduced **before first danger**. One active character is rendered; the other roster members are abstractly "traveling with the team," not follower sprites.
+- A successful rescue **appends one specific survivor to the end of the queue**. No switching just for stats; all player knowledge, core upgrades, gear/tool unlocks, rescued scientists and mission progress are **shared across the whole party**. Minor cosmetic/personality differences are possible but do not alter the linear storyline.
+- On the active character's irreversible 100% infection: remove them from the queue, register their identity as infected in the world, then seamlessly promote the next queued person. **Never spawn a replacement.**
+- Every person carried forward to the next level remains available: clearing a level without losing anyone retains all accumulated chances.
+- **Only two narrative outcomes:** Last remaining character transforms before cure -> sad ending (world overwhelmed); reach deployment of cure with ≥1 human survivor -> happy ending. Lost player-character identities return during the reunion sequence and the final group photograph.
+- **Scientists are separate:** fixed mission-critical rescued specialists transported back to the lab to research the cure, not members of the playable queue; the finale is a small barricade/lab-defense scenario.
+- Endgame cure dispersal through the city (air/water infrastructure) is **fictional story-world technology**, not a realistic biological instruction. We can depict towers, ducts, water infrastructure and sunrise in a short ending sequence, not build a detailed scientific simulation.
+
+**Illustrative first-pass 6-level ledger — not fixed balance numbers:**
+
+| Level | Story beat and goal | New civilians | Total possible party size if none lost | Scientists delivered | Challenge direction |
+|---|---|---:|---:|---|---|
+| 1 | Lab outbreak, escape & orientation | 0; start with 2 people | 2 | none | very gentle tutorial before enemies |
+| 2 | Neighborhood rescue; rescued person gives next lead | +2 | 4 | none | first avoidable zombies |
+| 3 | Clinic — escort researcher to lab | +1 | 5 | Scientist A | moderate infection and stealth |
+| 4 | Power station — restore power, escort engineer | +1 | 6 | Scientist B | more routes and pressure, not unavoidable damage |
+| 5 | Research facility — find last scientist/samples and return to base | +1 | 7 | Scientist C | cautious longer mission, easy escape routes |
+| 6 | Barricade and defend lab until cure activation; deploy fictional cure | +0 | 7 | all 3 now collaborating | final escalating but fair timed defense |
+
+The numbers above illustrate finite rescue *capacity*, not how many lives every player still has: available lives after each level = initial 2 + civilians actually rescued - transformed protagonists. This is **not calibrated**. The playtests determine the actual supply, threat pressure, and number of encounters. Levels are sections of one timeline; no separate skill tree, divergent endings per choice, randomized rescue lottery, or inventory economy.
+
+**Risk/balance rule:** Because supplies are finite and permanent loss matters, each level must have (a) clear rescue discoverability, (b) viable stealth/escape path, (c) bite immunity window to prevent chain hits, and (d) a limited challenge budget. Never tune survival by making conversion inevitable. A player who clears early missions cleanly carries a real earned advantage into the harder finale. Avoid large stat advantages for any one character.
+
+**Endgame mini-loop:** Find scientist → transport them safely to base (short vehicle return / waypoint, no complex companion pathfinding) → research meter/timeline advances → simple barricade defense of lab gate with electric pulse and positioning → activate cure → world recovery montage → reunion with exact previously played protagonists, then personalized group image. Do not add endlessly respawning zombie waves; finite timed defense with clear progress is enough.
 
 ## 4. Core mechanics and fairness
 
@@ -61,9 +90,9 @@ This is a **fixed story with lightweight simulated encounters**, not an open-end
 
 ### Survivor chain and scientists
 - Rescuing an ordinary civilian adds one visible roster portrait/life. No extra follower sprite for each reserve.
-- On conversion, choose the next survivor using a predetermined queue by rescue order for the first MVP; no complex character selection.
+- On conversion, take the next survivor from the finite ordered rescue queue. Party knowledge, upgrades and story progress are shared. No character-based branching or complex selection.
 - Scientists are protected at research base *after* rescue, and advance plot only. Scientists are never playable reserves. Risk during their initial rescue can still exist, but no hidden scientist death softlock.
-- Cosmetic differences and optionally **one small passive stat difference** between civilians, but not enough to alter mission availability or create branching stories.
+- Primarily cosmetic/name differences between civilians; any stat variation must be tiny and optional. All core abilities/tools/progress are shared; no mission-blocking character-specific skills.
 - Keep the player's lost-character identity (name/color/portrait) to build the final reunion. No need for live memory-learning agent.
 
 ### Progress and saves
@@ -123,9 +152,9 @@ This is a **fixed story with lightweight simulated encounters**, not an open-end
 
 ## Decision ledger
 
-**Locked by user:** zombie outbreak in lab; cure all at story end; non-lethal electricity, stun/stealth/escape; infection stages without impossible pre-conversion running; civilians are reserve lives, unseen followers; transformed previous protagonist remains zombie and unplayable until finale; last survivor lost is a genuine sad ending; scientists separate from reserve; positive reunion and personalized group photo; small linear timeline, light survivor differences; finishable with modest code/time.
+**Locked by user:** zombie outbreak in lab; cure all at story end; non-lethal electricity, stun/stealth/escape; infection stages without impossible pre-conversion running; civilians are reserve lives, unseen followers; transformed previous protagonist remains zombie and unplayable until finale; last survivor lost is a genuine sad ending; scientists separate from reserve; positive reunion and personalized group photo; small linear timeline, light survivor differences; finite fixed authored survivor placements and a party queue that carries forward between levels; new saves carry progress/tool unlocks across characters; scientists escorted back to lab; lab barricade finale; finishable with modest code/time.
 
-**Suggested, not locked:** three scientists, six missions, three-zone map, 3–7 minute slice, fixed roster queue, save rules, exact weapon stats/thresholds, number of civilians, ending animation style.
+**Suggested, not locked:** three scientists, six missions, three-zone map, 3–7 minute slice, start with two, example finite rescue allocation (2+2+1+1+1 total seven max), save rules, exact weapon stats/thresholds, ending animation style.
 
 ## Next action
 
