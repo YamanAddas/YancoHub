@@ -11,6 +11,10 @@ Implementation status: NOT CODED. Do not implement mechanics before the owner fi
 
 **Scientist separation (owner decision, 2026-11-21).** Rescued scientists are **mission-critical research specialists**, not playable characters and not extra lives. They remain at the research base and advance the cure narrative / unlock research as missions are completed. Ordinary civilian survivors alone increase the reserve playable roster. The fate and danger mechanics for scientists are still an open design problem, but random scientist loss must never silently make the cure impossible; do not assume scientists are invulnerable without a separate design decision.
 
+**Fixed rescue chain (owner clarification).** Survivor placements and their total number are **authored per level**, not randomly generated; rescuing one may reveal the next. Each rescued civilian appends to a finite ordered queue of playable reserves. A proposed starting team of two people is introduced before enemies, subject to balance tests. Any unused survivors are carried into subsequent levels (similar to growing a "snake" by collecting people). Story progression, tools and abilities are shared across successive playable characters; individual stat differences are minimal and do not branch the timeline. No random free lives.
+
+**Lab finale (owner clarification).** Scientists are found through dedicated linear missions and transported back to the central laboratory. Once assembled, they work on the cure while the player holds a barricade against a finite zombie assault. The final cure is activated and fictional dispersal infrastructure restores infected people throughout the city. The happy ending reunites the last survivor with lost playable protagonists and closes with a personalized group portrait.
+
 **Playable character switching.** A single survivor is controlled at any given time. If infection fully transforms that person into a zombie, the person permanently leaves the playable roster for the remainder of the main story. Control passes to the next survivor in the roster. The transformed former player becomes an ordinary threat in the zombie-populated world; the player might encounter them and need to evade, stun or otherwise avoid them. No playable-character reconversion before the final cure. Reserve members remain unseen during ordinary movement, except when brought into play; this is a performance/UX choice, not a claim that they have literally disappeared in-world.
 
 **Fail condition.** If the final remaining playable survivor transforms and there is nobody left to take over, the **sad/failed ending** occurs: the outbreak wins, humanity/the game world is overwhelmed. Do not spawn a free replacement survivor, silently rewind to checkpoint, or automatically grant a rescue. The risk of permanent roster loss is deliberate. Game-over treatment, retry/new-game mechanics and save rules are still open design questions.
@@ -31,9 +35,9 @@ Failure epilogue: last survivor becomes infected; no one remains to finish deplo
 
 ## Design implications / unresolved decisions
 
-1. **Roster scarcity and player agency:** early rescue availability, minimum starting roster size and rescue mission visibility must make success challenging but attainable. Rescue should be the primary way to gain chances.
+1. **Roster scarcity and player agency:** rescues are fixed per level, with non-random clues and finite supply. Starting with two is a proposal, not yet balanced; successful no-loss play carries all unused survivors forward.
 2. **Fair infection pressure:** each exposure has clear cause and counterplay; protect against repeated unavoidable hits; keep full movement/escape capacity before conversion. Suggested state stages are prototypes only.
-3. **Carry-over:** story progress, opened neighborhoods, scientist work and key research should survive a switch. Exactly what personal gear, individual skills, vehicles and upgrades persist is open.
+3. **Carry-over:** decided: story progress, shared skills and core equipment upgrades, opened neighborhoods, scientist work and research persist for the team through character loss. Only optional cosmetic/personal items remain to be defined.
 4. **Scientists:** DECIDED — they are separate mission-critical specialists at the research base, **not playable reserves**, and rescuing them does not grant an extra life. Still open: story-consistent ways they can be in danger without creating an unannounced unwinnable softlock.
 5. **Missing-character presence:** decide whether transformed former protagonists should be trackable/persistent specific zombies (as opposed to a visual lookalike random encounter). Protect their identity data for the reunion.
 6. **Save integrity:** choose between ironman/autosave, generous retry-on-new-run, difficulty modes, and accessibility without undermining the meaningful roster fail state. No decision yet.
@@ -43,7 +47,7 @@ Failure epilogue: last survivor becomes infected; no one remains to finish deplo
 
 ## Acceptance questions for future design review
 
-- Do rescued survivors join an ordered queue automatically, or can the player select the next character after a conversion?
+- DECIDED: rescued civilians join a fixed ordered queue; after conversion control passes to the next one. No character choice or alternate timeline in MVP.
 - DECIDED: scientists are mission specialists outside the playable roster. Determine how scientific work progresses and what happens if their base is threatened.
 - How do item inventory and upgrades transfer to a new playable survivor?
 - What is the save/retry model after the bad ending?
